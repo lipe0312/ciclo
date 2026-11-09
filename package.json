@@ -16,7 +16,7 @@
     "build": "npm run build -w @ciclo/web",
     "setup": "node scripts/setup-local.mjs",
     "dev": "node scripts/dev.mjs",
-    "test": "node --test packages/core/test/*.test.ts",
+    "test": "node --no-warnings --test packages/core/test/*.test.ts apps/worker/test/*.test.ts",
     "typecheck": "tsc -p packages/core && tsc -p apps/web && npm run cf:types -w @ciclo/worker && tsc -p apps/worker",
     "check": "npm run typecheck && npm test && npm run build",
     "cf:setup": "bash scripts/setup-cloudflare.sh",

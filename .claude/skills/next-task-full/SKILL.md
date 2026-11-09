@@ -19,7 +19,7 @@ Esta sessão orquestra: pergunta, faz git, chama subagentes. **Não lê código 
    - schema;
    - tipo (`feat|fix|chore|docs`);
    - slug (3–5 palavras, kebab, sem acento);
-   - **modelo**: o campo `Modelo sugerido` da issue. Se não houver, use opus-high para auth/segurança/dados de saúde/Claude, sonnet-high para tela nova ou regra, e sonnet-medium para ajuste.
+   - **modelo e esforço**: siga `.claude/skills/_shared/modelo-e-esforco.md` (teto opus-high; issue mista → divida em agentes por nível).
 2. **Perguntas (uma chamada AskUserQuestion, só se faltar):**
    - a decisão da issue (opção recomendada primeiro);
    - modelo (Recomendado / Opus high / Sonnet high).
@@ -31,7 +31,7 @@ Esta sessão orquestra: pergunta, faz git, chama subagentes. **Não lê código 
    git fetch -q origin && git worktree add -q .claude/worktrees/feat-N -b <tipo>/N-<slug> origin/main
    cd .claude/worktrees/feat-N && npm ci --no-audit --no-fund && npm run setup
    ```
-4. **Implementer:** preencha `references/brief-implementer.md` (≤ 40 linhas). `Agent` com `subagent_type: implementer`, `name: impl-N`, modelo e esforço da ficha, em background.
+4. **Implementer:** preencha `references/brief-implementer.md` (≤ 40 linhas). `Agent` com `subagent_type: implementer`, `name: impl-N`, `model` e `effort` explícitos conforme `_shared/modelo-e-esforco.md`, em background.
 5. **Quando voltar `STATUS: PRONTO`:**
    - commits (`git -C <wt> add <arquivos>`; siga o lembrete de atribuição do sistema);
    - gate `cd <wt> && npm run check > /tmp/ciclo-N-gate.log 2>&1` (no chat só `tail -15`);

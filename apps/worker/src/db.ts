@@ -1,4 +1,5 @@
-// Repositório: todo SQL fica aqui, sempre com parâmetros (bind). Nada de SQL montado com string do usuário.
+// Repositório: todo SQL fica aqui (ou nas rotas), sempre com parâmetros (bind) e SEMPRE filtrado por user_id.
+// O uid vem da autenticação (auth.ts), nunca do corpo da requisição.
 import { MAX_SESSION_MS, MUSCLE_IDS, PAIN_REGIONS, mondayOf, weekDates, weeklyTargets } from "@ciclo/core";
 import { int, oneOf, str } from "./http.ts";
 import type { DayInput, Group, Mode, MuscleId, Pain } from "@ciclo/core";
@@ -10,44 +11,47 @@ export interface Profile {
   dayGym?: Record<string, string>; [k: string]: unknown;
 }
 
-const parse = <T>(s: unknown, fallback: T): T => { try { return s ? (JSON.parse(String(s)) as T) : fallback; } catch { return fallback; } };
+export const parse = <T>(s: unknown, fallback: T): T => { try { return s ? (JSON.parse(String(s)) as T) : fallback; } catch { return fallback; } };
+const DEFAULTS: Profile = { level: 1, priorities: [], minutes: 60, daysTarget: 4, prefs: {}, pinned: {}, avoid: [] };
 
-export async function getProfile(env: Env): Promise<Profile> {
-  const r = await env.DB.prepare("SELECT data FROM profile WHERE id = 1").first<{ data: string }>();
-  return parse<Profile>(r?.data, { level: 1, priorities: [], minutes: 60, daysTarget: 4, prefs: {}, pinned: {}, avoid: [] });
+/** Perfil salvo da conta ou null (conta nova, antes dos Primeiros passos). */
+export async function getProfile(env: Env, uid: string): Promise<Profile | null> {
+  const r = await env.DB.prepare("SELECT data FROM profile WHERE user_id = ?1").bind(uid).first<{ data: string }>();
+  return r ? { ...DEFAULTS, ...parse<Partial<Profile>>(r.data, {}) } : null;
 }
-export async function putProfile(env: Env, data: unknown) {
+export async function putProfile(env: Env, uid: string, data: unknown) {
   const s = JSON.stringify(data), now = Date.now();
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO profile (id, data, updated_at) VALUES (1, ?1, ?2) ON CONFLICT(id) DO UPDATE SET data = ?1, updated_at = ?2").bind(s, now),
-    env.DB.prepare("INSERT INTO profile_history (data, created_at) VALUES (?1, ?2)").bind(s, now),
+    env.DB.prepare("INSERT INTO profile (user_id, data, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(user_id) DO UPDATE SET data = ?2, updated_at = ?3").bind(uid, s, now),
+    env.DB.prepare("INSERT INTO profile_history (user_id, data, created_at) VALUES (?1, ?2, ?3)").bind(uid, s, now),
   ]);
 }
 
-export async function listGyms(env: Env) {
-  const { results } = await env.DB.prepare("SELECT id, name, equipment, busy_hours FROM gym ORDER BY sort").all<{ id: string; name: string; equipment: string; busy_hours: string }>();
+export async function listGyms(env: Env, uid: string) {
+  const { results } = await env.DB.prepare("SELECT id, name, equipment, busy_hours FROM gym WHERE user_id = ?1 ORDER BY sort, created_at").bind(uid)
+    .all<{ id: string; name: string; equipment: string; busy_hours: string }>();
   return results.map((g) => ({ id: g.id, name: g.name, equipment: parse<string[]>(g.equipment, []), busyHours: parse<string[]>(g.busy_hours, []) }));
 }
 
-/** Sessões abertas há mais de 2 h fecham sozinhas (iniciou = foi). Chamado no cron e em cada leitura de estado. */
-export async function closeStaleSessions(env: Env, now = Date.now()) {
-  return env.DB.prepare("UPDATE session SET finished_at = started_at + ?1, closed_by = 'auto' WHERE finished_at IS NULL AND started_at <= ?2")
-    .bind(MAX_SESSION_MS, now - MAX_SESSION_MS).run();
+/** Sessões abertas há mais de 2 h fecham sozinhas (iniciou = foi). Cron: todas as contas; leitura de estado: só a conta. */
+export async function closeStaleSessions(env: Env, uid: string | null = null, now = Date.now()) {
+  return env.DB.prepare("UPDATE session SET finished_at = started_at + ?1, closed_by = 'auto' WHERE finished_at IS NULL AND started_at <= ?2 AND (?3 IS NULL OR user_id = ?3)")
+    .bind(MAX_SESSION_MS, now - MAX_SESSION_MS, uid).run();
 }
 
 export interface InboxRow { id: string; created_at: number; text: string; action: string; tier: string; status: string; response: string | null; change: unknown }
 
-export async function weekState(env: Env, anyDate: string) {
+export async function weekState(env: Env, uid: string, anyDate: string) {
   const monday = mondayOf(anyDate);
   const dates = weekDates(monday);
   const [from, to] = [dates[0], dates[6]];
   const [att, chk, ses, vol, pains, inbox] = await env.DB.batch([
-    env.DB.prepare("SELECT date, status, reason, source FROM attendance WHERE date BETWEEN ?1 AND ?2").bind(from, to),
-    env.DB.prepare("SELECT date, sleep_h, energy, soreness, stress, food, weight_kg, note FROM checkin WHERE date BETWEEN ?1 AND ?2").bind(from, to),
-    env.DB.prepare("SELECT id, date, gym_id, started_at, finished_at, closed_by, json_extract(plan, '$.name') AS name, json_extract(plan, '$.groups') AS groups FROM session WHERE date BETWEEN ?1 AND ?2 ORDER BY started_at").bind(from, to),
-    env.DB.prepare("SELECT l.muscle, COUNT(*) AS sets, COUNT(DISTINCT l.session_id) AS freq FROM set_log l JOIN session s ON s.id = l.session_id WHERE s.date BETWEEN ?1 AND ?2 GROUP BY l.muscle").bind(from, to),
-    env.DB.prepare("SELECT id, region, intensity, kind, context, created_at FROM pain WHERE resolved_at IS NULL ORDER BY created_at DESC"),
-    env.DB.prepare("SELECT id, created_at, text, action, tier, status, response, change FROM inbox ORDER BY created_at DESC LIMIT 20"),
+    env.DB.prepare("SELECT date, status, reason, source FROM attendance WHERE user_id = ?3 AND date BETWEEN ?1 AND ?2").bind(from, to, uid),
+    env.DB.prepare("SELECT date, sleep_h, energy, soreness, stress, food, weight_kg, note FROM checkin WHERE user_id = ?3 AND date BETWEEN ?1 AND ?2").bind(from, to, uid),
+    env.DB.prepare("SELECT id, date, gym_id, started_at, finished_at, closed_by, json_extract(plan, '$.name') AS name, json_extract(plan, '$.groups') AS groups FROM session WHERE user_id = ?3 AND date BETWEEN ?1 AND ?2 ORDER BY started_at").bind(from, to, uid),
+    env.DB.prepare("SELECT l.muscle, COUNT(*) AS sets, COUNT(DISTINCT l.session_id) AS freq FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id WHERE l.user_id = ?3 AND s.date BETWEEN ?1 AND ?2 GROUP BY l.muscle").bind(from, to, uid),
+    env.DB.prepare("SELECT id, region, intensity, kind, context, created_at FROM pain WHERE user_id = ?1 AND resolved_at IS NULL ORDER BY created_at DESC").bind(uid),
+    env.DB.prepare("SELECT id, created_at, text, action, tier, status, response, change FROM inbox WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 20").bind(uid),
   ]);
   const done: Partial<Record<MuscleId, number>> = {}, freq: Partial<Record<MuscleId, number>> = {};
   for (const r of vol.results as { muscle: MuscleId; sets: number; freq: number }[]) { done[r.muscle] = r.sets; freq[r.muscle] = r.freq; }
@@ -61,24 +65,33 @@ export async function weekState(env: Env, anyDate: string) {
   };
 }
 
-export async function lastGroup(env: Env, beforeDate: string): Promise<Group | "full" | null> {
-  const r = await env.DB.prepare("SELECT json_extract(plan, '$.groups') AS g FROM session WHERE date < ?1 ORDER BY started_at DESC LIMIT 1").bind(beforeDate).first<{ g: string }>();
+export async function lastGroup(env: Env, uid: string, beforeDate: string): Promise<Group | "full" | null> {
+  const r = await env.DB.prepare("SELECT json_extract(plan, '$.groups') AS g FROM session WHERE user_id = ?2 AND date < ?1 ORDER BY started_at DESC LIMIT 1").bind(beforeDate, uid).first<{ g: string }>();
   const g = parse<Group[]>(r?.g, []);
   return g.length === 2 ? "full" : g[0] ?? null;
 }
 
+/** Motivo de não dar para planejar: conta sem perfil ou sem academia (Primeiros passos pendentes). */
+export type EmptyReason = "sem_perfil" | "sem_academia";
+export const EMPTY_MSG: Record<EmptyReason, string> = {
+  sem_perfil: "complete os Primeiros passos: falta o perfil",
+  sem_academia: "complete os Primeiros passos: cadastre ao menos uma academia",
+};
+
 export interface DayArgs { date: string; daysLeft: number; minutes?: number; mode?: Mode; focus?: MuscleId[]; gymId?: string; crowded?: boolean }
-export async function buildDayInput(env: Env, a: DayArgs): Promise<{ input: DayInput; gymId: string }> {
-  const [profile, gyms, week, lg] = await Promise.all([getProfile(env), listGyms(env), weekState(env, a.date), lastGroup(env, a.date)]);
+export async function buildDayInput(env: Env, uid: string, a: DayArgs): Promise<{ input: DayInput; gymId: string; empty?: undefined } | { empty: EmptyReason }> {
+  const [profile, gyms, week, lg] = await Promise.all([getProfile(env, uid), listGyms(env, uid), weekState(env, uid, a.date), lastGroup(env, uid, a.date)]);
+  if (!profile) return { empty: "sem_perfil" };
+  if (!gyms.length) return { empty: "sem_academia" };
   const dow = ["dom", "seg", "ter", "qua", "qui", "sex", "sab"][new Date(a.date + "T12:00:00Z").getUTCDay()];
-  const gymId = a.gymId ?? profile.dayGym?.[dow] ?? gyms[0]?.id;
-  const gym = gyms.find((g) => g.id === gymId) ?? gyms[0];
+  const wanted = a.gymId ?? profile.dayGym?.[dow];
+  const gym = gyms.find((g) => g.id === wanted) ?? gyms[0];
   return {
-    gymId: gym?.id,
+    gymId: gym.id,
     input: {
       targets: weeklyTargets(profile.level, profile.priorities), done: week.done, freq: week.freq,
       priorities: profile.priorities, daysLeft: a.daysLeft, minutes: a.minutes ?? profile.minutes, lastGroup: lg,
-      mode: a.mode ?? "normal", focus: a.focus ?? null, equipment: gym?.equipment ?? [], crowded: !!a.crowded,
+      mode: a.mode ?? "normal", focus: a.focus ?? null, equipment: gym.equipment, crowded: !!a.crowded,
       prefs: profile.prefs, pinned: profile.pinned, avoid: profile.avoid,
       pains: week.pains.map((p) => ({ region: p.region, intensity: p.intensity })),
     },
@@ -88,15 +101,83 @@ export async function buildDayInput(env: Env, a: DayArgs): Promise<{ input: DayI
 export const muscleIds = MUSCLE_IDS;
 
 /** Uma dor aberta por região: registrar de novo atualiza intensidade/contexto (ex.: "melhorou"). */
-export async function upsertPain(env: Env, b: Record<string, unknown>): Promise<{ id: string }> {
+export async function upsertPain(env: Env, uid: string, b: Record<string, unknown>): Promise<{ id: string }> {
   const region = oneOf(b.region, "region", PAIN_REGIONS.map((r) => r.id));
   const intensity = int(b.intensity, "intensity", 1, 3), kind = str(b.kind, "kind", 40, false), context = str(b.context, "context", 300, false);
-  const open = await env.DB.prepare("SELECT id FROM pain WHERE region = ?1 AND resolved_at IS NULL").bind(region).first<{ id: string }>();
+  const open = await env.DB.prepare("SELECT id FROM pain WHERE user_id = ?1 AND region = ?2 AND resolved_at IS NULL").bind(uid, region).first<{ id: string }>();
   if (open) {
-    await env.DB.prepare("UPDATE pain SET intensity = ?2, kind = COALESCE(?3, kind), context = COALESCE(?4, context) WHERE id = ?1").bind(open.id, intensity, kind, context).run();
+    await env.DB.prepare("UPDATE pain SET intensity = ?3, kind = COALESCE(?4, kind), context = COALESCE(?5, context) WHERE id = ?1 AND user_id = ?2").bind(open.id, uid, intensity, kind, context).run();
     return { id: open.id };
   }
   const pid = crypto.randomUUID();
-  await env.DB.prepare("INSERT INTO pain (id, region, intensity, kind, context, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(pid, region, intensity, kind, context, Date.now()).run();
+  await env.DB.prepare("INSERT INTO pain (user_id, id, region, intensity, kind, context, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)").bind(uid, pid, region, intensity, kind, context, Date.now()).run();
   return { id: pid };
 }
+
+// ---- limite de requisições por usuário (janela fixa no D1; ver ADR-0007) ----
+export const RATE_LIMITS = { write: { max: 120, windowMs: 60_000 }, upload: { max: 20, windowMs: 10 * 60_000 } } as const;
+export type RateBucket = keyof typeof RATE_LIMITS;
+
+/** Conta +1 na janela atual e devolve quantos segundos esperar se passou do limite (0 = liberado). */
+export async function hitRateLimit(env: Env, uid: string, bucket: RateBucket, now = Date.now()): Promise<number> {
+  const { max, windowMs } = RATE_LIMITS[bucket];
+  const w = now - (now % windowMs);
+  const r = await env.DB.prepare(`INSERT INTO rate_limit (user_id, bucket, window_start, count) VALUES (?1, ?2, ?3, 1)
+    ON CONFLICT(user_id, bucket) DO UPDATE SET count = CASE WHEN window_start = ?3 THEN count + 1 ELSE 1 END, window_start = ?3
+    RETURNING count`).bind(uid, bucket, w).first<{ count: number }>();
+  return (r?.count ?? 0) > max ? Math.ceil((w + windowMs - now) / 1000) : 0;
+}
+
+// ---- direitos da conta (LGPD) ----
+/** Tabelas de dado pessoal (todas têm user_id). Ordem de apagar: filhas antes das mães. */
+export const USER_TABLES = ["set_log", "exercise_skip", "media", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym", "profile_history", "profile", "mcp_token", "rate_limit"] as const;
+
+/** Tudo da conta em JSON (mídia: só metadados; tokens: sem hash). */
+export async function exportAccount(env: Env, uid: string) {
+  const q = (sql: string) => env.DB.prepare(sql).bind(uid);
+  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "mcp_token"] as const;
+  const res = await env.DB.batch([
+    q("SELECT id, email, created_at, last_seen_at, onboarding_done_at FROM user WHERE id = ?1"),
+    q("SELECT data, updated_at FROM profile WHERE user_id = ?1"),
+    q("SELECT data, created_at FROM profile_history WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT id, name, equipment, busy_hours, sort, created_at FROM gym WHERE user_id = ?1 ORDER BY sort"),
+    q("SELECT date, gym_id, input, plan, source, created_at FROM day_plan WHERE user_id = ?1 ORDER BY date"),
+    q("SELECT id, date, gym_id, plan, started_at, finished_at, closed_by, feedback FROM session WHERE user_id = ?1 ORDER BY started_at"),
+    q("SELECT session_id, exercise_id, muscle, set_no, kg, reps, rir, created_at FROM set_log WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT session_id, exercise_id, reason, created_at FROM exercise_skip WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT date, status, reason, source, updated_at FROM attendance WHERE user_id = ?1 ORDER BY date"),
+    q("SELECT date, sleep_h, energy, soreness, stress, food, weight_kg, note, updated_at FROM checkin WHERE user_id = ?1 ORDER BY date"),
+    q("SELECT id, region, intensity, kind, context, created_at, resolved_at FROM pain WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT id, created_at, text, action, tier, status, response, change, answered_at FROM inbox WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT id, date, edit, issues, review, review_note, created_at FROM plan_edit WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT id, date, raw_text, items, kcal, protein, confidence, created_at FROM food_log WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT date, arm_cm, waist_cm, shoulder_cm, updated_at FROM measurement WHERE user_id = ?1 ORDER BY date"),
+    q("SELECT id, kind, mime, bytes, equipment_id, exercise_id, gym_id, note, setup, created_at FROM media WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT id, label, created_at, last_used_at, revoked_at FROM mcp_token WHERE user_id = ?1 ORDER BY created_at"),
+  ]);
+  const out: Record<string, unknown> = { formato: "ciclo-export-1", exportadoEm: new Date().toISOString() };
+  names.forEach((n, i) => { out[n] = n === "user" || n === "profile" ? res[i].results[0] ?? null : res[i].results; });
+  return out;
+}
+
+/** Apaga a conta inteira: objetos R2 (prefixo da conta + chaves registradas) e depois todas as linhas, numa transação. */
+export async function deleteAccount(env: Env, uid: string) {
+  if (env.MEDIA) {
+    const { results } = await env.DB.prepare("SELECT r2_key FROM media WHERE user_id = ?1").bind(uid).all<{ r2_key: string }>();
+    const keys = new Set(results.map((r) => r.r2_key));
+    let cursor: string | undefined;
+    do {
+      const page = await env.MEDIA.list({ prefix: mediaPrefix(uid), cursor, limit: 1000 });
+      for (const o of page.objects) keys.add(o.key);
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+    const all = [...keys];
+    for (let i = 0; i < all.length; i += 1000) await env.MEDIA.delete(all.slice(i, i + 1000));
+  }
+  await env.DB.batch([
+    ...USER_TABLES.map((t) => env.DB.prepare(`DELETE FROM ${t} WHERE user_id = ?1`).bind(uid)), // t é constante do código, não do usuário
+    env.DB.prepare("DELETE FROM user WHERE id = ?1").bind(uid),
+  ]);
+}
+
+export const mediaPrefix = (uid: string) => `u/${uid}/`;
