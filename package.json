@@ -24,7 +24,7 @@
     "demo": "npm run dev -w @ciclo/web -- --open /?demo"
   },
   "devDependencies": {
-    "@types/node": "~22.20.0",
+    "@types/node": "~26.6.5",
     "esbuild": "~0.25.0",
     "typescript": "~5.9.3",
     "wrangler": "~4.150.0"
