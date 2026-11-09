@@ -1,4 +1,9 @@
-# Copie para .dev.vars (já está no .gitignore). Só para desenvolvimento local.
+# Copie para .dev.vars (já está no .gitignore). Só para desenvolvimento local (npm run setup cria sozinho).
+# Usuários de dev (só em localhost): cabeçalho x-dev-user: ana | cookie ciclo_dev_user | abra /api/dev/user?u=ana
 DEV_NO_AUTH=1
-# gere com: openssl rand -hex 32
+# Token de bootstrap LOCAL do MCP (vira o usuário de dev "dev"). Ignorado em produção. Gere com: openssl rand -hex 32
 MCP_TOKEN=troque-por-um-token-de-64-caracteres-hex-gerado-com-openssl-rand
+# Produção (wrangler secret put / vars), não precisa em local:
+# ACCESS_TEAM_DOMAIN=suaconta.cloudflareaccess.com
+# ACCESS_AUD=tag-aud-do-app
+# ALLOWED_EMAILS=voce@exemplo.com,outra@exemplo.com
