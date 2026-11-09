@@ -1,43 +1,14 @@
-# Roadmap: usar logo e evoluir
+# Roadmap
 
-Cada marco é usável sozinho. As tarefas viram issues no GitHub com o rótulo do marco.
+O backlog vive nas **issues do GitHub**, por fase, com zona, migration, decisão e dependências (regras em `08-fluxo-de-desenvolvimento.md`). Para executar: `/next-issue` (mapa), `/next-task-full #N` (uma) ou `/next-wave` (onda em paralelo).
 
-## M0 · Funciona local (✅ feito no primeiro commit)
-- Core com 16 testes (semana flexível, compensatório a pedido, foco, dor/prehab, sessão de 2 h, cargas, validador, check-in, classificador de pedidos).
-- Worker com API, MCP remoto, auth, cron, D1 e R2 locais.
-- PWA com Hoje, Treino (cronômetro e descanso), Comida (microfone), Corpo (mapa de dor), Perfil e Vida.
-- Ponte MCP local com anexar mídia.
+| Onda | Issues (paralelas) | Por quê nesta ordem |
+|---|---|---|
+| 1 | #21 contas e banco multiusuário ⛔ · #22 base em módulos + catálogo ⛔ | todo o resto depende de conta e da estrutura do front |
+| 2 | #23 Primeiros passos + Perfil · #24 Semana completa · #25 modo treino | **foco no treino** |
+| 3 | #26 Academias ⛔ · #27 Diário ⛔ · #28 Comida 2.0 | setores próprios; transcrição consertada |
+| 4 | #29 Home de evolução · #30 Claude no app ⛔ | precisam dos dados das ondas 2 e 3 |
+| 5 | #31 pronto para deploy | auditoria, performance, teste local de ponta a ponta |
+| manual | #1 deploy → #3 Access → #4 PWA no celular · #6 connector | feito pelo dono, depois do #31 |
 
-## M1 · No ar e no celular (1 noite)
-- [ ] `wrangler login`, `npm run cf:setup`, `MCP_TOKEN`, `npm run deploy`
-- [ ] Cloudflare Access (o seu e-mail) + Bypass de `/mcp`
-- [ ] Instalar o PWA no celular; testar um treino completo offline e online
-- [ ] Connector no claude.ai; testar "ciclo_estado" pelo app do Claude
-
-## M2 · Fechar as pontas do dia a dia
-- [ ] Calorias adaptativas (tendência de peso com EMA → ajuste de ±150 kcal por semana)
-- [ ] `/api/history` paginado + gráfico de e1RM por exercício (SVG)
-- [ ] Gráfico do peso (tendência) e das medidas no Corpo
-- [ ] Push no fim do descanso com a tela bloqueada (Web Push com VAPID) — hoje vibra e apita com a tela acesa
-- [ ] Desfazer a última série / editar uma série registrada
-
-## M3 · Claude no piloto
-- [ ] Rotina na nuvem: `/processar-caixa` a cada 3 h e `/revisao` no domingo
-- [ ] `scripts/processar-caixa.sh` com `launchd` (plano B)
-- [ ] Ajuste de volume pelo feedback (pump/dor → ±1–2 séries por músculo por semana)
-- [ ] Deload automático (fim de bloco, ≥ 3 estagnações ou 2 semanas de "segurar")
-
-## M4 · Mídia e técnica
-- [ ] Compressão de vídeo no navegador (WebCodecs → 720p) antes do upload
-- [ ] Miniatura do vídeo nos cards e nas trocas ("você já tem vídeo deste")
-- [ ] `/tecnica`: vídeo de uma série → comentário (Opus, sob demanda)
-
-## M5 · Vida
-- [ ] Sono e energia: gráfico a partir do check-in
-- [ ] Agenda: encaixar o treino com o connector do Google Calendar
-- [ ] Hábitos (água, passos)
-- [ ] Finanças (módulo separado, mesmo connector)
-
-## Débito técnico consciente
-- O front é JS puro num arquivo só (~1.000 linhas). Quando passar de ~1.500 linhas ou ganhar mais de 2 telas novas, migrar para Vite + Preact (mantendo o core).
-- O MCP é um JSON-RPC mínimo, sem SSE nem sessões. Se um cliente exigir, trocar pelo SDK oficial com `McpAgent`.
+⛔ = tem decisão para o dono antes de começar (a recomendação está na issue).

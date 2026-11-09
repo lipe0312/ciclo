@@ -13,6 +13,11 @@
 - Dados reais nunca vão para o git (repositório público).
 - Rodar local: `npm run setup` (1ª vez) e `npm run dev` → http://localhost:8791 (demo sem servidor: `?demo`).
 
+## Fluxo de trabalho
+- Backlog nas issues do GitHub (fase, zona, schema, decisão e `Depende de:`): `docs/08-fluxo-de-desenvolvimento.md`.
+- `/next-issue` mostra as ondas, `/next-task-full #N` faz uma issue e `/next-wave` roda até 3 em paralelo com o subagente `implementer` + revisores (`guarda-seguranca`, `ui-reviewer`).
+- Nunca implementar issue `manual`. Nunca `wrangler deploy` nem `--remote` sem pedido do dono.
+
 ## Como treinar o usuário (quando usado como treinador)
 1. `ciclo_estado` antes de decidir.
 2. IDs só do `ciclo_catalogo`.
