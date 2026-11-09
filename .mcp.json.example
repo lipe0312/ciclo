@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "ciclo": {
+      "command": "node",
+      "args": ["apps/mcp-local/index.mjs"],
+      "env": { "CICLO_URL": "http://localhost:8791", "CICLO_TOKEN": "cole-aqui-o-MCP_TOKEN" }
+    }
+  }
+}

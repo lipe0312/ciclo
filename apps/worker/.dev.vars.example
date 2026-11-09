@@ -1,0 +1,4 @@
+# Copie para .dev.vars (já está no .gitignore). Só para desenvolvimento local.
+DEV_NO_AUTH=1
+# gere com: openssl rand -hex 32
+MCP_TOKEN=troque-por-um-token-de-64-caracteres-hex-gerado-com-openssl-rand

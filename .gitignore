@@ -1,0 +1,13 @@
+node_modules/
+.wrangler/
+.dev.vars
+.env*
+!.env.example
+.mcp.json
+*.db
+*.sqlite
+media/
+logs/*
+!logs/.gitkeep
+apps/worker/worker-configuration.d.ts
+.DS_Store

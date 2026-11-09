@@ -1,0 +1,17 @@
+{
+  "name": "@ciclo/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8791",
+    "db:migrate:local": "wrangler d1 migrations apply ciclo-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply ciclo-db --remote",
+    "deploy": "wrangler deploy",
+    "typecheck": "wrangler types --include-runtime && tsc --noEmit",
+    "cf:types": "wrangler types --include-runtime"
+  },
+  "dependencies": {
+    "@ciclo/core": "*"
+  }
+}

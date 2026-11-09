@@ -1,0 +1,1 @@
+{"name":"@ciclo/mcp-local","version":"0.1.0","private":true,"type":"module","bin":{"ciclo-mcp":"index.mjs"}}

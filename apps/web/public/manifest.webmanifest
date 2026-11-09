@@ -1,0 +1,12 @@
+{
+  "name": "Ciclo",
+  "short_name": "Ciclo",
+  "description": "Treino com semana flexível, check-in, mapa de dor e dieta leve — administrados pelo Claude.",
+  "lang": "pt-BR",
+  "start_url": "/#hoje",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0B0B0C",
+  "theme_color": "#0B0B0C",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

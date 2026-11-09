@@ -1,0 +1,32 @@
+{
+  "name": "ciclo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Treino, dieta e vida administrados pelo Claude (MCP) — semana flexível, uso no celular, R$ 0.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build:core": "esbuild packages/core/src/index.ts --bundle --format=iife --global-name=CicloCore --target=es2020 --minify --legal-comments=none --outfile=apps/web/public/core.js",
+    "build": "npm run build:core",
+    "setup": "node scripts/setup-local.mjs",
+    "dev": "npm run build:core && npm run dev -w @ciclo/worker",
+    "test": "node --test packages/core/test/*.test.ts",
+    "typecheck": "tsc -p packages/core && npm run cf:types -w @ciclo/worker && tsc -p apps/worker",
+    "check": "npm run typecheck && npm test && npm run build:core",
+    "cf:setup": "bash scripts/setup-cloudflare.sh",
+    "deploy": "npm run build:core && npm run db:migrate:remote -w @ciclo/worker && npm run deploy -w @ciclo/worker"
+  },
+  "devDependencies": {
+    "@types/node": "~22.20.0",
+    "esbuild": "~0.25.0",
+    "typescript": "~5.9.3",
+    "wrangler": "~4.150.0"
+  }
+}
