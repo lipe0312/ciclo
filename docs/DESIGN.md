@@ -1,6 +1,6 @@
 # DESIGN.md: Ciclo
 
-> A fonte da verdade visual são os tokens em `apps/web/public/app.css`. Mudou aqui, muda lá. Direção feita com as skills `ui-build`, `ui-design-references` e `web-design-guidelines` (Vercel).
+> A fonte da verdade visual são os tokens em `apps/web/src/app.css`. Mudou aqui, muda lá. Direção feita com as skills `ui-build`, `ui-design-references` e `web-design-guidelines` (Vercel).
 
 ## Atmosfera
 É uma ferramenta de academia, não um app de startup: tela escura, números grandes e tabulares, uma cor de destaque só. Ela tem que ser usável com uma mão, suada, entre séries.

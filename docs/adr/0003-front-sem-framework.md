@@ -1,5 +1,5 @@
 # ADR-0003 · Front sem framework (por enquanto)
-**Status:** aceito
+**Status:** substituído parcialmente pelo [ADR-0008](0008-front-vite-preact.md)
 
 **Decisão:** PWA em JS puro (`app.js`), com delegação de eventos e render por tela.
 

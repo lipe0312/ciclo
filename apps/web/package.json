@@ -1,0 +1,20 @@
+{
+  "name": "@ciclo/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "watch": "vite build --watch --mode development",
+    "dev": "vite",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@ciclo/core": "*",
+    "preact": "~10.29.7"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "~2.10.2",
+    "vite": "~7.3.0"
+  }
+}

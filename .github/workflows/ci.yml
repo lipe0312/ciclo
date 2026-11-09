@@ -12,8 +12,6 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run check
-      - name: core.js versionado está atualizado
-        run: git diff --exit-code apps/web/public/core.js
       - name: segredos
         uses: gitleaks/gitleaks-action@v2
         env:

@@ -1,4 +1,4 @@
-/* Ciclo · tokens (ver docs/DESIGN.md). Escuro por padrão no sistema escuro; claro disponível. */
+/* Ciclo · tokens (ver docs/DESIGN.md). Escuro por padrão no sistema escuro; claro disponível. Importado por src/main.tsx. */
 :root{
   --bg:#F6F6F3; --sup:#FFFFFF; --sup-2:#EFEFEB; --sup-3:#E4E4DE;
   --txt:#16161A; --sub:#5B5B57; --borda:#DDDDD6; --borda-ctrl:#8A8A84;
@@ -156,8 +156,8 @@ textarea.input{min-height:84px;resize:vertical}
 .spark{width:100%;height:56px}
 
 /* treino */
-.timerbar{position:sticky;top:0;z-index:15;margin:-12px -16px 12px;padding:10px 16px;background:var(--sup);border-bottom:1px solid var(--borda);display:flex;align-items:center;gap:12px}
-@media (min-width:960px){.timerbar{margin:-28px -32px 16px;padding:12px 32px}}
+.timerbar{position:sticky;top:0;z-index:15;margin:0 -16px 12px;padding:10px 16px;background:var(--sup);border-bottom:1px solid var(--borda);display:flex;align-items:center;gap:12px}
+@media (min-width:960px){.timerbar{margin:0 -32px 16px;padding:12px 32px}}
 .clock{font-size:26px;font-weight:800;letter-spacing:-.02em}
 .rest{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;background:var(--acc-bg);color:var(--acc-txt);font-weight:800}
 .rest.done{background:var(--bad);color:#fff;animation:pulse 1s infinite}
@@ -249,4 +249,66 @@ textarea.input{min-height:84px;resize:vertical}
 @media (min-width:720px){.modgrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .mod{border:1px solid var(--borda);border-radius:12px;padding:14px;background:var(--sup);min-height:100px;display:flex;flex-direction:column;gap:6px}
 .mod.on{border-color:var(--acc)}
+
+/* F1.2 · casca nova */
+.side .side-sep{padding:14px 12px 4px;font-size:11px}
+.iconbtn.sm{width:36px;height:36px}
+a.iconbtn{color:inherit}
+@media (min-width:960px){.only-mobile{display:none!important}}
+.faixas{display:grid;gap:8px;margin-bottom:14px}
+.faixa{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 12px;border-radius:10px;background:var(--sup-2);border:1px solid var(--borda);border-left:4px solid var(--info)}
+.faixa.warn{border-left-color:var(--warn)} .faixa.bad{border-left-color:var(--bad)}
+.faixa>svg{color:var(--info)} .faixa.warn>svg{color:var(--warn)} .faixa.bad>svg{color:var(--bad)}
+.minibar{position:fixed;left:8px;right:8px;bottom:calc(72px + env(safe-area-inset-bottom));z-index:19}
+.minibar-in{display:flex;align-items:center;gap:10px;min-height:52px;padding:6px 8px 6px 14px;border-radius:12px;background:var(--txt);color:var(--bg);text-decoration:none;font-size:14px}
+.minibar-in svg{color:var(--acc-bg)}
+@media (min-width:960px){.minibar{left:auto;right:24px;bottom:24px;width:380px}}
+.sw-sec{background:repeating-linear-gradient(45deg,var(--acc) 0 3px,var(--hatch) 3px 6px)}
+.micwrap{display:inline-flex;flex-direction:column;gap:4px;flex:none}
+.subnav{margin-bottom:14px}
+.subnav a.chip{text-decoration:none;color:inherit;min-height:44px}
+.subnav a.chip[aria-current="page"]{background:var(--txt);color:var(--bg);border-color:var(--txt)}
+.searchbox{position:relative}
+.searchbox svg{position:absolute;left:12px;top:12px;color:var(--sub)}
+.searchbox .input{padding-left:40px}
+.filters{display:grid;gap:8px;margin-top:10px}
+.filters .chip{min-height:44px;white-space:nowrap;flex:none}
+.libgrid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
+.libcard{display:flex;flex-direction:column;border:1px solid var(--borda);border-radius:12px;background:var(--sup);overflow:hidden;color:inherit;text-decoration:none;min-width:0}
+.libcard:hover{border-color:var(--borda-ctrl)}
+.lc-body{display:flex;flex-direction:column;gap:2px;padding:8px 10px 10px;font-size:14px;line-height:1.25}
+.exim{position:relative;aspect-ratio:3/2;background:#fff;overflow:hidden}
+.exim img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.exim.duo img+img{animation:alterna 3s steps(1) infinite}
+@keyframes alterna{0%{opacity:0}50%{opacity:1}}
+.exim.vazio{display:grid;place-items:center;background:var(--sup-2);color:var(--sub)}
+.exim.vazio svg{width:36px;height:36px}
+.exim.big{border-radius:10px}
+.carrossel{position:relative}
+.carr-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;border-radius:10px;background:#fff}
+.carr-track::-webkit-scrollbar{display:none}
+.carr-item{flex:0 0 100%;scroll-snap-align:center;display:grid;place-items:center}
+.carr-item img{width:100%;max-height:340px;object-fit:contain;display:block}
+.carr-dots{display:flex;justify-content:center;gap:4px;margin-top:6px}
+.carr-dots button{width:44px;height:28px;border:0;background:none;cursor:pointer;display:grid;place-items:center}
+.carr-dots i{width:8px;height:8px;border-radius:50%;background:var(--borda-ctrl)}
+.carr-dots button[aria-current="true"] i{background:var(--acc);width:20px;border-radius:4px}
+.facts{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px;font-size:14px;align-items:center}
+.steps{margin:10px 0 0;padding-left:20px;display:grid;gap:6px;font-size:14px}
+a.altlink{color:inherit;text-decoration:none}
+.alt .mbox{width:56px;height:56px;border-radius:10px;background:var(--sup-3);display:grid;place-items:center}
+.musmap-figs{display:flex;justify-content:center;gap:8px}
+.musmap svg{width:min(42vw,200px);height:auto}
+.musmap.sm svg{width:min(38vw,150px)}
+.musmap .sil{fill:var(--sup-3);stroke:var(--borda-ctrl);stroke-width:1}
+.musmap .mus path{fill:var(--sup-2);stroke:var(--borda-ctrl);stroke-width:.8}
+.musmap .mus.sec path{fill:var(--hatch);stroke:var(--acc)}
+.musmap .mus.pri path,.musmap .mus.sel path{fill:var(--acc-bg);stroke:var(--acc-txt)}
+.musmap .mus.tap{cursor:pointer}
+.musmap .mus.tap:hover path,.musmap .mus.tap:focus path{stroke:var(--txt);stroke-width:1.6}
+.musmap .mus:focus{outline:none}
+.musmap .lbl{font-size:11px;fill:var(--sub);font-weight:700;text-anchor:middle}
+.setrow .ck[aria-pressed="true"]{background:var(--ok);border-color:var(--ok);color:#fff}
+.main{padding-bottom:calc(104px + env(safe-area-inset-bottom))}
+@media (min-width:960px){.main{padding-bottom:48px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}

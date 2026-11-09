@@ -13,15 +13,15 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "build:core": "esbuild packages/core/src/index.ts --bundle --format=iife --global-name=CicloCore --target=es2020 --minify --legal-comments=none --outfile=apps/web/public/core.js",
-    "build": "npm run build:core",
+    "build": "npm run build -w @ciclo/web",
     "setup": "node scripts/setup-local.mjs",
-    "dev": "npm run build:core && npm run dev -w @ciclo/worker",
+    "dev": "node scripts/dev.mjs",
     "test": "node --no-warnings --test packages/core/test/*.test.ts apps/worker/test/*.test.ts",
-    "typecheck": "tsc -p packages/core && npm run cf:types -w @ciclo/worker && tsc -p apps/worker",
-    "check": "npm run typecheck && npm test && npm run build:core",
+    "typecheck": "tsc -p packages/core && tsc -p apps/web && npm run cf:types -w @ciclo/worker && tsc -p apps/worker",
+    "check": "npm run typecheck && npm test && npm run build",
     "cf:setup": "bash scripts/setup-cloudflare.sh",
-    "deploy": "npm run build:core && npm run db:migrate:remote -w @ciclo/worker && npm run deploy -w @ciclo/worker"
+    "deploy": "npm run build && npm run db:migrate:remote -w @ciclo/worker && npm run deploy -w @ciclo/worker",
+    "demo": "npm run dev -w @ciclo/web -- --open /?demo"
   },
   "devDependencies": {
     "@types/node": "~22.20.0",
