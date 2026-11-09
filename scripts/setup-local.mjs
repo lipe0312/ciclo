@@ -6,9 +6,9 @@ const vars = "apps/worker/.dev.vars";
 if (!existsSync(vars)) {
   const token = randomBytes(32).toString("hex");
   writeFileSync(vars, `DEV_NO_AUTH=1\nMCP_TOKEN=${token}\n`, { mode: 0o600 });
-  console.log(`✔ ${vars} criado. MCP_TOKEN local: ${token}`);
+  console.log(`✔ ${vars} criado. MCP_TOKEN local (bootstrap do usuário de dev "dev"): ${token}`);
 }
 if (!existsSync(".mcp.json")) console.log("ℹ Para o Claude Code: cp .mcp.json.example .mcp.json e cole o MCP_TOKEN.");
 execSync("npm run build:core", { stdio: "inherit" });
 execSync("npm run db:migrate:local -w @ciclo/worker", { stdio: "inherit" });
-console.log("✔ Pronto. Rode: npm run dev  →  http://localhost:8791");
+console.log("✔ Pronto. Rode: npm run dev  →  http://localhost:8791 (outra conta de dev: http://localhost:8791/api/dev/user?u=ana)");

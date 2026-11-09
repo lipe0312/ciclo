@@ -18,7 +18,7 @@
 | Pasta | O que é | Dependências |
 |---|---|---|
 | `packages/core` | Regras puras em TS: catálogo, semana flexível (`planDay`), sessão (2 h), cargas, validador/hidratação, check-in, pedidos/modelos | **nenhuma** |
-| `apps/worker` | Worker: API, MCP remoto, auth, cron, migrations D1 | só `@ciclo/core` |
+| `apps/worker` | Worker: API, MCP remoto, auth/contas, cron, migrations D1; testes em `test/` (D1 em memória via `node:sqlite`) | só `@ciclo/core` |
 | `apps/web/public` | PWA sem framework: `index.html`, `app.css`, `app.js`, `core.js` (gerado), `sw.js`, `_headers`, imagens WebP | nenhuma em runtime |
 | `apps/mcp-local` | Ponte stdio ⇄ HTTP para o Claude Code + upload de arquivo local | nenhuma (Node 22) |
 | `.claude/skills` | Skills do Claude Code, com o `model` indicado por skill | — |
@@ -30,10 +30,11 @@
 4. **MCP mínimo próprio** (JSON-RPC sem estado, respostas JSON) em vez de SDK + Durable Objects: zero dependências e grátis, ADR-0004.
 5. **O Claude decide, o código monta**: saída compacta + validação + hidratação, ADR-0005.
 6. **Modelo por pedido** (Haiku, Sonnet, Opus) na caixa de pedidos e nas skills, ADR-0006.
+7. **Contas e isolamento**: Access (e-mail) → `user`; todo dado com `user_id`; token do Claude por usuário; export/apagar conta; limite por usuário no D1, ADR-0007.
 
 ## Fluxos principais
 **Abrir o app na academia**
-1. `GET /api/state?date=` traz tudo numa chamada só: perfil, academias, semana, dores, caixa, histórico de cargas, mídia e medidas.
+1. `GET /api/state?date=` traz tudo numa chamada só: conta (`account`, `onboarding`), perfil (vazio em conta nova), academias, semana, dores, caixa, histórico de cargas, mídia e medidas.
 2. O `core.js` calcula o treino do dia **no aparelho**.
 
 **Começar o treino**
@@ -58,7 +59,9 @@
 2. O app lê de volta por `GET /api/media/:id`, autenticado e privado.
 
 ## Modelo de dados (D1)
-`profile` (JSON validado) · `profile_history` · `gym` · `day_plan` · `session` · `set_log` · `exercise_skip` · `attendance` · `checkin` · `pain` · `inbox` · `plan_edit` · `food_log` · `measurement` · `media`. Schema em `apps/worker/migrations/0001_init.sql`.
+`user` · `mcp_token` (hash) · `rate_limit` · `profile` (JSON validado) · `profile_history` · `gym` · `day_plan` · `session` · `set_log` · `exercise_skip` · `attendance` · `checkin` · `pain` · `inbox` · `plan_edit` · `food_log` · `measurement` · `media`. Toda tabela de dado tem `user_id` (chaves e índices começam por ele). Schema em `apps/worker/migrations/` (`0003_21_contas.sql` é o atual). Sem seed: o banco nasce vazio.
+
+**Conta**: `GET/PATCH /api/account`, `GET /api/account/export`, `DELETE /api/account`, `GET/POST /api/account/tokens`, `DELETE /api/account/tokens/:id` (formatos no ADR-0007).
 
 ## Crescer para "Vida"
 Cada módulo novo (sono, hábitos, finanças…) entra com:
