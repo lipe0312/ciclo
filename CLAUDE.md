@@ -6,8 +6,8 @@
 ## Como trabalhar no código
 - Regra de negócio fica em `packages/core` (TS puro, sem dependências) e **sempre com teste** em `packages/core/test` (`npm test`). O app e o Worker só chamam o core.
 - `npm run check` = typecheck + testes + build do core. Rode antes de cada commit.
-- Mudou o core → `npm run build:core` (o `apps/web/public/core.js` é versionado e o CI confere).
-- Front: `apps/web/public/app.js` sem framework. Escape todo dado com `esc()`. Nada de script inline (a CSP bloqueia). Tokens visuais em `app.css` + `docs/DESIGN.md`.
+- O front importa `packages/core` direto (Vite); não há bundle gerado para versionar.
+- Front: Vite + Preact + TS em `apps/web/src` (uma tela por diretório em `src/screens/`, compartilhados em `src/lib/`; ADR-0008). Nunca `dangerouslySetInnerHTML` com dado externo. Nada de script inline (a CSP bloqueia). Tokens visuais em `app.css` + `docs/DESIGN.md`.
 - Worker: todo SQL com `bind`; valide a entrada com os helpers de `http.ts`; nada de dado pessoal em log.
 - Nada de dependência nova de runtime sem ADR em `docs/adr/`.
 - Dados reais nunca vão para o git (repositório público).
