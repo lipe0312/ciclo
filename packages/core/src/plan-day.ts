@@ -67,7 +67,7 @@ export function candidates(m: MuscleId, inp: Pick<DayInput, "equipment" | "crowd
   const pref = inp.prefs?.[m];
   const out: { ex: Exercise; score: number; blockedByPain: boolean }[] = [];
   EXERCISES.forEach((ex, idx) => {
-    if (ex.m !== m || ex.id === "Scapular_Pull-Up") return; // só aquecimento
+    if (ex.m !== m || ex.id === "Scapular_Pull-Up" || ex.planOff) return; // só aquecimento / acessório
     if (!ex.eq.every((q) => eq.has(q))) return;
     if (inp.avoid?.includes(ex.id)) return;
     const blockedByPain = painBlocks(ex, inp.pains ?? []);

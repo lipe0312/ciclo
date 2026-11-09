@@ -11,3 +11,4 @@ logs/*
 !logs/.gitkeep
 apps/worker/worker-configuration.d.ts
 .DS_Store
+dist/

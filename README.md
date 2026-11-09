@@ -12,9 +12,10 @@
 ```bash
 git clone https://github.com/lipe0312/ciclo && cd ciclo
 npm install
-npm run setup        # .dev.vars com token, build do core, banco local
-npm run dev          # http://localhost:8791   (sem servidor: abra apps/web/public/index.html → modo demonstração)
-npm run check        # typecheck + 16 testes + build
+npm run setup        # .dev.vars com token, build do front, banco local
+npm run dev          # vite build --watch + wrangler dev → http://localhost:8791  (demo: /?demo)
+npm run demo         # só o front (Vite :5173, /api e /mcp com proxy para :8791) em modo demonstração
+npm run check        # typecheck (core, web, worker) + testes + build do front
 ```
 
 ## Usar na academia (Mac em casa desligado)

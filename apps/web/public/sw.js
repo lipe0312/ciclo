@@ -1,6 +1,7 @@
-// Service worker: app abre sem sinal na academia. Estático = cache primeiro; /api e /mcp nunca são cacheados.
-const V = "ciclo-v0.1.0";
-const SHELL = ["/", "/index.html", "/app.css", "/app.js", "/core.js", "/icon.svg", "/manifest.webmanifest"];
+// Service worker: app abre sem sinal na academia. /assets/* (nomes com hash do Vite) e /img/* = cache primeiro;
+// navegação = rede primeiro com o index.html em cache como reserva. /api e /mcp nunca são cacheados.
+const V = "ciclo-v0.2.0";
+const SHELL = ["/", "/index.html", "/icon.svg", "/manifest.webmanifest"];
 self.addEventListener("install", (e) => e.waitUntil(caches.open(V).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (e) => e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== V).map((k) => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", (e) => {
@@ -11,7 +12,7 @@ self.addEventListener("fetch", (e) => {
     return;
   }
   e.respondWith(caches.match(e.request).then((hit) => hit || fetch(e.request).then((r) => {
-    if (r.ok && (u.pathname.startsWith("/img/") || SHELL.includes(u.pathname))) { const c = r.clone(); caches.open(V).then((x) => x.put(e.request, c)); }
+    if (r.ok && (u.pathname.startsWith("/img/") || u.pathname.startsWith("/assets/") || SHELL.includes(u.pathname))) { const c = r.clone(); caches.open(V).then((x) => x.put(e.request, c)); }
     return r;
   })));
 });
