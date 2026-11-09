@@ -21,8 +21,8 @@ Orquestra até 3 frentes. Cada frente segue os passos 3–8 da `next-task-full` 
   Paralelo: outras frentes rodam agora. Seu worktree é <abs>. Todo Bash começa com `cd <abs> && …`; Read/Edit/Write só dentro dele.
   Não toque: zonas <das outras> e as pastas delas; arquivos comuns só no trecho do seu item.
   ```
-- Chame todos os `Agent` (implementer, `name: impl-N`) **numa única mensagem**, em background, com o modelo de cada issue.
-- No chat: uma linha por frente (`▶ #24 semana · Opus high · feat-24 · migration`).
+- Chame todos os `Agent` (implementer, `name: impl-N`) **numa única mensagem**, em background, com `model` e `effort` de cada frente conforme `.claude/skills/_shared/modelo-e-esforco.md` (teto opus-high; frente mista vira agentes em sequência por nível).
+- No chat: uma linha por frente (`▶ #24 semana · opus high · feat-24 · migration`).
 
 ## Cada frente que volta (sem esperar as outras)
 1. Pasta principal ainda igual a `SUJO_INICIAL`? Se não → ⛔ (um agente escreveu fora).

@@ -17,6 +17,7 @@
 - Backlog nas issues do GitHub (fase, zona, schema, decisão e `Depende de:`): `docs/08-fluxo-de-desenvolvimento.md`.
 - `/next-issue` mostra as ondas, `/next-task-full #N` faz uma issue e `/next-wave` roda até 3 em paralelo com o subagente `implementer` + revisores (`guarda-seguranca`, `ui-reviewer`).
 - Nunca implementar issue `manual`. Nunca `wrangler deploy` nem `--remote` sem pedido do dono.
+- Modelo e esforço por tarefa: `.claude/skills/_shared/modelo-e-esforco.md` (simples → haiku/sonnet baixo; migration, auth, saúde, base → opus high, que é o teto).
 
 ## Como treinar o usuário (quando usado como treinador)
 1. `ciclo_estado` antes de decidir.
