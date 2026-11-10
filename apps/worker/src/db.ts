@@ -1,7 +1,7 @@
 // Repositório: todo SQL fica aqui (ou nas rotas), sempre com parâmetros (bind) e SEMPRE filtrado por user_id.
 // O uid vem da autenticação (auth.ts), nunca do corpo da requisição.
-import { MAX_SESSION_MS, MUSCLE_IDS, PAIN_REGIONS, mondayOf, weekDates, weeklyTargets } from "@ciclo/core";
-import { int, oneOf, str } from "./http.ts";
+import { DEFAULT_PROFILE, MAX_SESSION_MS, MUSCLE_IDS, PAIN_REGIONS, applyProfilePatch, mondayOf, planFingerprint, weekDates, weeklyTargets } from "@ciclo/core";
+import { HttpError, int, oneOf, str } from "./http.ts";
 import type { DayInput, Group, Mode, MuscleId, Pain } from "@ciclo/core";
 import type { Env } from "./env.ts";
 
@@ -25,6 +25,27 @@ export async function putProfile(env: Env, uid: string, data: unknown) {
     env.DB.prepare("INSERT INTO profile (user_id, data, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(user_id) DO UPDATE SET data = ?2, updated_at = ?3").bind(uid, s, now),
     env.DB.prepare("INSERT INTO profile_history (user_id, data, created_at) VALUES (?1, ?2, ?3)").bind(uid, s, now),
   ]);
+}
+
+/** Perfil bruto da conta (sem preencher padrões) ou null. */
+async function rawProfile(env: Env, uid: string): Promise<Record<string, unknown> | null> {
+  const r = await env.DB.prepare("SELECT data FROM profile WHERE user_id = ?1").bind(uid).first<{ data: string }>();
+  return r ? parse<Record<string, unknown>>(r.data, {}) : null;
+}
+/** Valida e grava. `replace`: o corpo é o perfil inteiro (app); senão é parcial e mescla no que já existe (Claude). Erro de validação → 400 com a lista. */
+export async function saveProfile(env: Env, uid: string, input: unknown, mode: "replace" | "merge", extra: Record<string, unknown> = {}) {
+  const base = mode === "merge" ? (await rawProfile(env, uid)) ?? DEFAULT_PROFILE : DEFAULT_PROFILE;
+  const r = applyProfilePatch(base, input);
+  if (!r.ok) throw new HttpError(400, r.errors.join("; "));
+  const data = { ...r.profile, ...extra };
+  await putProfile(env, uid, data);
+  const versao = (await env.DB.prepare("SELECT COUNT(*) AS n FROM profile_history WHERE user_id = ?1").bind(uid).first<{ n: number }>())?.n ?? 1;
+  return { data, versao };
+}
+/** Impressão do perfil vigente quando o treino foi gerado (a última versão gravada até `at`). Sem histórico → null (não alarma). */
+export async function planProfileFingerprint(env: Env, uid: string, at: number): Promise<string | null> {
+  const r = await env.DB.prepare("SELECT data FROM profile_history WHERE user_id = ?1 AND created_at <= ?2 ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid, at).first<{ data: string }>();
+  return r ? planFingerprint(parse<Record<string, unknown>>(r.data, {})) : null;
 }
 
 export async function listGyms(env: Env, uid: string) {
