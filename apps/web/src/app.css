@@ -205,7 +205,7 @@ textarea.input{min-height:84px;resize:vertical}
 .opt[aria-pressed="true"]{border-color:var(--acc);box-shadow:inset 0 0 0 2px var(--acc)}
 .goal{font-size:clamp(20px,4.6vw,26px);font-weight:800;letter-spacing:-.02em;line-height:1.2}
 .stepper{display:inline-flex;align-items:center;border:1px solid var(--borda-ctrl);border-radius:10px;overflow:hidden}
-.stepper button{width:40px;height:40px;border:0;background:var(--sup-2);cursor:pointer;font-weight:800}
+.stepper button{width:44px;height:44px;border:0;background:var(--sup-2);cursor:pointer;font-weight:800}
 .stepper span{min-width:56px;text-align:center;font-weight:700}
 .prefrow{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px;align-items:center}
 .prefrow+.prefrow{margin-top:8px}
@@ -312,3 +312,38 @@ a.altlink{color:inherit;text-decoration:none}
 .main{padding-bottom:calc(104px + env(safe-area-inset-bottom))}
 @media (min-width:960px){.main{padding-bottom:48px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* primeiros passos + perfil de treino (#23) */
+.chip.tall{min-height:44px}
+.opts.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.opt.big{min-height:64px;padding:14px 12px}
+.opt .ilu{display:block;width:44px;height:44px;margin-bottom:8px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;color:var(--sub)}
+.opt[aria-pressed="true"] .ilu{color:var(--acc)}
+.sec-end{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.sec .n svg{width:22px;height:22px}
+.pp-steppers{display:flex;flex-wrap:wrap;gap:16px;margin-top:16px}
+.app.focus .bottom{display:none}
+.app.focus .main{padding-bottom:24px}
+.pp{max-width:640px;margin:0 auto}
+.pp-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+.pp-bar{height:8px;border-radius:999px;background:var(--sup-3);overflow:hidden}
+.pp-bar i{display:block;height:100%;background:var(--acc-bg);border-radius:999px;transition:width .2s}
+.pp-q{margin-top:20px;font-size:clamp(24px,6vw,30px)}
+.pp-sub{margin:6px 0 18px}
+.pp-body{min-height:160px}
+.pp-cta{position:sticky;bottom:0;margin-top:20px;padding:12px 0 calc(12px + env(safe-area-inset-bottom));background:linear-gradient(to top,var(--bg) 78%,transparent)}
+.pp-prev{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}
+.pp-prev li{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.prio-list{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px}
+.prio-list li{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border:1px solid var(--borda);border-radius:12px;background:var(--sup)}
+.prio-list .prio-empty{display:block;border-style:dashed;padding:12px}
+.prio-n{width:28px;height:28px;border-radius:50%;background:var(--acc-bg);color:var(--acc-txt);display:grid;place-items:center;font-size:14px;flex:none}
+.prio-nm{flex:1;min-width:0;font-weight:600}
+.prio-list .iconbtn:disabled{opacity:.35;cursor:default}
+.prio-lista{margin-top:14px}
+.prio-lista summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:600;color:var(--sub)}
+.pp .seg button,.view[aria-label="perfil"] .seg button{min-height:44px}
+.view[aria-label="perfil"] .opt,.pp .opt{color:var(--txt)}
+@media (prefers-reduced-motion:reduce){.pp-bar i{transition:none}}
+a.sec{color:inherit;text-decoration:none}
+.sec .badge{margin-left:4px;vertical-align:1px}

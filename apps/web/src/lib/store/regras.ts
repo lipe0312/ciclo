@@ -1,7 +1,7 @@
 // Ponte entre o estado e o core: o que o app pergunta ao core (plano do dia, sugestão de carga) e
 // gravações compartilhadas entre telas (perfil, academia, dor, comida).
 import { C, S, today } from "./index.ts";
-import { send } from "../api/index.ts";
+import { SERVER, send } from "../api/index.ts";
 import { DOW, dowIdx, uid } from "../util.ts";
 
 export const mName = (m: string) => (C.MUSCLES as Record<string, C.Muscle>)[m]?.nm ?? m;
@@ -29,7 +29,7 @@ export function dayInput(ui = S.ui, extraPains: any[] = []): C.DayInput {
 export function computePlan(force = false): C.DayPlan {
   if (S.session && !S.session.finishedAt) return S.session.plan;
   if (S.ui.locked && S.plan && !force) return S.plan;
-  S.plan = C.planDay(dayInput());
+  S.plan = C.planDay(dayInput()); S.ui.planFp = C.planFingerprint(S.profile);
   return S.plan;
 }
 export const activePlan = (): C.DayPlan => (S.session && !S.session.finishedAt ? S.session.plan : computePlan());
@@ -43,7 +43,24 @@ export function suggestFor(it: C.PlanItem): { kg: number | null; reps: number; n
 }
 
 let profileTimer: ReturnType<typeof setTimeout> | undefined;
-export function profileChanged() { S.ui.locked = false; clearTimeout(profileTimer); profileTimer = setTimeout(() => send("PUT", "/api/profile", { data: S.profile }), 600); }
+/** Mudou o perfil: o treino já gerado NÃO se refaz sozinho; congela e fica "desatualizado" até o usuário regenerar. */
+export function profileChanged() {
+  const differs = !!S.ui.planFp && S.ui.planFp !== C.planFingerprint(S.profile);
+  if (S.plan && !(S.session && !S.session.finishedAt)) {
+    if (differs && !S.ui.locked) { S.ui.locked = true; S.ui.planSource = "perfil"; }
+    else if (!differs && S.ui.locked && S.ui.planSource === "perfil") { S.ui.locked = false; S.ui.planSource = undefined; } // voltou ao que era
+  }
+  clearTimeout(profileTimer); profileTimer = setTimeout(() => send("PUT", "/api/profile", { data: S.profile }), 600);
+}
+/** Treino guardado foi gerado com um perfil diferente do de hoje (e não há treino em andamento). */
+export const planIsStale = () => !!S.plan && S.ui.locked && !(S.session && !S.session.finishedAt) && C.isFingerprintStale(S.ui.planFp, S.profile);
+/** "Regenerar": refaz o treino com o perfil de hoje e (no servidor) troca o treino guardado. */
+export function regeneratePlan() {
+  S.ui.locked = false; S.ui.planSource = undefined;
+  const plan = computePlan(true);
+  if (SERVER) send("PUT", `/api/day-plan/${today}`, { plan, gymId: S.ui.gymId, source: "core" }).catch(() => {});
+  return plan;
+}
 let gymTimer: ReturnType<typeof setTimeout> | undefined;
 export function gymChanged(g: { id: string; name: string; equipment: string[]; busyHours: string[] }) {
   S.ui.locked = false; clearTimeout(gymTimer);

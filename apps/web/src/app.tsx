@@ -1,14 +1,15 @@
 // Casca do app: navegação, faixa de avisos, mini-barra, folha e toast. Cada tela vive em screens/<tela>/.
 import type { FunctionComponent } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { S, useStore } from "./lib/store/index.ts";
+import { S, commit, useStore } from "./lib/store/index.ts";
+import { planIsStale, regeneratePlan } from "./lib/store/regras.ts";
 import { SERVER, onQueue, queue } from "./lib/api/index.ts";
 import { useRoute } from "./lib/roteador/index.ts";
 import type { Route } from "./lib/roteador/index.ts";
 import { Folha, closeSheet, setSheetRerender } from "./lib/folha/index.tsx";
 import { Faixa, hideFaixa, setFaixaRerender, showFaixa } from "./lib/faixa/index.tsx";
 import { MiniBarra } from "./lib/mini-barra/index.tsx";
-import { Icon, Toast } from "./lib/ui/index.tsx";
+import { Icon, Toast, toast } from "./lib/ui/index.tsx";
 import { lsGet, lsSet } from "./lib/util.ts";
 import { MAIS, PRINCIPAL } from "./nav.ts";
 import Hoje from "./screens/hoje/index.tsx";
@@ -49,11 +50,22 @@ export function App() {
     if (SERVER && (queue.length || !navigator.onLine)) showFaixa({ id: "offline", tone: "warn", text: `Sem conexão: usando o que está no aparelho${queue.length ? ` · ${queue.length} alteração(ões) na fila` : ""}.`, closable: false });
     else hideFaixa("offline");
   }, [tick]);
-  const screen = SCREENS[route.screen] ? route.screen : "hoje";
+  // Conta nova: tudo cai nos Primeiros passos até terminar (Conta continua acessível).
+  const pendente = SERVER && S.onboarding === "pendente";
+  const wanted = SCREENS[route.screen] ? route.screen : "hoje";
+  const screen = pendente && wanted !== "conta" ? "primeiros-passos" : wanted;
+  // Perfil mudou depois de o treino ser gerado: avisa e oferece regenerar (nunca regenera sozinho).
+  const stale = planIsStale() && !pendente;
+  useEffect(() => {
+    if (stale) showFaixa({ id: "treino-desatualizado", tone: "warn", text: "Você mudou o perfil: o treino de hoje está desatualizado.", closable: false,
+      action: { label: "Regenerar", onClick: () => { regeneratePlan(); commit(); toast("Treino regenerado com o perfil de hoje"); } } });
+    else hideFaixa("treino-desatualizado");
+  }, [stale]);
   const Tela = SCREENS[screen];
+  const route2: Route = screen === route.screen ? route : { screen, parts: [], query: {} };
   const cur = (id: string) => (id === screen || (id === "mais" && MAIS.some((d) => d.id === screen)) ? "page" : undefined);
   void S;
-  return <div class="app">
+  return <div class={`app${screen === "primeiros-passos" ? " focus" : ""}`}>
     <nav class="side" aria-label="Principal">
       <div class="brand"><span class="logo"><Icon id="cycle" /></span>Ciclo</div>
       {PRINCIPAL.map((d) => <a key={d.id} href={`#${d.id}`} aria-current={cur(d.id)}><Icon id={d.icon} />{d.nm}</a>)}
@@ -70,7 +82,7 @@ export function App() {
             <a class="iconbtn only-mobile" href="#mais" aria-label="Mais opções" aria-current={cur("mais")}><Icon id="more" /></a></div>
         </div>
         <Faixa />
-        <section class="view on" aria-label={screen}><Tela route={route} /></section>
+        <section class="view on" aria-label={screen}><Tela route={route2} /></section>
       </div>
     </main>
     <MiniBarra screen={screen} />
