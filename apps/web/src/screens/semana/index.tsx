@@ -44,11 +44,11 @@ function DiaCard({ d }: { d: Dia }) {
         {d.source !== "auto" && <p class="tiny" style="margin-top:4px"><span class="badge">{d.source === "claude" ? "montado pelo Claude" : "escolha sua"}</span></p>}
         {d.warn.map((w, i) => <p key={i} class="tiny" style="margin-top:4px;color:var(--warn)">{w}</p>)}
       </> : d.status === "livre" ? <p class="small sub" style="margin-top:2px">Não planejado. Treinar hoje vira <b>extra</b>: só o que falta, sem passar do orçamento.</p> : null}
-      <div class="sem-acts">
+      <div class="sem-acts uma">
         {p && <a class="btn" href={href("semana", ["dia", d.date])}>Ver</a>}
-        {pode && d.kind !== "folga" && <button type="button" class="btn" onClick={() => abrirTrocar(d)}><Icon id="swap" />Trocar</button>}
+        {pode && d.kind !== "folga" && <button type="button" class="btn" onClick={() => abrirTrocar(d)}>Trocar</button>}
         {pode && <button type="button" class="btn" onClick={() => abrirMover(d)}>{d.kind !== "folga" ? "Mover" : "Planejar"}</button>}
-        {d.status === "livre" && getSemana()?.extraToday?.items.length ? <a class="btn pri" href={href("semana", ["dia", d.date])}>Ver treino extra</a> : null}
+        {d.status === "livre" && getSemana()?.extraToday?.items.length ? <a class="btn pri" href={href("semana", ["dia", d.date])}>Ver extra</a> : null}
       </div>
     </div></div>;
 }
@@ -96,7 +96,7 @@ function Lista({ s }: { s: Semana }) {
           return <div key={m} class="sem-vol"><span class="small">{mName(m)}{S.profile.priorities.includes(m) ? " ●" : ""}</span>
             <span class="small num"><b>{v}</b>/{t} · <span class={f >= 2 ? "" : "sem-warn"}>{f}×</span></span></div>; })}</Card>
       <Card><h2>Gerações</h2><p class="small sub" style="margin:4px 0 12px">Versão {s.version}. Toda mudança guarda a anterior.</p>
-        <div class="sem-acts"><button type="button" class="btn" onClick={abrirRegenerar}><Icon id="cycle" />Regenerar semana</button>
+        <div class="sem-acts uma"><button type="button" class="btn" onClick={abrirRegenerar}><Icon id="cycle" />Regenerar</button>
           {s.versions.length > 1 && <button type="button" class="btn" onClick={abrirVersoes}><Icon id="back" />Desfazer</button>}</div></Card>
     </div></div></>;
 }
@@ -117,11 +117,11 @@ function Detalhe({ date }: { date: string }) {
         : <Card><p class="small">{p?.why[0] ?? "Dia de descanso. Recuperar também conta."}</p></Card>}
     </div><div class="stack">
       {p && <Card><h2>Por quê</h2><ul class="sem-motivos">{p.why.map((w, i) => <li key={i}>{w}</li>)}{d.warn.map((w, i) => <li key={`w${i}`} class="menos">{w}</li>)}</ul></Card>}
-      {pode && <Card><h2>Mudar este dia</h2><div class="sem-acts">
-        {d.kind !== "folga" && <button type="button" class="btn pri" onClick={() => abrirTrocar(d)}><Icon id="swap" />Trocar a geração</button>}
-        <button type="button" class="btn" onClick={() => abrirMover(d)}>{d.kind !== "folga" ? "Mover ou trocar" : "Planejar treino"}</button>
+      {pode && <Card><h2>Mudar este dia</h2><div class="sem-acts uma">
+        {d.kind !== "folga" && <button type="button" class="btn pri" onClick={() => abrirTrocar(d)}><Icon id="swap" />Trocar geração</button>}
+        <button type="button" class="btn" onClick={() => abrirMover(d)}>{d.kind !== "folga" ? "Mover" : "Planejar treino"}</button>
         {d.status === "livre" && p?.items.length ? <button type="button" class="btn pri" onClick={() => acaoDia(date, { action: "extra" }, "Treino extra na semana")}>Treinar hoje (extra)</button> : null}
-      </div>{d.date === today && <p class="tiny sub" style="margin-top:8px">O treino de hoje também aparece no <a href="#hoje">Hoje</a>.</p>}</Card>}
+      </div>{d.date === today && <a class="btn ghost full" style="margin-top:8px" href="#hoje">Ver no Hoje<Icon id="arrow" /></a>}</Card>}
     </div></div></>;
 }
 

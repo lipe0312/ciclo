@@ -85,13 +85,16 @@ function Regenerar() {
 // ---------- versões (desfazer) ----------
 const ORIGEM: Record<string, string> = { auto: "gerada na segunda", regenerar: "regenerada", ajuste: "troca de dia", falta: "falta respondida", extra: "treino extra", desfazer: "desfeita" };
 const hora = (t: number) => new Intl.DateTimeFormat("pt-BR", { weekday: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(t));
-export function abrirVersoes() { openSheet(() => <Versoes />); }
+const ver = { todas: false };
+export function abrirVersoes() { ver.todas = false; openSheet(() => <Versoes />); }
 function Versoes() {
   const s = getSemana(); if (!s) return null;
+  const lista = ver.todas ? s.versions : s.versions.slice(0, 5);
   return <><SheetHead kicker="Versões da semana" title="Desfazer" />
     <p class="small sub" style="margin:6px 0 12px">Cada mudança guarda a geração anterior. Voltar cria uma versão nova; nada se perde.</p>
-    {s.versions.map((v) => <div key={v.version} class="sem-opt" style="cursor:default">
+    {lista.map((v) => <div key={v.version} class="sem-opt" style="cursor:default">
       <b class="num">v{v.version}</b><span class="small sub">{ORIGEM[v.source] ?? v.source} · {hora(v.createdAt)}</span>
       {v.version === s.version ? <span class="badge acc">atual</span>
-        : <button type="button" class="btn" onClick={() => desfazer(v.version).then((ok) => ok && closeSheet())}>Voltar</button>}</div>)}</>;
+        : <button type="button" class="btn" onClick={() => desfazer(v.version).then((ok) => ok && closeSheet())}>Voltar</button>}</div>)}
+    {!ver.todas && s.versions.length > 5 && <button type="button" class="btn ghost full" style="margin-top:8px" onClick={() => { ver.todas = true; commit(); }}>Ver mais ({s.versions.length - 5})</button>}</>;
 }

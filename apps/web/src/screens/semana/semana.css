@@ -50,3 +50,6 @@
 .sem-diff ul{margin:6px 0 0;padding-left:16px;font-size:13px;display:grid;gap:2px}
 .sem-diff li.mais{color:var(--ok)} .sem-diff li.menos{color:var(--bad)}
 @media (max-width:420px){.sem-acts .btn{flex:1 1 calc(50% - 4px)}}
+/* linhas de ação curtas: sempre numa linha só (rótulo curto, sem quebra) */
+.sem-acts.uma{flex-wrap:nowrap}
+.sem-acts.uma .btn{flex:1 1 auto;min-width:0;white-space:nowrap;padding:0 12px}
