@@ -15,6 +15,7 @@
   "scripts": {
     "build": "npm run build -w @ciclo/web",
     "setup": "node scripts/setup-local.mjs",
+    "catalogo:imagens": "node scripts/catalogo-imagens.mjs",
     "dev": "node scripts/dev.mjs",
     "test": "node --no-warnings --test packages/core/test/*.test.ts apps/worker/test/*.test.ts",
     "typecheck": "tsc -p packages/core && tsc -p apps/web && npm run cf:types -w @ciclo/worker && tsc -p apps/worker",

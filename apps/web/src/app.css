@@ -86,7 +86,7 @@ svg.i{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke
 .btn.pri{background:var(--acc-bg);color:var(--acc-txt);border-color:var(--acc-bg)}
 .btn.danger{color:var(--bad);border-color:var(--bad)}
 .btn.ghost{border-color:transparent;background:transparent}
-.btn.sm{min-height:36px;padding:0 12px;font-size:13px}
+.btn.sm{min-height:44px;padding:0 12px;font-size:13px}
 .btn.lg{min-height:56px;font-size:17px;padding:0 22px}
 .btn.full{width:100%}
 .chip{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--borda-ctrl);background:var(--sup);font-weight:600;font-size:14px;cursor:pointer}
@@ -290,7 +290,7 @@ a.iconbtn{color:inherit}
 .carr-item{flex:0 0 100%;scroll-snap-align:center;display:grid;place-items:center}
 .carr-item img{width:100%;max-height:340px;object-fit:contain;display:block}
 .carr-dots{display:flex;justify-content:center;gap:4px;margin-top:6px}
-.carr-dots button{width:44px;height:28px;border:0;background:none;cursor:pointer;display:grid;place-items:center}
+.carr-dots button{width:44px;height:44px;border:0;background:none;cursor:pointer;display:grid;place-items:center}
 .carr-dots i{width:8px;height:8px;border-radius:50%;background:var(--borda-ctrl)}
 .carr-dots button[aria-current="true"] i{background:var(--acc);width:20px;border-radius:4px}
 .facts{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px;font-size:14px;align-items:center}
