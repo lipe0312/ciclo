@@ -85,11 +85,12 @@ export async function loadServer() {
   if (open && (!S.session || S.session.id !== open.id)) S.session = { id: open.id, date: today, startedAt: open.started_at, plan: S.plan, logs: {}, skipped: {}, rest: null };
 }
 
-// dados fictícios da demonstração (seg Superior A, ter Inferior A, qua faltou)
+// dados fictícios da demonstração (seg Superior A, ter Inferior A; qua era treino e ficou sem resposta → aviso de falta)
 export function seedDemo() {
+  S.profile.daysUsual = ["seg", "ter", "qua", "qui", "sex"]; S.profile.daysTarget = 5;
   S.week.done = { peito: 6, costas: 7, ombro: 6, post: 2, biceps: 5, triceps: 4, quad: 6, isquio: 4, gluteo: 3, pant: 3, core: 2 };
   S.week.freq = Object.fromEntries(C.MUSCLE_IDS.map((m) => [m, 1]));
-  S.week.attendance = { [dates[0]]: "fui", [dates[1]]: "fui", [dates[2]]: "nao_fui" };
+  S.week.attendance = { [dates[0]]: "fui", [dates[1]]: "fui" };
   S.week.sessions = [{ date: dates[0], name: "Sup. A", groups: ["sup"] }, { date: dates[1], name: "Inf. A", groups: ["inf"] }];
   S.week.checkins = {
     [dates[0]]: { sleepH: 7, energy: 3, soreness: 0, stress: 2, food: 0, weightKg: 72.4 },

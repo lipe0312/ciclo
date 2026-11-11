@@ -1,4 +1,6 @@
 // Hoje: objetivo, check-in, semana flexível, compensatório, treino do dia, volume, Claude e mini-cartões.
+// A semana planejada (screens/semana) dá o treino de hoje e os dias que restam; faltas perguntam aqui, inline.
+import { useEffect } from "preact/hooks";
 import { C, S, commit, dates, today } from "../../lib/store/index.ts";
 import { FOCUS, computePlan, defaultGymFor, foodTotals, gymById, mName } from "../../lib/store/regras.ts";
 import { SERVER, send } from "../../lib/api/index.ts";
@@ -6,6 +8,8 @@ import { Card, Chip, Icon, Seg, toast } from "../../lib/ui/index.tsx";
 import { BarraSimples, BarraVolume } from "../../lib/grafico/index.tsx";
 import { DOW_NM, dowIdx, fmt, longDate } from "../../lib/util.ts";
 import { CaixaClaude } from "../claude/caixa.tsx";
+import { AvisoFalta } from "../semana/aviso.tsx";
+import { diaDe, garantirSemana, getSemana } from "../semana/estado.ts";
 
 const CK: Record<string, { nm: string; opts: [number, string][] }> = {
   sleepH: { nm: "Sono", opts: [[5, "≤5h"], [6, "6h"], [7, "7h"], [8, "8h"], [9, "9h+"]] },
@@ -52,12 +56,12 @@ function Checkin() {
 }
 
 function markDay(d: string) {
-  if (d >= today) return toast(d === today ? "Hoje: começar o treino já marca “fui”" : "Futuro: use “Dias que ainda dá”");
+  if (d >= today) return toast(d === today ? "Hoje: começar o treino já marca “fui”" : "Futuro: planeje na Semana");
   const cyc: Record<string, string> = { fui: "nao_fui", nao_fui: "folga", folga: "fui" };
   S.week.attendance[d] = cyc[S.week.attendance[d] ?? "folga"] ?? "fui"; commit();
   send("PUT", `/api/attendance/${d}`, { status: S.week.attendance[d] }).catch(() => {});
 }
-const setUi = (k: "daysLeft" | "minutes" | "gymId" | "format", v: any) => { (S.ui as any)[k] = v; S.ui.locked = false; commit(); };
+const setUi = (k: "minutes" | "gymId" | "format", v: any) => { (S.ui as any)[k] = v; S.ui.locked = false; commit(); };
 
 function Semana({ plan }: { plan: C.DayPlan }) {
   const proj: string[] = [];
@@ -66,7 +70,7 @@ function Semana({ plan }: { plan: C.DayPlan }) {
   let fut = 0;
   const fid = FOCUS.find(([, , ms]) => ms.join() === S.ui.focus.join())?.[0] ?? "auto";
   return <Card>
-    <div class="row between wrapx"><h2>Semana flexível</h2><span class="small sub num">fecha em {plan.weekClosePct}% · {Object.values(S.week.attendance).filter((x) => x === "fui").length} feitos</span></div>
+    <div class="row between wrapx"><h2>Semana flexível</h2><span class="small sub num">fecha em {getSemana()?.closePct ?? plan.weekClosePct}% · {Object.values(S.week.attendance).filter((x) => x === "fui").length} feitos</span></div>
     <p class="small sub" style="margin:4px 0 12px">Dias passados: toque para marcar fui / faltou / folga. Iniciar o treino já conta como “fui”.</p>
     <div class="week">{dates.map((d, i) => {
       const att = S.week.attendance[d], ses = S.week.sessions.find((s: any) => s.date === d);
@@ -79,12 +83,16 @@ function Semana({ plan }: { plan: C.DayPlan }) {
         cls = "hoje" + (att === "fui" || S.session ? " fui" : "");
         lbl = plan.mode === "compensatorio" ? "Corpo todo" : plan.groups[0] === "sup" ? "Sup." : "Inf.";
         st = att === "fui" || S.session ? <Icon id="check" /> : null;
+      } else if (getSemana()) {
+        const wd = diaDe(d), g = wd?.plan?.groups ?? [];
+        cls = wd && wd.kind !== "folga" ? "prev" : "livre";
+        lbl = cls === "prev" ? (wd!.kind === "extra" ? "Extra" : g.length === 2 ? "Corpo" : g[0] === "inf" ? "Inf." : "Sup.") : "folga";
       } else { const p = proj[fut++]; cls = p ? "prev" : "livre"; lbl = p ? (p === "sup" ? "Sup." : "Inf.") : "folga"; }
       const gy = gymById(d === today ? S.ui.gymId : defaultGymFor(d))?.name.replace("Academia ", "A") ?? "";
       return <button type="button" key={d} class={`day ${cls}`} onClick={() => markDay(d)} aria-label={`${DOW_NM[i]}: ${lbl}`}><b>{DOW_NM[i]}</b><span class="st">{st}</span><span class="lbl">{lbl}</span><span class="gy">{d >= today && lbl !== "folga" ? gy : ""}</span></button>;
     })}</div><hr />
-    <div class="ctl"><div><h3>Dias que ainda dá (com hoje)</h3><p class="small sub">o resto da semana se reorganiza</p></div>
-      <Seg opts={[1, 2, 3, 4].map((n) => [n, String(n)] as [number, string])} value={S.ui.daysLeft} onPick={(v) => setUi("daysLeft", v)} label="Dias que ainda dá" /></div>
+    <div class="ctl"><div><h3>Semana planejada</h3><p class="small sub">todos os treinos já montados · faltou, o app pergunta</p></div>
+      <a class="btn" href="#semana"><Icon id="cal" />Ver a semana</a></div>
     <div class="ctl"><div><h3>Tempo hoje</h3><p class="small sub">≈ 1 série a cada 3 min</p></div>
       <Seg opts={[30, 45, 60, 75, 90].map((n) => [n, String(n)] as [number, string])} value={S.ui.minutes} onPick={(v) => setUi("minutes", v)} label="Minutos" /></div>
     <div class="ctl"><div><h3>Academia hoje</h3><p class="small sub">só entram aparelhos de lá</p></div>
@@ -107,13 +115,20 @@ function TreinoCard({ plan }: { plan: C.DayPlan }) {
     <ul class="small" style="margin:12px 0 0;padding-left:18px;color:#D4D4D8;display:grid;gap:4px">{plan.why.map((w, i) => <li key={i}>{w}</li>)}</ul>
     <div class="chips" style="margin-top:12px">{Object.entries(plan.perMuscle).map(([m, n]) => <span key={m} class="badge" style="background:#26262B;color:#F4F4F5">{mName(m)} <b class="num">{n}</b></span>)}
       {plan.prehab.length > 0 && <span class="badge" style="background:#26262B;color:#C6F432">+ fortalecimento</span>}</div>
-    {S.ui.locked && <p class="tiny" style="margin-top:10px;color:#A1A1AA">{S.ui.planSource === "claude" ? "Montado pelo Claude" : S.ui.planSource === "perfil" ? "Feito antes de você mudar o perfil" : "Editado por você · o Claude revisa"} · mudar os controles <button type="button" class="btn sm ghost" style="color:#C6F432" onClick={() => { S.ui.planSource = undefined; S.ui.locked = false; computePlan(true); commit(); }}>refaz o treino</button></p>}
+    {S.ui.locked && <p class="tiny" style="margin-top:10px;color:#A1A1AA">{S.ui.planSource === "claude" ? "Montado pelo Claude" : S.ui.planSource === "semana" ? "Da sua semana planejada" : S.ui.planSource === "perfil" ? "Feito antes de você mudar o perfil" : "Editado por você · o Claude revisa"} · mudar os controles <button type="button" class="btn sm ghost" style="color:#C6F432" onClick={() => { S.ui.planSource = undefined; S.ui.locked = false; computePlan(true); commit(); }}>refaz o treino</button></p>}
   </div>;
 }
 
 function Compensa({ plan }: { plan: C.DayPlan }) {
   const setMode = (v: C.Mode) => { S.ui.mode = v; S.ui.locked = false; commit(); toast(v === "normal" ? "Voltou ao normal" : "Gerado a seu pedido"); };
   if (plan.mode !== "normal") return <Card><div class="row between wrapx"><div><p class="kicker">Modo {plan.mode === "compensatorio" ? "compensatório" : "expresso"}</p><p class="small sub">Gerado a seu pedido.</p></div><button type="button" class="btn sm" onClick={() => setMode("normal")}>Voltar ao normal</button></div></Card>;
+  const sw = getSemana();
+  if (sw) { // com a semana planejada, quem decide é a regra da semana (só sobra 1 treino e músculo sem 2×)
+    const o = sw.offer; if (!o || o.date !== today) return null;
+    return <Card cls="hl"><div class="row start"><Icon id="info" style="color:var(--acc);margin-top:2px" /><div style="flex:1">
+      <h3>Só sobrou hoje?</h3><p class="small sub" style="margin-top:4px">{o.muscles.map(mName).slice(0, 4).join(", ")} ficam sem o 2º estímulo. Sem compensatório, {o.outWithout} séries ficam de fora; com ele, {o.outWith}.</p>
+      <a class="btn pri" style="margin-top:10px" href="#semana">Ver as opções</a></div></div></Card>;
+  }
   if (!plan.suggestCompensatory) return null;
   const other = plan.groups[0] === "sup" ? "inf" : "sup";
   const lacking = C.MUSCLE_IDS.filter((m) => C.MUSCLES[m].group === other && (S.week.freq[m] ?? 0) < 2).map(mName);
@@ -155,10 +170,11 @@ function Mini() {
 }
 
 export default function Hoje() {
+  useEffect(() => { garantirSemana(); }, []);
   const plan = computePlan();
   return <>
     <div class="row between wrapx" style="margin-bottom:14px"><div><p class="kicker">{longDate(today)}{SERVER ? "" : " · demonstração"}</p><h1>Hoje</h1></div></div>
-    <div class="grid dash"><div class="stack"><Objetivo /><Checkin /><Semana plan={plan} /><Compensa plan={plan} /><TreinoCard plan={plan} /><Volume plan={plan} /></div>
+    <div class="grid dash"><div class="stack"><AvisoFalta /><Objetivo /><Checkin /><Semana plan={plan} /><Compensa plan={plan} /><TreinoCard plan={plan} /><Volume plan={plan} /></div>
       <div class="stack"><CaixaClaude /><Mini /></div></div>
   </>;
 }

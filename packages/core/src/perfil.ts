@@ -5,7 +5,7 @@ import { EXERCISE_BY_ID, MUSCLE_IDS, SUB_MUSCLES, SUB_MUSCLE_IDS } from "./catal
 import type { MuscleId, SubMuscleId } from "./catalog.ts";
 import type { Remembered } from "./loads.ts";
 
-export const DOWS = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"] as const;
+import { DOWS } from "./semana.ts";
 export const GOAL_IDS = ["bracos_ombros", "massa_geral", "definir", "recompor", "forca", "constancia"] as const;
 export const BODY_TYPES = ["muito_magro", "magro", "falso_magro", "normal", "atletico", "forte_gordura", "acima", "bem_acima"] as const;
 export const FAT_WHERE = ["barriga", "peito", "costas/flancos", "quadril e coxas", "distribuído", "quase não acumulo"] as const;

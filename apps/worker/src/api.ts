@@ -6,6 +6,7 @@ import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, id, int, json, num, oneOf, readJson, str } from "./http.ts";
 import { EMPTY_MSG, buildDayInput, closeStaleSessions, deleteAccount, exportAccount, getProfile, hitRateLimit, listGyms, mediaPrefix, planProfileFingerprint, saveProfile, upsertPain, weekState } from "./db.ts";
 import { newMcpToken } from "./auth.ts";
+import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
 
 type Handler = (req: Request, env: Env, p: Record<string, string>, u: AuthUser) => Promise<Response>;
 const routes: { method: string; path: string; re: RegExp; h: Handler }[] = [];
@@ -177,6 +178,12 @@ on("POST", "/api/plan-edits", async (req, env, _p, u) => {
   ]);
   return json({ ok: true, plan: r.plan, issues: r.issues });
 });
+
+// ---- semana completa planejada (#24) ----
+on("GET", "/api/week", async (req, env, _p, u) => json(await getWeek(env, u.id, date(new URL(req.url).searchParams.get("date")))));
+on("PUT", "/api/week", async (req, env, _p, u) => json(await restore(env, u.id, await readJson(req, 2 * 1024))));
+on("POST", "/api/week/regenerate", async (req, env, _p, u) => json(await regenerate(env, u.id, await readJson(req, 2 * 1024))));
+on("POST", "/api/week/day/:date", async (req, env, p, u) => json(await dayAction(env, u.id, p.date, await readJson(req, 4 * 1024))));
 
 // Iniciou = foi. A presença é gravada no "Começar".
 on("POST", "/api/sessions", async (req, env, _p, u) => {
