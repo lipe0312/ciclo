@@ -25,6 +25,11 @@ export interface DayInput {
   pains?: Pain[];
   pinned?: Partial<Record<MuscleId, string>>;   // exercício preferido (troca "sempre")
   avoid?: string[];                             // exercícios que não quer
+  /** Semana planejada (#24): divisão fixa do dia, dias restantes por grupo, músculos fora (48 h) e teto por músculo. */
+  split?: "sup" | "inf" | "full" | null;
+  groupDaysLeft?: Partial<Record<Group, number>>;
+  exclude?: MuscleId[];
+  maxPerMuscle?: Partial<Record<MuscleId, number>>;
 }
 
 export interface PlanItem {
@@ -92,9 +97,10 @@ export function planDay(inp: DayInput): DayPlan {
   let groups: Group[];
   if (inp.mode === "compensatorio" || inp.mode === "expresso") groups = ["sup", "inf"];
   else if (focus) groups = [...new Set(focus.map((m) => MUSCLES[m].group))];
+  else if (inp.split) groups = inp.split === "full" ? ["sup", "inf"] : [inp.split];
   else groups = [inp.lastGroup === "sup" ? "inf" : "sup"];
 
-  let muscles = MUSCLE_IDS.filter((m) => groups.includes(MUSCLES[m].group));
+  let muscles = MUSCLE_IDS.filter((m) => groups.includes(MUSCLES[m].group) && !inp.exclude?.includes(m));
   if (inp.mode === "expresso") muscles = muscles.filter((m) => inp.priorities.includes(m) || focus?.includes(m));
   const isPrio = (m: MuscleId) => inp.priorities.includes(m) || !!focus?.includes(m);
 
@@ -109,10 +115,13 @@ export function planDay(inp: DayInput): DayPlan {
     const target = n(inp.targets[m]);
     const deficit = Math.max(0, target - n(inp.done[m]));
     const lowFreq = n(inp.freq[m]) < 2;
-    let sets = Math.ceil(deficit / sameGroupDays);
+    const gdl = inp.mode === "normal" ? inp.groupDaysLeft?.[MUSCLES[m].group] : undefined;
+    let sets = Math.ceil(deficit / Math.max(1, gdl ?? sameGroupDays));
     if (focus?.includes(m)) sets = Math.max(sets, 4);
     if (lowFreq && target > 0) sets = Math.max(sets, 2);
     sets = Math.min(sets, isPrio(m) ? caps.p : caps.o);
+    const max = inp.maxPerMuscle?.[m];
+    if (max != null) sets = Math.min(sets, Math.max(0, max));
     if (sets > 0) alloc.push({ m, sets, deficit, lvl: focus?.includes(m) ? 2 : inp.priorities.includes(m) ? 1 : 0 });
   }
 
@@ -192,6 +201,7 @@ export function planDay(inp: DayInput): DayPlan {
   const name = inp.mode === "compensatorio" ? "Corpo inteiro compensatório"
     : inp.mode === "expresso" ? "Expresso · só prioridades"
     : focus ? `Foco: ${focus.map((m) => MUSCLES[m].nm.toLowerCase()).join(" + ")}`
+    : groups.length === 2 ? "Corpo inteiro"
     : groups[0] === "sup" ? (inp.priorities.some((m) => m === "biceps" || m === "triceps") ? "Superior · ênfase em braços" : "Superior")
     : "Inferior";
 
