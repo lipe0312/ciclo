@@ -16,7 +16,7 @@ test("ciclo_salvar_perfil: salva parcial, valida, mescla e marca 'preenchido pel
   const r = await mcp(env, t, "ciclo_salvar_perfil", { perfil: { subPriorities: ["ombro_lat", "biceps", "triceps_longa"], minutes: 45, weekStart: "dom", goal: { id: "forca", statement: "Ficar mais forte" } }, concluirPrimeirosPassos: true });
   assert.ok(!r.data.result.isError, r.text);
   const out = JSON.parse(r.data.result.content[0].text);
-  assert.equal(out.salvo, true); assert.equal(out.contexto.versao, 1); assert.deepEqual(out.contexto.prioridades, ["Ombro lateral", "Bíceps", "Tríceps · cabeça longa"]);
+  assert.equal(out.salvo, true); assert.equal(out.contexto.versao, 1); assert.match(out.contexto.texto, /Ombro lateral › Bíceps › Tríceps · cabeça longa/); assert.equal(out.contexto.prioridades, undefined);
   const p = profileOf(env, "ana");
   assert.equal(p.minutes, 45); assert.equal(p.weekStart, "dom"); assert.deepEqual(p.priorities, ["ombro", "biceps", "triceps"]);
   assert.deepEqual(p.meta, { filledBy: "claude", confirmed: false });
@@ -98,4 +98,37 @@ test("treino desatualizado: mudar o perfil muda a impressão do treino salvo; o 
   assert.equal(planFingerprint(profileOf(env, "ana")), await fp());
   // outra conta não enxerga o treino nem a impressão
   assert.equal((await call(env, "GET", `/api/state?date=${D}`, { user: "bia" })).data.dayPlan, null);
+});
+
+test("treino desatualizado: a impressão vem só do perfil da própria conta (sem filtro por user_id, pegaria a da outra)", async () => {
+  const env = makeEnv();
+  const { planFingerprint } = await import("@ciclo/core");
+  const a = (m: string, p: string, body?: unknown) => call(env, m, p, { user: "ana", body });
+  const b = (m: string, p: string, body?: unknown) => call(env, m, p, { user: "bia", body });
+  await a("PUT", "/api/profile", { data: { priorities: ["ombro"], minutes: 60 } });
+  await a("PUT", "/api/gyms/acad1", { name: "Academia", equipment: ALL });
+  await sleep(5);
+  await b("PUT", "/api/profile", { data: { priorities: ["peito"], minutes: 90, avoid: ["Pullups"] } });
+  await sleep(5);
+  const plan = (await a("POST", "/api/plan-day", { date: D, daysLeft: 3 })).data.plan;
+  await a("PUT", `/api/day-plan/${D}`, { plan, gymId: "acad1", source: "claude" });
+  const fp = (await a("GET", `/api/state?date=${D}`)).data.dayPlan.profileFp as string;
+  assert.equal(fp, planFingerprint(profileOf(env, "ana")));
+  assert.ok(!fp.includes("Pullups") && !fp.includes("peito"), "impressão da conta B vazou");
+  assert.equal((await b("GET", `/api/state?date=${D}`)).data.dayPlan, null);
+});
+
+test("perfil antigo no banco: o app e o Claude continuam conseguindo salvar", async () => {
+  const env = makeEnv();
+  const t = await token(env, "ana");
+  await call(env, "GET", "/api/account", { user: "ana" });
+  const uid = env.DB.raw.prepare("SELECT id FROM user WHERE email = 'ana@dev.localhost'").get().id;
+  const old = { level: 2, priorities: ["peito", "costas"], minutes: 70, chaveAntiga: 1, goal: { statement: "Antigo", legado: 1 }, tiers: { Hoje: "haiku", Velha: "x" } };
+  env.DB.raw.prepare("INSERT INTO profile (user_id, data, updated_at) VALUES (?1, ?2, 1)").run(uid, JSON.stringify(old));
+  const st = (await call(env, "GET", `/api/state?date=${D}`, { user: "ana" })).data.profile;
+  assert.deepEqual(st.subPriorities, ["peito_medio", "dorsal"]); assert.equal(st.chaveAntiga, undefined);
+  assert.equal((await call(env, "PUT", "/api/profile", { user: "ana", body: { data: st } })).status, 200);
+  const r = await mcp(env, t, "ciclo_salvar_perfil", { perfil: { minutes: 45 } });
+  assert.ok(!r.data.result.isError, r.text);
+  assert.equal(profileOf(env, "ana").minutes, 45); assert.equal(profileOf(env, "ana").chaveAntiga, undefined);
 });

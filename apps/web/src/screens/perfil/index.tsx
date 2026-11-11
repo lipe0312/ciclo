@@ -1,7 +1,7 @@
 // Perfil de treino: blocos que dizem POR QUE importam, selo "completo / dá para melhorar" e o próximo passo recomendado.
 // Sem numeração. Academias, Corpo (dor) e Comida têm tela própria; aqui só atalhos. Cada bloco abre em #perfil/<bloco>.
 import { C, S, commit } from "../../lib/store/index.ts";
-import { EXB, mName, profileChanged } from "../../lib/store/regras.ts";
+import { EXB, ensureBaseline, mName, profileChanged } from "../../lib/store/regras.ts";
 import { SERVER } from "../../lib/api/index.ts";
 import type { Route } from "../../lib/roteador/index.ts";
 import { Card, Chip, Icon, Seg, Stepper, toast } from "../../lib/ui/index.tsx";
@@ -68,9 +68,9 @@ function Experiencia() {
 function Rotina() {
   const p = pr();
   return <><span class="f">Dias que normalmente dá para ir</span><div class="chips">{DOW.map((d, i) => <button type="button" key={d} class="chip tall" aria-pressed={p.daysUsual.includes(d)} onClick={() => ptoggle("daysUsual", d)}>{DOW_NM[i]}</button>)}</div>
-    <div class="row wrapx" style="gap:16px;margin-top:16px"><div><span class="f">Meta por semana</span><PSeg k="daysTarget" label="Meta por semana" opts={[[2, "2"], [3, "3"], [4, "4"], [5, "5"]]} /></div><div><span class="f">Duração típica</span><PSeg k="minutes" label="Duração" opts={[[45, "45"], [60, "60"], [75, "75"], [90, "90"]]} /></div></div>
+    <div class="row wrapx" style="gap:16px;margin-top:16px"><div><span class="f">Meta por semana</span><PSeg k="daysTarget" label="Meta por semana" opts={[[2, "2"], [3, "3"], [4, "4"], [5, "5"]]} /></div><div><span class="f">Duração típica</span><PSeg k="minutes" label="Duração" opts={[[45, "45 min"], [60, "60 min"], [75, "75 min"], [90, "90 min"]]} /></div></div>
     <div class="row wrapx" style="gap:16px;margin-top:16px"><div><span class="f">Semana</span><PSeg k="flexWeek" label="Tipo de semana" opts={[[true, "flexível (orçamento)"], [false, "dias fixos"]]} /></div>
-      <div><label class="f" for="weekStart">A semana começa em</label><select id="weekStart" class="input" style="min-width:160px" value={p.weekStart} onChange={(e) => pset("weekStart", e.currentTarget.value)}>{DAYS_LONG.map(([v, nm]) => <option key={v} value={v}>{nm}</option>)}</select></div>
+      <div><label class="f" for="weekStart">A semana começa em</label><select id="weekStart" aria-label="A semana começa em" class="input" style="min-width:160px" value={p.weekStart} onChange={(e) => pset("weekStart", e.currentTarget.value)}>{DAYS_LONG.map(([v, nm]) => <option key={v} value={v}>{nm}</option>)}</select></div>
       <div><span class="f">Horário</span><PSeg k="hour" label="Horário" opts={[["manha", "manhã"], ["almoco", "almoço"], ["tarde", "tarde"], ["noite", "noite"]]} /></div></div>
     <div class="note" style="margin-top:16px"><Icon id="info" /><span>Semana flexível: as séries de cada músculo viram um orçamento. Faltou? O app pergunta quantos dias ainda dá e redistribui, sempre buscando 2× por músculo. Compensatório só quando você pedir.</span></div></>;
 }
@@ -86,14 +86,14 @@ function Preferencias() {
 }
 
 const Mobilidade = () => <><div class="row wrapx" style="gap:16px"><div><span class="f">Agacha fundo sem dor?</span><PSeg k="mobility.squat" label="Agachar" opts={[[true, "sim"], [false, "não"]]} /></div><div><span class="f">Braço acima da cabeça sem dor?</span><PSeg k="mobility.overhead" label="Braço acima da cabeça" opts={[[true, "sim"], [false, "não"]]} /></div></div>
-  <p class="small" style="margin-top:14px">Dores de hoje ficam no <a href="#corpo">mapa de dor</a>: <b>{S.pains.length}</b> ativa(s).</p></>;
+  <p class="small" style="margin-top:14px">Dores de hoje ficam no <a class="link44" href="#corpo">mapa de dor</a>: <b>{S.pains.length}</b> ativa(s).</p></>;
 
 function Claude() {
   return <><span class="f">Quanto o Claude pode mudar sozinho</span><PSeg k="autonomy" label="Autonomia" opts={[["so_sugere", "só sugere"], ["carga_sozinho", "carga sozinho, plano com aprovação"], ["tudo", "tudo"]]} />
     <div style="margin-top:16px"><span class="f">Modelo por tipo de pedido (economia × qualidade)</span>{CATS.map((c) => <div class="prefrow" key={c}><span class="small"><b>{c}</b></span><PSeg k={`tiers.${c}`} label={`Modelo de ${c}`} opts={[["haiku", "Haiku"], ["sonnet", "Sonnet"], ["opus", "Opus"]]} /></div>)}
       <p class="tiny sub" style="margin-top:8px">Haiku: registro e trocas simples · Sonnet: reorganizar o dia/semana · Opus: dor, revisão e novo bloco. Cada pedido pode trocar o modelo antes de enviar.</p></div>
     <div class="row wrapx" style="gap:16px;margin-top:16px"><div><span class="f">Tom</span><PSeg k="tone" label="Tom" opts={[["direto", "direto"], ["motivador", "motivador"], ["tecnico", "técnico"]]} /></div><div><span class="f">Revisão semanal</span><PSeg k="reviewTime" label="Revisão semanal" opts={[["dom20", "dom 20h"], ["seg7", "seg 7h"]]} /></div></div>
-    <div class="note" style="margin-top:16px"><Icon id="info" /><span>{SERVER ? <>Connector: claude.ai → Personalizar → Connectors → URL <code>/mcp</code> + token. Funciona no app do Claude no celular. Em <a href="#conta">Conta</a> você gera o token.</> : "Na versão online, o Claude conversa com este app pelo connector do claude.ai (sem API, na sua assinatura)."}</span></div></>;
+    <div class="note" style="margin-top:16px"><Icon id="info" /><span>{SERVER ? <>Connector: claude.ai → Personalizar → Connectors → URL <code>/mcp</code> + token. Funciona no app do Claude no celular. Em <a class="link44" href="#conta">Conta</a> você gera o token.</> : "Na versão online, o Claude conversa com este app pelo connector do claude.ai (sem API, na sua assinatura)."}</span></div></>;
 }
 
 function Comida() {
@@ -110,6 +110,7 @@ const CORPO_BLOCO: Record<string, () => any> = { objetivo: Objetivo, prioridades
 const Selo = ({ ok }: { ok: boolean }) => <span class={`badge ${ok ? "ok" : "warn"}`}>{ok ? <><Icon id="check" />completo</> : "dá para melhorar"}</span>;
 
 export default function Perfil({ route }: { route: Route }) {
+  ensureBaseline();
   const cp = C.profileCompleteness(S.profile);
   const id = route.parts[0], bloco = [...BLOCOS, FORA].find((b) => b.id === id);
   const porClaude = S.profile.meta?.filledBy === "claude" && !S.profile.meta.confirmed;

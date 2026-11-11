@@ -45,13 +45,15 @@ export function suggestFor(it: C.PlanItem): { kg: number | null; reps: number; n
 let profileTimer: ReturnType<typeof setTimeout> | undefined;
 /** Mudou o perfil: o treino já gerado NÃO se refaz sozinho; congela e fica "desatualizado" até o usuário regenerar. */
 export function profileChanged() {
-  const differs = !!S.ui.planFp && S.ui.planFp !== C.planFingerprint(S.profile);
   if (S.plan && !(S.session && !S.session.finishedAt)) {
-    if (differs && !S.ui.locked) { S.ui.locked = true; S.ui.planSource = "perfil"; }
-    else if (!differs && S.ui.locked && S.ui.planSource === "perfil") { S.ui.locked = false; S.ui.planSource = undefined; } // voltou ao que era
+    const act = C.planFreezeAction(S.ui.planFp, S.profile, { frozen: S.ui.locked, frozenByProfile: S.ui.planSource === "perfil" });
+    if (act === "freeze") { S.ui.locked = true; S.ui.planSource = "perfil"; }
+    else if (act === "unfreeze") { S.ui.locked = false; S.ui.planSource = undefined; }
   }
   clearTimeout(profileTimer); profileTimer = setTimeout(() => send("PUT", "/api/profile", { data: S.profile }), 600);
 }
+/** Garante a base de comparação ANTES de qualquer mudança no perfil (demo, 1º acesso direto ao Perfil, recarregar). */
+export function ensureBaseline() { if (!S.plan || !S.ui.planFp) { if (!(S.session && !S.session.finishedAt)) computePlan(); } }
 /** Treino guardado foi gerado com um perfil diferente do de hoje (e não há treino em andamento). */
 export const planIsStale = () => !!S.plan && S.ui.locked && !(S.session && !S.session.finishedAt) && C.isFingerprintStale(S.ui.planFp, S.profile);
 /** "Regenerar": refaz o treino com o perfil de hoje e (no servidor) troca o treino guardado. */

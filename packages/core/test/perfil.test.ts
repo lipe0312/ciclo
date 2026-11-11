@@ -129,18 +129,17 @@ test("desatualizado: perfil de hoje difere do perfil de quando o treino foi gera
 });
 
 // ---- resumo de contexto do Claude ----
-test("contexto: resumo compacto com objetivo, prioridades, rotina e origem", () => {
+test("contexto: um formato só (texto compacto) com objetivo, prioridades, rotina e origem", () => {
   const ctx = contextSummary({ ...DEFAULT_PROFILE, subPriorities: ["ombro_lat", "biceps", "triceps_longa"], meta: { filledBy: "claude", confirmed: false } }, 3);
-  assert.equal(ctx.versao, 3);
-  assert.deepEqual(ctx.prioridades, ["Ombro lateral", "Bíceps", "Tríceps · cabeça longa"]);
-  assert.equal(ctx.preenchidoPor, "claude"); assert.equal(ctx.confirmado, false);
-  assert.match(ctx.texto, /Braços e ombros/); assert.match(ctx.texto, /Ombro lateral/); assert.match(ctx.texto, /4 dias/);
+  assert.deepEqual(Object.keys(ctx).sort(), ["confirmado", "preenchidoPor", "texto", "versao"]);
+  assert.equal(ctx.versao, 3); assert.equal(ctx.preenchidoPor, "claude"); assert.equal(ctx.confirmado, false);
+  assert.match(ctx.texto, /Braços e ombros/); assert.match(ctx.texto, /Ombro lateral › Bíceps › Tríceps · cabeça longa/); assert.match(ctx.texto, /4 dias/);
   assert.ok(ctx.texto.length < 900, "compacto");
   assert.ok(!/undefined|NaN|\[object/.test(ctx.texto));
 });
 
 // ---------- frase do plano, completo/melhorar, CTA ----------
-import { isFingerprintStale, planSentence, profileCompleteness } from "../src/index.ts";
+import { isFingerprintStale, normalizeProfile, planFreezeAction, planSentence, profileCompleteness } from "../src/index.ts";
 
 test("frase do plano: dias, tempo, foco nas subdivisões e meta", () => {
   const s = planSentence({ ...DEFAULT_PROFILE, daysTarget: 3, minutes: 45, subPriorities: ["ombro_lat", "biceps", "triceps_longa"] });
@@ -183,4 +182,50 @@ test("impressão guardada: desatualizado só quando o perfil de hoje difere dela
 
 test("o perfil padrão do app passa na validação do servidor", () => {
   assert.equal(validateProfilePatch(structuredClone(DEFAULT_PROFILE)).ok, true);
+});
+
+test("mensagens de erro truncam chaves enormes", () => {
+  const big = "x".repeat(5000);
+  for (const patch of [{ [big]: 1 }, { prefs: { [big]: "livre" } }, { goal: { [big]: 1 } }]) {
+    const r = validateProfilePatch(patch);
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.ok(r.errors.join("|").length < 300, "mensagem curta");
+  }
+});
+
+// ---------- perfis antigos ----------
+test("perfil antigo: prioridades sem subdivisão e chaves fora do schema viram um perfil que passa na validação", () => {
+  const old = { priorities: ["peito", "costas"], level: 2, minutes: 75, chaveAntiga: { a: 1 }, goal: { id: "bracos_ombros", statement: "x", horizonWeeks: 12, metrics: {}, legado: true }, prefs: { peito: "cabo", ombro: "foguete" }, tone: "invalido" };
+  const n = normalizeProfile(old);
+  assert.equal(n.chaveAntiga, undefined); assert.equal(n.goal.legado, undefined); assert.equal(n.tone, undefined, "valor inválido cai no padrão");
+  assert.deepEqual(n.priorities, ["peito", "costas"]); assert.deepEqual(n.subPriorities, ["peito_medio", "dorsal"]);
+  assert.deepEqual(n.prefs, { peito: "cabo" }); assert.equal(n.minutes, 75);
+  assert.equal(validateProfilePatch(n).ok, true, JSON.stringify(validateProfilePatch(n).errors));
+  assert.equal(applyProfilePatch({ ...DEFAULT_PROFILE, ...n }, { minutes: 45 }).ok, true, "salvar por cima de perfil antigo não dá 400");
+});
+
+test("perfil antigo: subdivisões incoerentes ou excesso de prioridades são consertados; sem nada, não inventa", () => {
+  const a = normalizeProfile({ priorities: ["ombro", "biceps"], subPriorities: ["ombro_lat", "peito_sup", "ombro_inventado"] });
+  assert.deepEqual(a.subPriorities, ["ombro_lat", "biceps"]); assert.deepEqual(a.priorities, ["ombro", "biceps"]);
+  const b = normalizeProfile({ priorities: ["ombro", "biceps", "triceps", "peito", "ficticio"] });
+  assert.equal(b.priorities.length, 3);
+  const c = normalizeProfile({ subPriorities: ["triceps_longa"] });
+  assert.deepEqual(c.priorities, ["triceps"]);
+  assert.deepEqual(normalizeProfile({ priorities: [], subPriorities: [] }).priorities, []);
+  assert.equal("priorities" in normalizeProfile({ level: 1 }), false);
+  assert.deepEqual(normalizeProfile("lixo"), {}); assert.deepEqual(normalizeProfile(null), {});
+});
+
+test("o perfil padrão normalizado continua igual", () => {
+  assert.deepEqual(normalizeProfile(structuredClone(DEFAULT_PROFILE)), JSON.parse(JSON.stringify(DEFAULT_PROFILE)));
+});
+
+test("mudou o perfil: congela o treino (não regenera sozinho); voltar ao perfil de antes descongela só o que o perfil congelou", () => {
+  const fp = planFingerprint(DEFAULT_PROFILE), mudou = { ...DEFAULT_PROFILE, daysTarget: 5 };
+  assert.equal(planFreezeAction(fp, mudou, { frozen: false, frozenByProfile: false }), "freeze");
+  assert.equal(planFreezeAction(fp, mudou, { frozen: true, frozenByProfile: true }), "none");
+  assert.equal(planFreezeAction(fp, DEFAULT_PROFILE, { frozen: true, frozenByProfile: true }), "unfreeze");
+  assert.equal(planFreezeAction(fp, DEFAULT_PROFILE, { frozen: true, frozenByProfile: false }), "none", "treino do Claude/manual fica travado");
+  assert.equal(planFreezeAction(fp, { ...DEFAULT_PROFILE, tone: "tecnico" }, { frozen: false, frozenByProfile: false }), "none");
+  assert.equal(planFreezeAction(null, mudou, { frozen: false, frozenByProfile: false }), "none", "sem base não alarma");
 });

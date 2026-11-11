@@ -92,8 +92,10 @@ const record = (key: Rule, val: Rule, max: number): Rule => (v, p, err) => {
   if (ks.length > max) return err(`${p}: até ${max} chaves`), undefined;
   const out: Record<string, unknown> = {};
   for (const k of ks) {
-    if (key(k, `${p}.${k}`, err) === undefined) continue;
-    out[k] = v[k] === null ? null : val(v[k], `${p}.${k}`, err);
+    const kk = k.slice(0, 40);
+    if (key(k, `${p}.${kk}`, err) === undefined) continue;
+    const r = v[k] === null ? null : val(v[k], `${p}.${kk}`, err);
+    if (r !== undefined) out[k] = r;
   }
   return out;
 };
@@ -101,7 +103,7 @@ const shape = (fields: Record<string, Rule>): Rule => (v, p, err) => {
   if (!isObj(v)) return err(`${p} deve ser um objeto`), undefined;
   const out: Record<string, unknown> = {};
   for (const k of Object.keys(v)) {
-    if (!own(fields, k)) { err(`${p ? p + "." : ""}${k}: campo desconhecido`); continue; }
+    if (!own(fields, k)) { err(`${p ? p + "." : ""}${k.slice(0, 40)}: campo desconhecido`); continue; }
     const r = fields[k](v[k], p ? `${p}.${k}` : k, err);
     if (r !== undefined) out[k] = r;
   }
@@ -196,26 +198,32 @@ export function isPlanStale(then: Partial<ProfileData> | Record<string, any> | n
 // ---------- resumo de contexto (vai ao Claude) ----------
 const LEVELS = ["nunca treinou", "menos de 1 ano", "1–3 anos", "3+ anos"];
 const BODIES: Record<string, string> = { muito_magro: "muito magro", magro: "magro", falso_magro: "magro com barriga", normal: "normal", atletico: "atlético", forte_gordura: "forte com gordura", acima: "acima do peso", bem_acima: "bem acima do peso" };
-export interface ContextSummary {
-  versao: number; objetivo: string; prioridades: string[]; nivel: string; rotina: string; corpo: string; comida: string; claude: string;
-  preenchidoPor: "app" | "claude"; confirmado: boolean; texto: string;
-}
+/** Um formato só: o texto compacto que o Claude lê (sem repetir os mesmos dados em campos). */
+export interface ContextSummary { versao: number; preenchidoPor: "app" | "claude"; confirmado: boolean; texto: string }
 export function contextSummary(profile: Partial<ProfileData> | Record<string, any>, versao: number): ContextSummary {
   const p = { ...DEFAULT_PROFILE, ...(profile as object) } as ProfileData;
   const subs = (p.subPriorities ?? []).filter((s) => SUB_MUSCLES[s]);
-  const prioridades = subs.length ? subs.map((s) => SUB_MUSCLES[s].nm) : (p.priorities ?? []).map((m) => (m as string));
-  const objetivo = p.goal?.statement ?? "";
-  const nivel = LEVELS[p.level] ?? "";
+  const prioridades = subs.length ? subs.map((s) => SUB_MUSCLES[s].nm) : (p.priorities ?? []).map((m) => String(m));
   const rotina = `${p.daysTarget} dias/semana (${(p.daysUsual ?? []).join(", ")}), ${p.minutes} min, semana começa na ${p.weekStart}, ${p.flexWeek ? "semana flexível" : "dias fixos"}`;
   const corpo = `${p.sex === "f" ? "mulher" : "homem"}, ${p.age} anos, ${p.heightCm} cm, ${p.weightKg} kg, ${BODIES[p.bodyType] ?? p.bodyType}`;
-  const comida = `registro ${p.diet?.mode ?? "leve"}`;
-  const claude = `autonomia ${p.autonomy}, tom ${p.tone}`;
-  const texto = `Objetivo: ${objetivo}. Prioridades (em ordem): ${prioridades.join(" › ") || "nenhuma"}. Nível: ${nivel}. Rotina: ${rotina}. Corpo: ${corpo}. Comida: ${comida}. Claude: ${claude}.`;
-  return { versao, objetivo, prioridades, nivel, rotina, corpo, comida, claude, preenchidoPor: p.meta?.filledBy ?? "app", confirmado: p.meta?.confirmed ?? true, texto };
+  const texto = `Objetivo: ${p.goal?.statement ?? ""}. Prioridades (em ordem): ${prioridades.join(" › ") || "nenhuma"}. Nível: ${LEVELS[p.level] ?? ""}. Rotina: ${rotina}. Corpo: ${corpo}. Comida: registro ${p.diet?.mode ?? "leve"}. Claude: autonomia ${p.autonomy}, tom ${p.tone}.`;
+  return { versao, preenchidoPor: p.meta?.filledBy ?? "app", confirmado: p.meta?.confirmed ?? true, texto };
 }
 
 /** O treino foi gerado quando o perfil tinha a impressão `fp` (ver planFingerprint); `now` é o perfil de hoje. */
 export const isFingerprintStale = (fp: string | null | undefined, now: Partial<ProfileData> | Record<string, any>): boolean => !!fp && fp !== planFingerprint(now);
+
+/**
+ * O que fazer com o treino do dia quando o perfil muda: congelar (ficou diferente da base, vira "desatualizado"),
+ * descongelar (o usuário voltou ao perfil de antes e o congelamento foi só por causa do perfil) ou nada.
+ */
+export function planFreezeAction(fp: string | null | undefined, now: Partial<ProfileData> | Record<string, any>, st: { frozen: boolean; frozenByProfile: boolean }): "freeze" | "unfreeze" | "none" {
+  if (!fp) return "none";
+  const differs = fp !== planFingerprint(now);
+  if (differs && !st.frozen) return "freeze";
+  if (!differs && st.frozen && st.frozenByProfile) return "unfreeze";
+  return "none";
+}
 
 // ---------- "seu plano em uma frase" ----------
 const DOW_FULL: Record<string, string> = { seg: "segunda", ter: "terça", qua: "quarta", qui: "quinta", sex: "sexta", sab: "sábado", dom: "domingo" };
@@ -257,4 +265,32 @@ export function profileCompleteness(profile: Partial<ProfileData> | Record<strin
   const pending = order.find((b) => !blocks[b]);
   const done = PROFILE_BLOCKS.filter((b) => blocks[b]).length;
   return { total: PROFILE_BLOCKS.length, done, badge: done === PROFILE_BLOCKS.length ? "completo" : "dá para melhorar", blocks, next: pending ? { block: pending, cta: STEPS[pending][0], why: STEPS[pending][1] } : null };
+}
+
+// ---------- perfis antigos ----------
+const DEFAULT_SUB: Record<MuscleId, SubMuscleId> = { peito: "peito_medio", costas: "dorsal", ombro: "ombro_lat", post: "ombro_post", biceps: "biceps", triceps: "triceps_longa", quad: "quad", isquio: "isquio", gluteo: "gluteo", pant: "pant", core: "abdomen" };
+/**
+ * Perfil guardado numa versão anterior → perfil que passa na validação: descarta chaves e valores fora do schema
+ * (o padrão preenche depois) e deixa prioridades × subdivisões coerentes (as prioridades antigas mandam; sem subdivisão, usa a padrão do músculo).
+ */
+export function normalizeProfile(raw: unknown): Record<string, any> {
+  if (!isObj(raw)) return {};
+  const out: Record<string, any> = {};
+  for (const k of Object.keys(raw)) {
+    if (!own(SCHEMA, k) || k === "priorities" || k === "subPriorities" || raw[k] === null) continue;
+    const v = SCHEMA[k](raw[k], k, () => {}) as any;
+    if (v === undefined) continue;
+    if ((MAPS as readonly string[]).includes(k)) for (const mk of Object.keys(v)) if (v[mk] === null) delete v[mk];
+    out[k] = v;
+  }
+  const uniq = <T,>(a: T[]) => [...new Set(a)];
+  const pri = Array.isArray(raw.priorities) ? uniq(raw.priorities.filter((m): m is MuscleId => MUSCLE_IDS.includes(m as MuscleId))).slice(0, MAX_PRIORITIES) : null;
+  const subs = Array.isArray(raw.subPriorities) ? uniq(raw.subPriorities.filter((s): s is SubMuscleId => SUB_MUSCLE_IDS.includes(s as SubMuscleId))) : null;
+  if (pri === null && subs === null) return out;
+  let final: SubMuscleId[];
+  if (pri && (pri.length || !subs?.length)) final = pri.flatMap((m) => { const own1 = (subs ?? []).filter((s) => SUB_MUSCLES[s].muscle === m); return own1.length ? own1 : [DEFAULT_SUB[m]]; });
+  else final = subs ?? [];
+  final = uniq(final).slice(0, MAX_PRIORITIES);
+  out.subPriorities = final; out.priorities = prioritiesFromSubs(final);
+  return out;
 }

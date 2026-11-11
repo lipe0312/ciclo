@@ -63,7 +63,7 @@ function pickGym(kind: string) {
 function Onde() {
   const keep = !SERVER || S.onboarding === "concluido";
   const g = S.gyms[0];
-  if (keep) return <><div class="note"><Icon id="gym" /><span>Suas academias ficam como estão ({S.gyms.map((x) => x.name).join(", ")}). Para mexer nos aparelhos, use <a href="#academias">Academias</a>.</span></div></>;
+  if (keep) return <><div class="note"><Icon id="gym" /><span>Suas academias ficam como estão ({S.gyms.map((x) => x.name).join(", ")}). Para mexer nos aparelhos, use <a class="link44" href="#academias">Academias</a>.</span></div></>;
   return <><div class="opts">{GYM_KINDS.map(([k, nm, d]) => <Opt key={k} on={pp.gym === k} title={nm} desc={d} onClick={() => pickGym(k)} />)}
     <Opt on={pp.gym === "depois"} title="Decido depois" desc="começo com uma academia padrão" onClick={() => { pickGym("completa"); pp.gym = "depois"; savePP(); commit(); }} /></div>
     {pp.gym && pp.gym !== "depois" && g && <details class="prio-lista"><summary>Ajustar os aparelhos ({g.equipment.length} marcados)</summary>

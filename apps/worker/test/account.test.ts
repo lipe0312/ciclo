@@ -24,7 +24,7 @@ test("token MCP: criar (uma vez), listar sem valor, revogar → 401; só hash no
   assert.ok(!list.text.includes(t.token.split("_")[2])); assert.equal(list.data.tokens.length, 1);
   assert.ok(!JSON.stringify(env.DB.raw.prepare("SELECT * FROM mcp_token").all()).includes(t.token));
   assert.equal((await mcp(env, t.token, "ciclo_estado")).status, 200);
-  assert.equal((await mcp(env, t.token.slice(0, -1) + "0", "ciclo_estado")).status, 401);
+  assert.equal((await mcp(env, t.token.slice(0, -1) + (t.token.endsWith("0") ? "1" : "0"), "ciclo_estado")).status, 401);
   assert.equal((await call(env, "DELETE", `/api/account/tokens/${t.id}`, { user: "u1" })).status, 200);
   assert.equal((await mcp(env, t.token, "ciclo_estado")).status, 401);
 });

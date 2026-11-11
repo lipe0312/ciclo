@@ -1,6 +1,6 @@
 // Repositório: todo SQL fica aqui (ou nas rotas), sempre com parâmetros (bind) e SEMPRE filtrado por user_id.
 // O uid vem da autenticação (auth.ts), nunca do corpo da requisição.
-import { DEFAULT_PROFILE, MAX_SESSION_MS, MUSCLE_IDS, PAIN_REGIONS, applyProfilePatch, mondayOf, planFingerprint, weekDates, weeklyTargets } from "@ciclo/core";
+import { DEFAULT_PROFILE, MAX_SESSION_MS, MUSCLE_IDS, PAIN_REGIONS, applyProfilePatch, mondayOf, normalizeProfile, planFingerprint, weekDates, weeklyTargets } from "@ciclo/core";
 import { HttpError, int, oneOf, str } from "./http.ts";
 import type { DayInput, Group, Mode, MuscleId, Pain } from "@ciclo/core";
 import type { Env } from "./env.ts";
@@ -17,35 +17,37 @@ const DEFAULTS: Profile = { level: 1, priorities: [], minutes: 60, daysTarget: 4
 /** Perfil salvo da conta ou null (conta nova, antes dos Primeiros passos). */
 export async function getProfile(env: Env, uid: string): Promise<Profile | null> {
   const r = await env.DB.prepare("SELECT data FROM profile WHERE user_id = ?1").bind(uid).first<{ data: string }>();
-  return r ? { ...DEFAULTS, ...parse<Partial<Profile>>(r.data, {}) } : null;
+  return r ? { ...DEFAULTS, ...(normalizeProfile(parse<unknown>(r.data, {})) as Partial<Profile>) } : null;
 }
-export async function putProfile(env: Env, uid: string, data: unknown) {
+/** Grava o perfil e a versão no histórico; devolve o número da versão (contado no mesmo batch, atômico). */
+export async function putProfile(env: Env, uid: string, data: unknown): Promise<number> {
   const s = JSON.stringify(data), now = Date.now();
-  await env.DB.batch([
+  const r = await env.DB.batch([
     env.DB.prepare("INSERT INTO profile (user_id, data, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(user_id) DO UPDATE SET data = ?2, updated_at = ?3").bind(uid, s, now),
     env.DB.prepare("INSERT INTO profile_history (user_id, data, created_at) VALUES (?1, ?2, ?3)").bind(uid, s, now),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM profile_history WHERE user_id = ?1").bind(uid),
   ]);
+  return (r[2].results as { n: number }[])[0]?.n ?? 1;
 }
 
 /** Perfil bruto da conta (sem preencher padrões) ou null. */
 async function rawProfile(env: Env, uid: string): Promise<Record<string, unknown> | null> {
   const r = await env.DB.prepare("SELECT data FROM profile WHERE user_id = ?1").bind(uid).first<{ data: string }>();
-  return r ? parse<Record<string, unknown>>(r.data, {}) : null;
+  return r ? normalizeProfile(parse<unknown>(r.data, {})) : null;
 }
 /** Valida e grava. `replace`: o corpo é o perfil inteiro (app); senão é parcial e mescla no que já existe (Claude). Erro de validação → 400 com a lista. */
 export async function saveProfile(env: Env, uid: string, input: unknown, mode: "replace" | "merge", extra: Record<string, unknown> = {}) {
-  const base = mode === "merge" ? (await rawProfile(env, uid)) ?? DEFAULT_PROFILE : DEFAULT_PROFILE;
+  const base = mode === "merge" ? { ...DEFAULT_PROFILE, ...((await rawProfile(env, uid)) ?? {}) } : DEFAULT_PROFILE;
   const r = applyProfilePatch(base, input);
   if (!r.ok) throw new HttpError(400, r.errors.join("; "));
   const data = { ...r.profile, ...extra };
-  await putProfile(env, uid, data);
-  const versao = (await env.DB.prepare("SELECT COUNT(*) AS n FROM profile_history WHERE user_id = ?1").bind(uid).first<{ n: number }>())?.n ?? 1;
+  const versao = await putProfile(env, uid, data);
   return { data, versao };
 }
 /** Impressão do perfil vigente quando o treino foi gerado (a última versão gravada até `at`). Sem histórico → null (não alarma). */
 export async function planProfileFingerprint(env: Env, uid: string, at: number): Promise<string | null> {
   const r = await env.DB.prepare("SELECT data FROM profile_history WHERE user_id = ?1 AND created_at <= ?2 ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid, at).first<{ data: string }>();
-  return r ? planFingerprint(parse<Record<string, unknown>>(r.data, {})) : null;
+  return r ? planFingerprint(normalizeProfile(parse<unknown>(r.data, {}))) : null;
 }
 
 export async function listGyms(env: Env, uid: string) {
