@@ -23,8 +23,11 @@ export const DEFAULT_GYMS: Gym[] = [
 
 export const S = {
   profile: clone(DEFAULT_PROFILE), gyms: clone(DEFAULT_GYMS),
-  week: { done: {} as Record<string, number>, freq: {} as Record<string, number>, attendance: {} as Record<string, string>, checkins: {} as Record<string, any>, sessions: [] as any[] },
-  pains: [] as any[], inbox: [] as any[], food: [] as any[], media: {} as Record<string, any>, history: {} as Record<string, C.SetLog[]>, measures: [] as any[], edits: [] as any[],
+  week: { done: {} as Record<string, number>, freq: {} as Record<string, number>, attendance: {} as Record<string, string>, checkins: {} as Record<string, any>, sessions: [] as any[],
+    /** cardio da semana (resumo: C.cardioWeekSummary) */ cardio: [] as C.CardioEntry[] },
+  pains: [] as any[], inbox: [] as any[], food: [] as any[], media: {} as Record<string, any>, history: {} as Record<string, C.SetLog[]>,
+  /** últimas sessões de cada exercício (mais recente primeiro): médias, "última vez" e melhor marca do modo treino */
+  past: {} as Record<string, C.SetLog[][]>, measures: [] as any[], edits: [] as any[],
   features: { ai: false, media: false } as Record<string, boolean>,
   /** campos de outras frentes (contas multiusuário); opcionais */
   account: null as any, onboarding: null as any,
@@ -51,7 +54,7 @@ export function useStore() {
 const LS = "ciclo:v1";
 const key = () => LS + (SERVER ? ":srv" : ":demo") + ":" + today;
 export function saveLocal() {
-  const keep: Record<string, unknown> = { ui: { ...S.ui, perfilSec: null }, session: S.session, plan: S.ui.locked ? S.plan : null };
+  const keep: Record<string, unknown> = { ui: { ...S.ui, perfilSec: null }, session: S.session, plan: S.ui.locked ? S.plan : null, past: S.past };
   if (!SERVER) Object.assign(keep, { profile: S.profile, gyms: S.gyms, week: S.week, pains: S.pains, inbox: S.inbox, food: S.food, media: S.media, measures: S.measures, edits: S.edits, history: S.history });
   lsSet(key(), keep);
 }
@@ -59,6 +62,7 @@ export function loadLocal() {
   const v = lsGet<Record<string, any> | null>(key(), null);
   if (!v) return false;
   for (const k of Object.keys(v)) if (v[k] != null) (S as any)[k] = k === "ui" ? { ...S.ui, ...v.ui } : k === "profile" ? { ...clone(DEFAULT_PROFILE), ...v.profile } : v[k];
+  S.week.cardio ??= []; // cópias salvas antes do cardio não têm o campo
   return true;
 }
 
@@ -74,7 +78,7 @@ export async function loadServer() {
     done: w.done ?? {}, freq: w.freq ?? {},
     attendance: Object.fromEntries((w.attendance ?? []).map((a: any) => [a.date, a.status])),
     checkins: Object.fromEntries((w.checkins ?? []).map((c: any) => [c.date, { sleepH: c.sleep_h, energy: c.energy, soreness: c.soreness, stress: c.stress, food: c.food, weightKg: c.weight_kg }])),
-    sessions: w.sessions ?? [],
+    sessions: w.sessions ?? [], cardio: w.cardio ?? [],
   };
   S.pains = w.pains ?? []; S.inbox = w.inbox ?? [];
   S.history = st.history ?? {};
@@ -82,7 +86,21 @@ export async function loadServer() {
   S.measures = st.measures ?? [];
   if (st.dayPlan && !S.ui.locked) { S.plan = st.dayPlan.plan; S.ui.locked = st.dayPlan.source !== "core"; S.ui.planSource = st.dayPlan.source; S.ui.planFp = st.dayPlan.profileFp ?? null; }
   const open = S.week.sessions.find((s: any) => s.date === today && !s.finished_at);
-  if (open && (!S.session || S.session.id !== open.id)) S.session = { id: open.id, date: today, startedAt: open.started_at, plan: S.plan, logs: {}, skipped: {}, rest: null };
+  if (open) await restoreSession(open.id);
+}
+
+/** Sessão aberta no servidor → estado local. Sem cópia local (outro aparelho/dados limpos) monta tudo do servidor; com cópia, só completa
+ *  o que faltar (o que está no aparelho e ainda não foi concluído vence; o descanso local também). */
+async function restoreSession(id: string) {
+  let r: any = null;
+  try { r = await api("GET", `/api/sessions/${encodeURIComponent(id)}`); } catch { /* offline: segue com a cópia local */ }
+  const local = S.session && S.session.id === id ? S.session : null;
+  if (!r) { if (!local) S.session = null; return; }
+  if (r.finishedAt) { if (local && !local.finishedAt) { local.finishedAt = r.finishedAt; local.closedBy = r.closedBy ?? "auto"; local.rest = null; } return; }
+  const logs = C.mergeSessionSets(local?.logs ?? {}, r.sets ?? []);
+  const skipped = { ...Object.fromEntries((r.skips ?? []).map((k: any) => [k.exerciseId, k.reason])), ...(local?.skipped ?? {}) };
+  const rest = local?.rest ?? (r.rest && r.rest.until > Date.now() ? { until: r.rest.until, fired: false } : null);
+  S.session = { ...(local ?? {}), id, date: r.date, startedAt: r.startedAt, finishedAt: null, plan: local?.plan ?? r.plan, logs, skipped, rest, gymId: r.gymId ?? local?.gymId, format: local?.format ?? S.ui.format, cur: local?.cur ?? 0 };
 }
 
 // dados fictícios da demonstração (seg Superior A, ter Inferior A; qua era treino e ficou sem resposta → aviso de falta)
@@ -106,6 +124,15 @@ export function seedDemo() {
   S.media = {
     Cable_Rope_Overhead_Triceps_Extension: { kind: "video", note: "Polia da esquerda, corda curta, pino 4", dur: "0:12" },
     Leg_Press: { kind: "foto", note: "Banco no furo 3 · pés no meio da plataforma" },
+  };
+  S.week.cardio = [
+    { id: "c1", date: dates[0], type: "Running_Treadmill", minutes: 25, intensity: "zona2", distanceKm: 3.4 },
+    { id: "c2", date: dates[1], type: "Bicycling_Stationary", minutes: 20, intensity: "moderado", distanceKm: null },
+  ];
+  S.past = {
+    Incline_Dumbbell_Curl: [[{ kg: 12, reps: 12 }, { kg: 12, reps: 11 }, { kg: 12, reps: 10 }], [{ kg: 10, reps: 12 }, { kg: 10, reps: 12 }, { kg: 10, reps: 11 }], [{ kg: 10, reps: 10 }, { kg: 10, reps: 10 }, { kg: 10, reps: 9 }]],
+    Cable_Seated_Lateral_Raise: [[{ kg: 5, reps: 16 }, { kg: 5, reps: 15 }, { kg: 5, reps: 14 }], [{ kg: 5, reps: 14 }, { kg: 5, reps: 13 }, { kg: 5, reps: 12 }]],
+    Incline_Dumbbell_Press: [[{ kg: 24, reps: 10 }, { kg: 24, reps: 9 }], [{ kg: 22, reps: 10 }, { kg: 22, reps: 10 }]],
   };
   S.measures = [{ date: addDays(monday, -28), braco: 33.0, cintura: 79.0 }, { date: addDays(monday, -14), braco: 33.3, cintura: 79.1 }, { date: dates[0], braco: 33.6, cintura: 79.2 }];
   S.inbox = [{ id: "d1", created_at: Date.now() - 864e5, text: "Leg press estava ocupado na terça, troquei pelo Smith.", action: "trocar_exercicio", tier: "haiku", status: "aplicado",

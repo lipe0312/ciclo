@@ -9,6 +9,9 @@ export interface Env {
   ACCESS_AUD?: string;         // "Application Audience (AUD) Tag" do app no Access
   ALLOWED_EMAILS?: string;     // produção: e-mails (vírgula) que podem criar/usar conta. Vazio = ninguém (falha fechada)
   DEV_NO_AUTH?: string;        // "1" só em .dev.vars (localhost)
+  VAPID_PUBLIC_KEY?: string;   // Web Push (descanso com a tela bloqueada): chave pública, base64url (65 bytes). Sem as duas chaves, o push fica desligado.
+  VAPID_PRIVATE_KEY?: string;  // chave privada, base64url (32 bytes) — `wrangler secret put`; gere com `node scripts/gen-vapid.mjs`
+  VAPID_SUBJECT?: string;      // opcional: mailto:… ou https://… exigido por alguns serviços de push (padrão: mailto:ciclo@example.com)
 }
 
 /** Usuário autenticado da requisição. O userId vem SEMPRE daqui (sessão/token), nunca do corpo. */

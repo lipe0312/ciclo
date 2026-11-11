@@ -32,9 +32,23 @@ npx wrangler secret put ALLOWED_EMAILS          # seu e-mail
 ```
 **Transcrição (opcional):** descomente `"ai": { "binding": "AI" }` no `wrangler.jsonc` e rode `npm run deploy`.
 
+**Aviso do descanso com a tela bloqueada (Web Push, #25):** gere o par de chaves VAPID uma vez e guarde como secrets (a privada nunca vai para o git):
+```bash
+node scripts/gen-vapid.mjs                                    # imprime VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY
+cd apps/worker
+npx wrangler secret put VAPID_PUBLIC_KEY
+npx wrangler secret put VAPID_PRIVATE_KEY
+npx wrangler secret put VAPID_SUBJECT                         # opcional: mailto:você@exemplo.com (alguns serviços de push, como o da Apple, pedem)
+```
+Local: as mesmas linhas em `apps/worker/.dev.vars`. Sem as chaves o app funciona igual, só sem o aviso com a tela bloqueada (continua vibrando e apitando com a tela ligada).
+- **Como agenda:** ao concluir a série o app avisa o servidor "o descanso acaba em N s"; o **cron de 1 minuto** (grátis, `* * * * *`) manda um push vazio quando vence, e o service worker mostra "Descanso acabou". Escolhi o cron em vez de Durable Object Alarm porque não pede classe nem migração de DO; o custo é um atraso de até ~1 min no aviso. O fechamento de treinos esquecidos continua a cada 30 min, dentro do mesmo cron.
+- **Android (Chrome):** funciona no navegador e instalado; toque em "Ligar aviso" na aba Hoje (precisa de um toque para o navegador deixar pedir a permissão).
+- **iPhone (iOS 16.4 ou mais novo):** o Safari só entrega push para o app **instalado na Tela de Início** (Compartilhar → Adicionar à Tela de Início, abrir pelo ícone). **Fora do PWA, no Safari comum, não existe aviso com a tela bloqueada**: o descanso vibra (quando o aparelho deixa) e apita só com a tela ligada. O app mostra esse aviso na aba Hoje.
+- Segurança: o servidor só envia push para endpoints de serviços conhecidos (FCM, Mozilla, Apple, Windows), o push não leva dados pessoais e cada conta só dispara os próprios aparelhos.
+
 ## No celular (academia)
 1. Abra a URL no Chrome (Android) ou no Safari (iPhone) → código no e-mail → **Adicionar à tela inicial**.
-2. Permita **notificações** (fim do descanso) e o **microfone** (comida e pedidos).
+2. Permita **notificações** (fim do descanso; veja o Web Push acima, no iPhone só com o app instalado) e o **microfone** (comida e pedidos).
 3. Sem sinal? O app abre do cache, e as séries entram na fila e sobem quando a conexão voltar ("Offline · N na fila" no topo).
 
 ## Claude: connector (celular e Desktop)

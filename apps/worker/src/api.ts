@@ -1,10 +1,11 @@
 // API JSON do app (atrás do Cloudflare Access). Rotas pequenas, um estado agregado por chamada (/api/state)
 // para o celular fazer 1 requisição ao abrir. Toda rota recebe o usuário autenticado (u) e filtra por u.id.
-import { EXERCISE_BY_ID, MUSCLE_IDS, PROMPTS, applyManualEdit, classify, planDay } from "@ciclo/core";
-import type { DayPlan, ManualEdit, Mode, MuscleId, Tier } from "@ciclo/core";
+import { CARDIO_BY_ID, EXERCISE_BY_ID, INTENSITIES, MUSCLE_IDS, PROMPTS, applyManualEdit, checkCardio, classify, planDay } from "@ciclo/core";
+import type { DayPlan, Intensity, ManualEdit, Mode, MuscleId, Tier } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, id, int, json, num, oneOf, readJson, str } from "./http.ts";
-import { EMPTY_MSG, buildDayInput, closeStaleSessions, deleteAccount, exportAccount, getProfile, hitRateLimit, listGyms, mediaPrefix, planProfileFingerprint, saveProfile, upsertPain, weekState } from "./db.ts";
+import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, deleteAccount, exerciseHistory, exportAccount, getProfile, hitRateLimit, listGyms, mediaPrefix, parse, planProfileFingerprint, saveProfile, summarizeSession, upsertPain, weekState } from "./db.ts";
+import { pushEnabled, validEndpoint } from "./push.ts";
 import { newMcpToken } from "./auth.ts";
 import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
 
@@ -221,8 +222,142 @@ on("POST", "/api/sessions/:id/skip", async (req, env, p, u) => {
 
 on("POST", "/api/sessions/:id/finish", async (req, env, p, u) => {
   const b = await readJson<{ feedback: unknown }>(req, 16 * 1024);
-  await env.DB.prepare("UPDATE session SET finished_at = ?2, closed_by = 'usuario', feedback = ?3 WHERE user_id = ?4 AND id = ?1 AND finished_at IS NULL")
+  const r = await env.DB.prepare("UPDATE session SET finished_at = ?2, closed_by = 'usuario', feedback = ?3 WHERE user_id = ?4 AND id = ?1 AND finished_at IS NULL")
     .bind(p.id, Date.now(), JSON.stringify(b.feedback ?? {}), u.id).run();
+  // terminou: não há mais descanso para avisar
+  await env.DB.prepare("DELETE FROM rest_timer WHERE user_id = ?1 AND session_id = ?2").bind(u.id, p.id).run();
+  return json({ ok: true, summary: r.meta.changes ? await summarizeSession(env, u.id, p.id) : null });
+});
+
+// ---- modo treino (#25): restaurar sessão, desfazer série, descanso agendado, histórico, push e cardio ----
+const EX_RE = /^[A-Za-z0-9_.-]{1,80}$/;
+const exId = (v: unknown) => { if (typeof v !== "string" || !EX_RE.test(v)) throw new HttpError(400, "exerciseId inválido"); return v; };
+
+// Sessão completa para recarregar/trocar de aparelho: plano, séries, "não fiz" e o descanso em curso.
+on("GET", "/api/sessions/:id", async (_req, env, p, u) => {
+  const s = await env.DB.prepare("SELECT id, date, gym_id, plan, started_at, finished_at, closed_by, summary FROM session WHERE user_id = ?1 AND id = ?2").bind(u.id, p.id)
+    .first<{ id: string; date: string; gym_id: string | null; plan: string; started_at: number; finished_at: number | null; closed_by: string | null; summary: string | null }>();
+  if (!s) throw new HttpError(404, "sessão não encontrada");
+  const [sets, skips, rest] = await Promise.all([
+    env.DB.prepare("SELECT exercise_id, set_no, kg, reps, rir FROM set_log WHERE user_id = ?1 AND session_id = ?2 ORDER BY exercise_id, set_no").bind(u.id, p.id).all<{ exercise_id: string; set_no: number; kg: number | null; reps: number | null; rir: number | null }>(),
+    env.DB.prepare("SELECT exercise_id, reason FROM exercise_skip WHERE user_id = ?1 AND session_id = ?2").bind(u.id, p.id).all<{ exercise_id: string; reason: string }>(),
+    env.DB.prepare("SELECT fire_at FROM rest_timer WHERE user_id = ?1 AND session_id = ?2 AND sent_at IS NULL").bind(u.id, p.id).first<{ fire_at: number }>(),
+  ]);
+  return json({
+    id: s.id, date: s.date, gymId: s.gym_id, plan: parse(s.plan, {}), startedAt: s.started_at, finishedAt: s.finished_at, closedBy: s.closed_by, summary: parse(s.summary, null),
+    sets: sets.results.map((x) => ({ exerciseId: x.exercise_id, setNo: x.set_no, kg: x.kg, reps: x.reps, rir: x.rir })),
+    skips: skips.results.map((x) => ({ exerciseId: x.exercise_id, reason: x.reason })),
+    rest: rest ? { until: rest.fire_at } : null,
+  });
+});
+
+// Histórico de sessões (aba Histórico), paginado por `before` = started_at da última recebida.
+on("GET", "/api/sessions", async (req, env, _p, u) => {
+  const q = new URL(req.url).searchParams;
+  const before = q.get("before") ? Number(q.get("before")) : null;
+  if (before != null && !Number.isFinite(before)) throw new HttpError(400, "before inválido");
+  const limit = Math.min(Math.max(Number(q.get("limit") ?? 20) || 20, 1), 50);
+  const { results } = await env.DB.prepare(`SELECT s.id, s.date, s.started_at, s.finished_at, s.closed_by, json_extract(s.plan, '$.name') AS name, s.summary,
+      (SELECT COUNT(*) FROM set_log l WHERE l.user_id = s.user_id AND l.session_id = s.id) AS sets,
+      (SELECT COALESCE(SUM(l.kg * l.reps), 0) FROM set_log l WHERE l.user_id = s.user_id AND l.session_id = s.id) AS volume
+    FROM session s WHERE s.user_id = ?1 AND (?2 IS NULL OR s.started_at < ?2) ORDER BY s.started_at DESC LIMIT ?3`).bind(u.id, before, limit)
+    .all<{ id: string; date: string; started_at: number; finished_at: number | null; closed_by: string | null; name: string | null; summary: string | null; sets: number; volume: number }>();
+  const sessions = results.map((r) => ({ id: r.id, date: r.date, startedAt: r.started_at, finishedAt: r.finished_at, closedBy: r.closed_by, name: r.name, sets: r.sets, volume: Math.round(r.volume),
+    prs: parse<{ prs?: unknown[] } | null>(r.summary, null)?.prs ?? [] }));
+  return json({ sessions, next: results.length === limit ? results[results.length - 1].started_at : null });
+});
+
+on("DELETE", "/api/sessions/:id/sets/:exerciseId/:setNo", async (_req, env, p, u) => {
+  const n = Number(p.setNo);
+  if (!Number.isInteger(n) || n < 1 || n > 12) throw new HttpError(400, "setNo fora de 1..12");
+  const r = await env.DB.prepare(`DELETE FROM set_log WHERE user_id = ?1 AND session_id = ?2 AND exercise_id = ?3 AND set_no = ?4
+    AND EXISTS (SELECT 1 FROM session WHERE user_id = ?1 AND id = ?2 AND (finished_at IS NULL OR closed_by = 'auto'))`).bind(u.id, p.id, exId(p.exerciseId), n).run();
+  return json({ ok: true, removed: r.meta.changes > 0 });
+});
+
+// Descanso: o app avisa "acaba em N s" e o cron de 1 min manda o Web Push se a tela estiver bloqueada.
+on("PUT", "/api/sessions/:id/rest", async (req, env, p, u) => {
+  const b = await readJson<Record<string, unknown>>(req, 1024);
+  const seconds = int(b.seconds, "seconds", 1, 900)!, fireAt = Date.now() + seconds * 1000;
+  const r = await env.DB.prepare(`INSERT INTO rest_timer (user_id, session_id, fire_at, sent_at)
+    SELECT ?1, ?2, ?3, NULL WHERE EXISTS (SELECT 1 FROM session WHERE user_id = ?1 AND id = ?2 AND finished_at IS NULL)
+    ON CONFLICT(user_id) DO UPDATE SET session_id = ?2, fire_at = ?3, sent_at = NULL`).bind(u.id, p.id, fireAt).run();
+  return json({ ok: true, scheduled: r.meta.changes > 0, push: pushEnabled(env) });
+});
+on("DELETE", "/api/sessions/:id/rest", async (_req, env, p, u) => {
+  await env.DB.prepare("DELETE FROM rest_timer WHERE user_id = ?1 AND session_id = ?2").bind(u.id, p.id).run();
+  return json({ ok: true });
+});
+
+// Histórico de um exercício (séries por sessão, da mais recente para trás) e as últimas sessões de vários de uma vez.
+on("GET", "/api/exercises/:id/history", async (req, env, p, u) => {
+  const q = new URL(req.url).searchParams;
+  const before = q.get("before") ? Number(q.get("before")) : null;
+  if (before != null && !Number.isFinite(before)) throw new HttpError(400, "before inválido");
+  const limit = Math.min(Math.max(Number(q.get("limit") ?? 10) || 10, 1), 30);
+  const sessions = await exerciseHistory(env, u.id, exId(p.id), before, limit);
+  return json({ exerciseId: p.id, sessions, next: sessions.length === limit ? sessions[sessions.length - 1].startedAt : null });
+});
+on("GET", "/api/history/last", async (req, env, _p, u) => {
+  const q = new URL(req.url).searchParams;
+  const ids = [...new Set((q.get("ids") ?? "").split(",").filter(Boolean))];
+  if (!ids.length || ids.length > 20) throw new HttpError(400, "ids: de 1 a 20 exercícios");
+  const n = Math.min(Math.max(Number(q.get("n") ?? 5) || 5, 1), 10);
+  const before = q.get("before") ? Number(q.get("before")) : null;
+  if (before != null && !Number.isFinite(before)) throw new HttpError(400, "before inválido");
+  const out: Record<string, { kg: number; reps: number }[][]> = {};
+  await Promise.all(ids.map(async (id) => { out[exId(id)] = (await exerciseHistory(env, u.id, id, before, n)).map((s) => s.sets.map(({ kg, reps }) => ({ kg, reps }))); }));
+  return json({ history: out });
+});
+
+// Web Push: chave pública (null = push desligado no servidor) e assinatura do aparelho.
+on("GET", "/api/push/key", async (_req, env) => json({ publicKey: pushEnabled(env) ? env.VAPID_PUBLIC_KEY : null }));
+on("POST", "/api/push/subscribe", async (req, env, _p, u) => {
+  const b = await readJson<Record<string, unknown>>(req, 4 * 1024);
+  if (!validEndpoint(b.endpoint)) throw new HttpError(400, "endpoint de push não aceito");
+  const p256dh = str(b.p256dh, "p256dh", 200)!, auth = str(b.auth, "auth", 100)!;
+  if (!/^[A-Za-z0-9_-]+$/.test(p256dh) || !/^[A-Za-z0-9_-]+$/.test(auth)) throw new HttpError(400, "chaves inválidas");
+  // Limite de 5 aparelhos por conta, atômico: o INSERT só entra se o endpoint já é da conta (atualiza) ou se há vaga.
+  const ins = await env.DB.prepare(`INSERT INTO push_subscription (user_id, endpoint, p256dh, auth, created_at)
+    SELECT ?1, ?2, ?3, ?4, ?5
+    WHERE EXISTS (SELECT 1 FROM push_subscription WHERE user_id = ?1 AND endpoint = ?2)
+       OR (SELECT COUNT(*) FROM push_subscription WHERE user_id = ?1) < 5
+    ON CONFLICT(user_id, endpoint) DO UPDATE SET p256dh = ?3, auth = ?4`)
+    .bind(u.id, b.endpoint, p256dh, auth, Date.now()).run();
+  if (!ins.meta.changes) throw new HttpError(409, "até 5 aparelhos com aviso; remova um");
+  // aparelho compartilhado: o endpoint passa a ser desta conta; some das outras (não recebem push do aparelho alheio)
+  await env.DB.prepare("DELETE FROM push_subscription WHERE endpoint = ?2 AND user_id <> ?1").bind(u.id, b.endpoint).run();
+  return json({ ok: true }, 201);
+});
+on("DELETE", "/api/push/subscribe", async (req, env, _p, u) => {
+  const b = await readJson<Record<string, unknown>>(req, 2 * 1024);
+  const r = await env.DB.prepare("DELETE FROM push_subscription WHERE user_id = ?1 AND endpoint = ?2").bind(u.id, str(b.endpoint, "endpoint", 700)).run();
+  return json({ ok: true, removed: r.meta.changes > 0 });
+});
+
+// Cardio: tipo, minutos, intensidade, distância opcional. Conta no resumo da semana e no histórico.
+on("POST", "/api/cardio", async (req, env, _p, u) => {
+  const b = await readJson<Record<string, unknown>>(req, 4 * 1024);
+  const type = str(b.type, "type", 60)!, minutes = int(b.minutes, "minutes", 1, 300)!, intensity = oneOf(b.intensity, "intensity", Object.keys(INTENSITIES) as Intensity[]);
+  const km = num(b.distanceKm, "distanceKm", 0.1, 200, false);
+  const bad = checkCardio({ type, minutes, intensity, distanceKm: km });
+  if (bad) throw new HttpError(400, bad);
+  const cid = id();
+  await env.DB.prepare("INSERT INTO cardio_log (user_id, id, date, type, minutes, intensity, distance_km, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
+    .bind(u.id, cid, date(b.date), type, minutes, intensity, km, Date.now()).run();
+  return json({ id: cid, name: CARDIO_BY_ID[type].nm }, 201);
+});
+on("GET", "/api/cardio", async (req, env, _p, u) => {
+  const q = new URL(req.url).searchParams;
+  const from = q.get("from") ? date(q.get("from"), "from") : null, to = q.get("to") ? date(q.get("to"), "to") : null;
+  const limit = Math.min(Math.max(Number(q.get("limit") ?? 60) || 60, 1), 200);
+  const { results } = await env.DB.prepare("SELECT id, date, type, minutes, intensity, distance_km FROM cardio_log WHERE user_id = ?1 AND (?2 IS NULL OR date >= ?2) AND (?3 IS NULL OR date <= ?3) ORDER BY date DESC, created_at DESC LIMIT ?4")
+    .bind(u.id, from, to, limit).all<{ id: string; date: string; type: string; minutes: number; intensity: string; distance_km: number | null }>();
+  return json({ cardio: results.map(cardioOut) });
+});
+on("DELETE", "/api/cardio/:id", async (_req, env, p, u) => {
+  const r = await env.DB.prepare("DELETE FROM cardio_log WHERE user_id = ?1 AND id = ?2").bind(u.id, p.id).run();
+  if (!r.meta.changes) throw new HttpError(404, "registro não encontrado");
   return json({ ok: true });
 });
 

@@ -8,7 +8,7 @@ import { DEFAULT_SUB, MapaMusculos } from "../../lib/mapa-musculos/index.tsx";
 import { href } from "../../lib/roteador/index.ts";
 import { img } from "../../lib/util.ts";
 import { ExImgs } from "./biblioteca.tsx";
-import { MediaBox } from "./index.tsx";
+import { MediaBox } from "./midia.tsx";
 
 const List = ({ title, items, empty }: { title: string; items?: string[]; empty: string }) =>
   <Card><h2>{title}</h2>{items?.length ? <ol class="steps">{items.map((t, i) => <li key={i}>{t}</li>)}</ol> : <p class="small sub" style="margin-top:6px">{empty}</p>}</Card>;
