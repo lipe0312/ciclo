@@ -1,7 +1,9 @@
 // Catálogo base. Imagens: free-exercise-db (Unlicense / domínio público) → apps/web/public/img/ex/<src>.webp (0)
-// e <src>-1.webp (1, script de imagens pendente). Regra: o Claude só escolhe IDs que existem aqui. O código valida e
+// e <src>-1.webp (1), geradas por scripts/catalogo-imagens.mjs. Regra: o Claude só escolhe IDs que existem aqui. O código valida e
 // "hidrata" (nome, imagem, mídia). Os IDs são os do free-exercise-db e NÃO mudam (o Worker, o MCP e o D1 usam).
 
+
+import { CARDIO_INFO, INFO } from "./catalog-info.ts";
 
 export type MuscleId =
   | "peito" | "costas" | "ombro" | "post" | "biceps" | "triceps"
@@ -93,6 +95,12 @@ export const EQUIPMENT: Equipment[] = [
   { id: "tricmaq", nm: "Tríceps máquina", cat: "maquinas", img: "Machine_Triceps_Extension", busy: 0 },
   { id: "pant", nm: "Panturrilha em pé", cat: "maquinas", img: "Standing_Calf_Raises", busy: 0 },
   { id: "pantsent", nm: "Panturrilha sentado", cat: "maquinas", img: "Seated_Calf_Raise", busy: 0 },
+  { id: "adutora", nm: "Cadeira adutora", cat: "maquinas", img: "Thigh_Adductor", busy: 1 },
+  { id: "abdutora", nm: "Cadeira abdutora", cat: "maquinas", img: "Thigh_Abductor", busy: 1 },
+  { id: "cavalinho", nm: "Remada cavalinho (T-bar)", cat: "maquinas", img: "T-Bar_Row_with_Handle", busy: 1 },
+  { id: "hiper", nm: "Banco de hiperextensão (romano)", cat: "maquinas", img: "Hyperextensions_Back_Extensions", busy: 0 },
+  { id: "abdmaq", nm: "Abdominal na máquina", cat: "maquinas", img: "Ab_Crunch_Machine", busy: 0 },
+  { id: "roda", nm: "Roda abdominal", cat: "livres", img: "Ab_Roller", busy: 0 },
   { id: "barrafixa", nm: "Barra fixa", cat: "corpo", img: "Pullups", busy: 0 },
   { id: "paralela", nm: "Paralelas", cat: "corpo", img: "Dips_-_Triceps_Version", busy: 0 },
 ];
@@ -120,11 +128,11 @@ export interface Exercise extends ExerciseInfo {
 
 const X = (id: string, nm: string, m: MuscleId, eq: string[], kind: Kind, r: [number, number], rest: number,
   fat: 1 | 2 | 3, joints: Exercise["joints"], extra: Partial<Exercise> = {}): Exercise =>
-  ({ id, nm, m, eq, kind, r, rest, fat, joints, inc: 2.5, type: "forca", images: [0], ...extra });
+  ({ id, nm, m, eq, kind, r, rest, fat, joints, inc: 2.5, type: "forca", images: [0, 1], ...extra });
 
 // Ordem dentro do músculo = preferência padrão (alongado e estável primeiro).
 // Ordem do M0 preservada (a montagem do treino depende dela). Exercícios novos vão no fim.
-export const EXERCISES: Exercise[] = [
+const RAW: Exercise[] = [
   X("Incline_Dumbbell_Press", "Supino inclinado com halteres", "peito", ["halteres", "banco"], "livre", [8, 12], 120, 2, { ombro: 2 }, { stretch: true, fam: "press_h", ratio: 0.36, inc: 2 }),
   X("Leverage_Chest_Press", "Supino reto na máquina", "peito", ["supmaq"], "maquina", [8, 12], 90, 1, { ombro: 1 }, { fam: "press_h", ratio: 0.9, inc: 5 }),
   X("Butterfly", "Voador (peck deck)", "peito", ["peck"], "maquina", [10, 15], 75, 1, { ombro: 1 }, { stretch: true, inc: 5 }),
@@ -197,7 +205,76 @@ export const EXERCISES: Exercise[] = [
   X("Dead_Bug", "Dead bug", "core", [], "corpo", [8, 12], 45, 1, {}, { inc: 0, prehab: ["lombar", "quadril"] }),
   X("Plank", "Prancha", "core", [], "corpo", [30, 60], 45, 1, { lombar: 1 }, { inc: 0, prehab: ["lombar"] }),
 
+  // ---- ampliação (#22): ombro lateral, bíceps, tríceps, costas e máquinas. Vai no fim: não muda a preferência acima. ----
+  X("Arnold_Dumbbell_Press", "Desenvolvimento Arnold", "ombro", ["halteres", "banco"], "livre", [8, 12], 120, 2, { ombro: 2 }, { fam: "press_v", ratio: 0.3, inc: 2 }),
+  X("Standing_Military_Press", "Desenvolvimento militar em pé com barra", "ombro", ["barra", "rack"], "livre", [6, 10], 150, 3, { ombro: 3, lombar: 1 }, { fam: "press_v", ratio: 0.8 }),
+  X("Seated_Side_Lateral_Raise", "Elevação lateral sentado com halteres", "ombro", ["halteres", "banco"], "livre", [12, 20], 60, 1, { ombro: 1 }, { fam: "lateral", ratio: 1.5, inc: 1 }),
+  X("One-Arm_Incline_Lateral_Raise", "Elevação lateral inclinada com halter (unilateral)", "ombro", ["halteres", "banco"], "livre", [12, 20], 60, 1, { ombro: 1 }, { stretch: true, fam: "lateral", ratio: 1.5, inc: 1 }),
+  X("Standing_Low-Pulley_Deltoid_Raise", "Elevação lateral na polia baixa (unilateral)", "ombro", ["polia"], "cabo", [12, 20], 60, 1, { ombro: 1 }, { stretch: true, fam: "lateral", ratio: 1, inc: 1.25 }),
+  X("Front_Dumbbell_Raise", "Elevação frontal com halteres", "ombro", ["halteres"], "livre", [10, 15], 60, 1, { ombro: 1 }, { inc: 1, planOff: true }),
+  X("Front_Cable_Raise", "Elevação frontal na polia", "ombro", ["polia"], "cabo", [10, 15], 60, 1, { ombro: 1 }, { inc: 1.25, planOff: true }),
+  X("Upright_Barbell_Row", "Remada alta com barra", "ombro", ["barra"], "livre", [8, 12], 90, 2, { ombro: 3, punho: 2 }, { planOff: true }),
+
+  X("Cable_Rear_Delt_Fly", "Crucifixo inverso na polia (cabos cruzados)", "post", ["polia"], "cabo", [12, 20], 60, 1, {}, { inc: 1.25 }),
+  X("Bent_Over_Dumbbell_Rear_Delt_Raise_With_Head_On_Bench", "Crucifixo inverso apoiado no banco", "post", ["halteres", "banco"], "livre", [12, 20], 60, 1, {}, { inc: 1 }),
+  X("Cable_Rope_Rear-Delt_Rows", "Remada para ombro posterior na corda", "post", ["polia"], "cabo", [12, 20], 60, 1, { ombro: 1 }, { inc: 1.25 }),
+
+  X("Dumbbell_Bicep_Curl", "Rosca direta com halteres", "biceps", ["halteres"], "livre", [8, 12], 75, 1, { cotovelo: 1 }, { fam: "curl", ratio: 0.4, inc: 1 }),
+  X("Cable_Preacher_Curl", "Rosca Scott na polia", "biceps", ["polia", "scott"], "cabo", [10, 15], 60, 1, { cotovelo: 2 }, { fam: "curl", ratio: 0.7 }),
+  X("Machine_Preacher_Curls", "Rosca Scott na máquina", "biceps", ["roscamaq"], "maquina", [10, 15], 60, 1, { cotovelo: 1 }, { fam: "curl", ratio: 0.9, inc: 5 }),
+  X("Standing_Biceps_Cable_Curl", "Rosca direta na polia baixa", "biceps", ["polia"], "cabo", [10, 15], 60, 1, { cotovelo: 1 }, { fam: "curl", ratio: 0.6 }),
+  X("Cable_Hammer_Curls_-_Rope_Attachment", "Rosca martelo na polia com corda", "biceps", ["polia"], "cabo", [10, 15], 60, 1, {}, { fam: "curl", ratio: 0.5 }),
+  X("Spider_Curl", "Rosca spider", "biceps", ["ez", "banco"], "livre", [10, 15], 60, 1, { cotovelo: 1 }, { fam: "curl", ratio: 0.7 }),
+  X("Concentration_Curls", "Rosca concentrada", "biceps", ["halteres", "banco"], "livre", [10, 15], 60, 1, { cotovelo: 1 }, { fam: "curl", ratio: 0.4, inc: 1 }),
+  X("Zottman_Curl", "Rosca Zottman", "biceps", ["halteres"], "livre", [10, 12], 60, 1, { punho: 1, cotovelo: 1 }, { inc: 1, planOff: true }),
+  X("Reverse_Barbell_Curl", "Rosca inversa com barra W", "biceps", ["ez"], "livre", [10, 15], 60, 1, { punho: 2, cotovelo: 1 }, { planOff: true }),
+
+  X("Triceps_Pushdown_-_Rope_Attachment", "Tríceps corda na polia", "triceps", ["polia"], "cabo", [10, 15], 60, 1, { cotovelo: 1 }, { fam: "ext", ratio: 0.9 }),
+  X("Standing_Dumbbell_Triceps_Extension", "Tríceps francês com halter", "triceps", ["halteres"], "livre", [10, 15], 75, 1, { cotovelo: 2, ombro: 1 }, { stretch: true, fam: "ext", ratio: 0.4, inc: 1 }),
+  X("Standing_Overhead_Barbell_Triceps_Extension", "Tríceps francês com barra W em pé", "triceps", ["ez"], "livre", [8, 12], 75, 1, { cotovelo: 2, ombro: 1, lombar: 1 }, { stretch: true, fam: "ext", ratio: 0.7 }),
+  X("Lying_Dumbbell_Tricep_Extension", "Tríceps testa com halteres", "triceps", ["halteres", "banco"], "livre", [8, 12], 90, 1, { cotovelo: 2 }, { stretch: true, fam: "ext", ratio: 0.35, inc: 1 }),
+  X("Reverse_Grip_Triceps_Pushdown", "Tríceps pulley com pegada supinada", "triceps", ["polia"], "cabo", [10, 15], 60, 1, { cotovelo: 1, punho: 1 }, { fam: "ext", ratio: 0.7 }),
+  X("Cable_One_Arm_Tricep_Extension", "Tríceps unilateral na polia", "triceps", ["polia"], "cabo", [10, 15], 60, 1, { cotovelo: 1 }, { inc: 1.25 }),
+  X("Tricep_Dumbbell_Kickback", "Tríceps coice com halter", "triceps", ["halteres"], "livre", [12, 15], 60, 1, {}, { inc: 1 }),
+  X("Bench_Dips", "Mergulho no banco", "triceps", ["banco"], "corpo", [8, 15], 90, 2, { ombro: 3, punho: 2, cotovelo: 1 }, { inc: 0 }),
+
+  X("Close-Grip_Front_Lat_Pulldown", "Puxada fechada com triângulo", "costas", ["puxador"], "cabo", [8, 12], 120, 2, { cotovelo: 1 }, { stretch: true, fam: "pull_v", ratio: 1, inc: 5 }),
+  X("Underhand_Cable_Pulldowns", "Puxada supinada", "costas", ["puxador"], "cabo", [8, 12], 120, 2, { cotovelo: 2 }, { fam: "pull_v", ratio: 0.95, inc: 5 }),
+  X("One_Arm_Lat_Pulldown", "Puxada unilateral na polia", "costas", ["polia"], "cabo", [10, 12], 90, 1, { ombro: 1 }, { stretch: true, fam: "pull_v", ratio: 0.55, inc: 2.5 }),
+  X("Chin-Up", "Barra fixa supinada", "costas", ["barrafixa"], "corpo", [5, 10], 120, 2, { ombro: 2, cotovelo: 2 }, { inc: 0 }),
+  X("T-Bar_Row_with_Handle", "Remada cavalinho (T-bar)", "costas", ["cavalinho"], "maquina", [8, 12], 120, 2, { lombar: 2 }, { fam: "row", ratio: 0.9, inc: 5 }),
+  X("Seated_One-arm_Cable_Pulley_Rows", "Remada baixa unilateral", "costas", ["remada"], "cabo", [10, 12], 90, 1, {}, { fam: "row", ratio: 0.5, inc: 2.5 }),
+  X("Bent_Over_Two-Dumbbell_Row", "Remada curvada com halteres", "costas", ["halteres"], "livre", [8, 12], 90, 2, { lombar: 2 }, { fam: "row", ratio: 0.4, inc: 2 }),
+  X("Inverted_Row", "Remada invertida (barra baixa no Smith)", "costas", ["smith"], "corpo", [8, 15], 90, 1, { ombro: 1 }, { inc: 0 }),
+  X("Bent-Arm_Dumbbell_Pullover", "Pullover com halter", "costas", ["halteres", "banco"], "livre", [10, 15], 75, 1, { ombro: 2 }, { stretch: true, inc: 2 }),
+  X("Barbell_Shrug", "Encolhimento com barra", "costas", ["barra"], "livre", [10, 15], 60, 1, {}, { inc: 5, planOff: true }),
+  X("Hyperextensions_Back_Extensions", "Extensão lombar no banco romano", "costas", ["hiper"], "corpo", [10, 15], 60, 1, { lombar: 2 }, { inc: 0, planOff: true }),
+
+  X("Barbell_Incline_Bench_Press_-_Medium_Grip", "Supino inclinado com barra", "peito", ["barra", "banco", "rack"], "livre", [6, 10], 150, 3, { ombro: 3, punho: 1 }, { fam: "press_h", ratio: 0.85 }),
+  X("Leverage_Incline_Chest_Press", "Supino inclinado na máquina", "peito", ["supmaq"], "maquina", [8, 12], 90, 1, { ombro: 1 }, { fam: "press_h", ratio: 0.8, inc: 5 }),
+  X("Dumbbell_Flyes", "Crucifixo reto com halteres", "peito", ["halteres", "banco"], "livre", [10, 15], 75, 1, { ombro: 2 }, { stretch: true, inc: 1 }),
+  X("Incline_Dumbbell_Flyes", "Crucifixo inclinado com halteres", "peito", ["halteres", "banco"], "livre", [10, 15], 75, 1, { ombro: 2 }, { stretch: true, inc: 1 }),
+  X("Low_Cable_Crossover", "Crossover na polia baixa", "peito", ["polia"], "cabo", [12, 15], 75, 1, { ombro: 1 }, {}),
+  X("Smith_Machine_Incline_Bench_Press", "Supino inclinado no Smith", "peito", ["smith", "banco"], "maquina", [8, 12], 120, 2, { ombro: 2, punho: 1 }, { fam: "press_h", ratio: 0.8, inc: 5 }),
+
+  X("Front_Barbell_Squat", "Agachamento frontal com barra", "quad", ["rack", "barra"], "livre", [6, 10], 180, 3, { joelho: 2, punho: 2, lombar: 2 }, { stretch: true, fam: "squat", ratio: 0.75 }),
+  X("Split_Squat_with_Dumbbells", "Afundo estático com halteres", "quad", ["halteres"], "livre", [8, 12], 90, 2, { joelho: 2 }, { inc: 2 }),
+  X("Dumbbell_Step_Ups", "Subida no banco (step-up) com halteres", "quad", ["halteres", "banco"], "livre", [8, 12], 90, 2, { joelho: 2 }, { inc: 2 }),
+  X("Thigh_Adductor", "Cadeira adutora", "quad", ["adutora"], "maquina", [12, 20], 60, 1, { quadril: 1 }, { inc: 5 }),
+  X("Barbell_Deadlift", "Levantamento terra", "isquio", ["barra"], "livre", [5, 8], 180, 3, { lombar: 3, quadril: 2 }, { fam: "hinge", ratio: 1.25, planOff: true }),
+  X("Pull_Through", "Pull through na polia", "gluteo", ["polia"], "cabo", [10, 15], 75, 1, { lombar: 1 }, { inc: 2.5 }),
+  X("Barbell_Glute_Bridge", "Ponte de glúteo com barra", "gluteo", ["barra"], "livre", [8, 12], 90, 2, { quadril: 1, lombar: 1 }, { inc: 5 }),
+  X("One-Legged_Cable_Kickback", "Coice de glúteo na polia", "gluteo", ["polia"], "cabo", [10, 15], 60, 1, {}, { inc: 1.25 }),
+  X("Thigh_Abductor", "Cadeira abdutora", "gluteo", ["abdutora"], "maquina", [12, 20], 60, 1, { quadril: 1 }, { inc: 5 }),
+  X("Donkey_Calf_Raises", "Panturrilha burrinho", "pant", ["pant"], "maquina", [12, 20], 60, 1, {}, { stretch: true, inc: 5 }),
+
+  X("Crunches", "Abdominal supra (crunch)", "core", [], "corpo", [12, 20], 45, 1, { lombar: 1 }, { inc: 0 }),
+  X("Reverse_Crunch", "Abdominal infra (elevação de quadril)", "core", [], "corpo", [10, 15], 45, 1, { lombar: 1 }, { inc: 0 }),
+  X("Ab_Crunch_Machine", "Abdominal na máquina", "core", ["abdmaq"], "maquina", [10, 15], 60, 1, {}, { inc: 5 }),
+  X("Ab_Roller", "Roda abdominal", "core", ["roda"], "corpo", [8, 12], 60, 2, { lombar: 2, ombro: 1 }, { inc: 0 }),
 ];
+/** Catálogo completo: dados do exercício + texto didático e músculos (catalog-info.ts). Imagens 0 (início) e 1 (fim). */
+export const EXERCISES: Exercise[] = RAW.map((e) => ({ ...e, ...INFO[e.id] }));
 export const EXERCISE_BY_ID: Record<string, Exercise> = Object.fromEntries(EXERCISES.map((e) => [e.id, e]));
 
 // ---------- cardio ----------
@@ -215,14 +292,14 @@ export interface Cardio {
   met: Record<Intensity, number>;
   howTo?: string[]; tips?: string[]; mistakes?: string[];
   subMuscles?: SubMuscleId[]; secondary?: SubMuscleId[]; aliases?: string[];
-  /** vazio até o script de imagens rodar */
+  /** imagens do free-exercise-db (início e fim), geradas por scripts/catalogo-imagens.mjs */
   images: ImageIdx[];
   /** ID do free-exercise-db de onde vêm as imagens (padrão: o próprio id). */
   src?: string;
 }
 const K = (id: string, nm: string, eq: string[], units: CardioUnit[], met: [number, number, number], extra: Partial<Cardio> = {}): Cardio =>
-  ({ id, nm, type: "cardio", eq, metUnit: "min", units, met: { zona2: met[0], moderado: met[1], intervalado: met[2] }, images: [], ...extra });
-export const CARDIO: Cardio[] = [
+  ({ id, nm, type: "cardio", eq, metUnit: "min", units, met: { zona2: met[0], moderado: met[1], intervalado: met[2] }, images: [0, 1], ...extra });
+const CARDIO_RAW: Cardio[] = [
   K("Running_Treadmill", "Esteira · corrida", [], ["min", "km", "kcal"], [8, 9.8, 11.5]),
   K("Walking_Treadmill", "Esteira · caminhada inclinada", [], ["min", "km", "kcal"], [4.5, 6, 7]),
   K("Bicycling_Stationary", "Bicicleta ergométrica", [], ["min", "km", "kcal"], [5.5, 7, 10]),
@@ -234,6 +311,7 @@ export const CARDIO: Cardio[] = [
   K("Rope_Jumping", "Pular corda", [], ["min", "kcal"], [8.8, 11, 12.3]),
   K("HIIT", "HIIT (intervalado)", [], ["min", "kcal"], [6, 8, 10], { metUnit: "min", src: "Battling_Ropes" }),
 ];
+export const CARDIO: Cardio[] = CARDIO_RAW.map((c) => ({ ...c, ...CARDIO_INFO[c.id] }));
 export const CARDIO_BY_ID: Record<string, Cardio> = Object.fromEntries(CARDIO.map((c) => [c.id, c]));
 /** kcal estimada (MET × kg × horas). Ordem de grandeza, não medida. */
 export const cardioKcal = (c: Cardio, intensity: Intensity, kg: number, minutes: number) =>

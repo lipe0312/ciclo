@@ -1,7 +1,7 @@
 // Repositório: todo SQL fica aqui (ou nas rotas), sempre com parâmetros (bind) e SEMPRE filtrado por user_id.
 // O uid vem da autenticação (auth.ts), nunca do corpo da requisição.
-import { MAX_SESSION_MS, MUSCLE_IDS, PAIN_REGIONS, mondayOf, sessionSummary, weekDates, weeklyTargets } from "@ciclo/core";
-import { int, oneOf, str } from "./http.ts";
+import { DEFAULT_PROFILE, MAX_SESSION_MS, MUSCLE_IDS, PAIN_REGIONS, applyProfilePatch, mondayOf, normalizeProfile, planFingerprint, sessionSummary, weekDates, weeklyTargets } from "@ciclo/core";
+import { HttpError, int, oneOf, str } from "./http.ts";
 import type { DayInput, Group, Mode, MuscleId, Pain, SetLog } from "@ciclo/core";
 import type { Env } from "./env.ts";
 
@@ -17,14 +17,37 @@ const DEFAULTS: Profile = { level: 1, priorities: [], minutes: 60, daysTarget: 4
 /** Perfil salvo da conta ou null (conta nova, antes dos Primeiros passos). */
 export async function getProfile(env: Env, uid: string): Promise<Profile | null> {
   const r = await env.DB.prepare("SELECT data FROM profile WHERE user_id = ?1").bind(uid).first<{ data: string }>();
-  return r ? { ...DEFAULTS, ...parse<Partial<Profile>>(r.data, {}) } : null;
+  return r ? { ...DEFAULTS, ...(normalizeProfile(parse<unknown>(r.data, {})) as Partial<Profile>) } : null;
 }
-export async function putProfile(env: Env, uid: string, data: unknown) {
+/** Grava o perfil e a versão no histórico; devolve o número da versão (contado no mesmo batch, atômico). */
+export async function putProfile(env: Env, uid: string, data: unknown): Promise<number> {
   const s = JSON.stringify(data), now = Date.now();
-  await env.DB.batch([
+  const r = await env.DB.batch([
     env.DB.prepare("INSERT INTO profile (user_id, data, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(user_id) DO UPDATE SET data = ?2, updated_at = ?3").bind(uid, s, now),
     env.DB.prepare("INSERT INTO profile_history (user_id, data, created_at) VALUES (?1, ?2, ?3)").bind(uid, s, now),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM profile_history WHERE user_id = ?1").bind(uid),
   ]);
+  return (r[2].results as { n: number }[])[0]?.n ?? 1;
+}
+
+/** Perfil bruto da conta (sem preencher padrões) ou null. */
+async function rawProfile(env: Env, uid: string): Promise<Record<string, unknown> | null> {
+  const r = await env.DB.prepare("SELECT data FROM profile WHERE user_id = ?1").bind(uid).first<{ data: string }>();
+  return r ? normalizeProfile(parse<unknown>(r.data, {})) : null;
+}
+/** Valida e grava. `replace`: o corpo é o perfil inteiro (app); senão é parcial e mescla no que já existe (Claude). Erro de validação → 400 com a lista. */
+export async function saveProfile(env: Env, uid: string, input: unknown, mode: "replace" | "merge", extra: Record<string, unknown> = {}) {
+  const base = mode === "merge" ? { ...DEFAULT_PROFILE, ...((await rawProfile(env, uid)) ?? {}) } : DEFAULT_PROFILE;
+  const r = applyProfilePatch(base, input);
+  if (!r.ok) throw new HttpError(400, r.errors.join("; "));
+  const data = { ...r.profile, ...extra };
+  const versao = await putProfile(env, uid, data);
+  return { data, versao };
+}
+/** Impressão do perfil vigente quando o treino foi gerado (a última versão gravada até `at`). Sem histórico → null (não alarma). */
+export async function planProfileFingerprint(env: Env, uid: string, at: number): Promise<string | null> {
+  const r = await env.DB.prepare("SELECT data FROM profile_history WHERE user_id = ?1 AND created_at <= ?2 ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid, at).first<{ data: string }>();
+  return r ? planFingerprint(normalizeProfile(parse<unknown>(r.data, {}))) : null;
 }
 
 export async function listGyms(env: Env, uid: string) {
@@ -180,12 +203,12 @@ export async function hitRateLimit(env: Env, uid: string, bucket: RateBucket, no
 
 // ---- direitos da conta (LGPD) ----
 /** Tabelas de dado pessoal (todas têm user_id). Ordem de apagar: filhas antes das mães. */
-export const USER_TABLES = ["set_log", "exercise_skip", "media", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer"] as const;
+export const USER_TABLES = ["set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer"] as const;
 
 /** Tudo da conta em JSON (mídia: só metadados; tokens: sem hash). */
 export async function exportAccount(env: Env, uid: string) {
   const q = (sql: string) => env.DB.prepare(sql).bind(uid);
-  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "mcp_token", "cardio_log"] as const;
+  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "mcp_token", "week_plan", "day_override", "cardio_log"] as const;
   const res = await env.DB.batch([
     q("SELECT id, email, created_at, last_seen_at, onboarding_done_at FROM user WHERE id = ?1"),
     q("SELECT data, updated_at FROM profile WHERE user_id = ?1"),
@@ -204,6 +227,8 @@ export async function exportAccount(env: Env, uid: string) {
     q("SELECT date, arm_cm, waist_cm, shoulder_cm, updated_at FROM measurement WHERE user_id = ?1 ORDER BY date"),
     q("SELECT id, kind, mime, bytes, equipment_id, exercise_id, gym_id, note, setup, created_at FROM media WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT id, label, created_at, last_used_at, revoked_at FROM mcp_token WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT week_start, version, plan_json, source, created_at FROM week_plan WHERE user_id = ?1 ORDER BY week_start, version"),
+    q("SELECT date, kind, opts, updated_at FROM day_override WHERE user_id = ?1 ORDER BY date"),
     q("SELECT id, date, type, minutes, intensity, distance_km, created_at FROM cardio_log WHERE user_id = ?1 ORDER BY date, created_at"),
   ]);
   const out: Record<string, unknown> = { formato: "ciclo-export-1", exportadoEm: new Date().toISOString() };

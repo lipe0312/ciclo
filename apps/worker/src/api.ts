@@ -4,9 +4,10 @@ import { CARDIO_BY_ID, EXERCISE_BY_ID, INTENSITIES, MUSCLE_IDS, PROMPTS, applyMa
 import type { DayPlan, Intensity, ManualEdit, Mode, MuscleId, Tier } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, id, int, json, num, oneOf, readJson, str } from "./http.ts";
-import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, deleteAccount, exerciseHistory, exportAccount, getProfile, hitRateLimit, listGyms, mediaPrefix, parse, putProfile, summarizeSession, upsertPain, weekState } from "./db.ts";
+import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, deleteAccount, exerciseHistory, exportAccount, getProfile, hitRateLimit, listGyms, mediaPrefix, parse, planProfileFingerprint, saveProfile, summarizeSession, upsertPain, weekState } from "./db.ts";
 import { pushEnabled, validEndpoint } from "./push.ts";
 import { newMcpToken } from "./auth.ts";
+import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
 
 type Handler = (req: Request, env: Env, p: Record<string, string>, u: AuthUser) => Promise<Response>;
 const routes: { method: string; path: string; re: RegExp; h: Handler }[] = [];
@@ -29,7 +30,7 @@ on("GET", "/api/state", async (req, env, _p, u) => {
   await closeStaleSessions(env, u.id);
   const [profile, gyms, week, dayPlan, hist, media, meas] = await Promise.all([
     getProfile(env, u.id), listGyms(env, u.id), weekState(env, u.id, today),
-    env.DB.prepare("SELECT plan, source, gym_id FROM day_plan WHERE user_id = ?2 AND date = ?1").bind(today, u.id).first<{ plan: string; source: string; gym_id: string }>(),
+    env.DB.prepare("SELECT plan, source, gym_id, created_at FROM day_plan WHERE user_id = ?2 AND date = ?1").bind(today, u.id).first<{ plan: string; source: string; gym_id: string; created_at: number }>(),
     // última sessão de cada exercício (para a dupla progressão sugerir a carga)
     env.DB.prepare(`SELECT l.exercise_id, l.kg, l.reps FROM set_log l
       WHERE l.user_id = ?1 AND l.session_id = (SELECT s2.session_id FROM set_log s2 WHERE s2.user_id = ?1 AND s2.exercise_id = l.exercise_id ORDER BY s2.created_at DESC LIMIT 1)
@@ -39,11 +40,13 @@ on("GET", "/api/state", async (req, env, _p, u) => {
   ]);
   const history: Record<string, { kg: number; reps: number }[]> = {};
   for (const r of hist.results) (history[r.exercise_id] ??= []).push({ kg: r.kg, reps: r.reps });
+  // Treino desatualizado: impressão do perfil na hora em que o treino foi gerado (o app compara com o perfil de hoje).
+  const profileFp = dayPlan ? await planProfileFingerprint(env, u.id, dayPlan.created_at) : null;
   return json({
     account: account(u), onboarding: onboarding(u),
     profile: profile ?? {}, gyms, week, history, media: media.results, measures: meas.results.reverse(),
     features: { ai: !!env.AI, media: !!env.MEDIA },
-    dayPlan: dayPlan ? { ...dayPlan, plan: JSON.parse(dayPlan.plan) } : null, version: env.APP_VERSION,
+    dayPlan: dayPlan ? { ...dayPlan, plan: JSON.parse(dayPlan.plan), profileFp } : null, version: env.APP_VERSION,
   });
 });
 
@@ -97,12 +100,11 @@ on("PUT", "/api/measurements/:date", async (req, env, p, u) => {
   return json({ ok: true });
 });
 
+// O app manda o perfil inteiro; a mesma validação do core vale para o Claude (ciclo_salvar_perfil).
 on("PUT", "/api/profile", async (req, env, _p, u) => {
   const b = await readJson<{ data: Record<string, unknown> }>(req, 32 * 1024);
   if (!b.data || typeof b.data !== "object" || Array.isArray(b.data)) throw new HttpError(400, "data inválido");
-  const pr = b.data.priorities;
-  if (!Array.isArray(pr) || pr.length > 3 || !pr.every((m) => MUSCLE_IDS.includes(m as MuscleId))) throw new HttpError(400, "priorities: até 3 músculos válidos");
-  await putProfile(env, u.id, b.data);
+  await saveProfile(env, u.id, b.data, "replace");
   return json({ ok: true });
 });
 
@@ -177,6 +179,12 @@ on("POST", "/api/plan-edits", async (req, env, _p, u) => {
   ]);
   return json({ ok: true, plan: r.plan, issues: r.issues });
 });
+
+// ---- semana completa planejada (#24) ----
+on("GET", "/api/week", async (req, env, _p, u) => json(await getWeek(env, u.id, date(new URL(req.url).searchParams.get("date")))));
+on("PUT", "/api/week", async (req, env, _p, u) => json(await restore(env, u.id, await readJson(req, 2 * 1024))));
+on("POST", "/api/week/regenerate", async (req, env, _p, u) => json(await regenerate(env, u.id, await readJson(req, 2 * 1024))));
+on("POST", "/api/week/day/:date", async (req, env, p, u) => json(await dayAction(env, u.id, p.date, await readJson(req, 4 * 1024))));
 
 // Iniciou = foi. A presença é gravada no "Começar".
 on("POST", "/api/sessions", async (req, env, _p, u) => {
