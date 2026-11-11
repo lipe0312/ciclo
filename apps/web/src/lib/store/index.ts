@@ -11,20 +11,8 @@ export const today = SERVER ? realToday : addDays(C.mondayOf(realToday), 3); // 
 export const monday = C.mondayOf(today);
 export const dates = C.weekDates(monday);
 
-export const DEFAULT_PROFILE = {
-  sex: "m", age: 24, heightCm: 175, weightKg: 72, bodyType: "magro", fatWhere: ["barriga"] as string[], level: 1 as 0 | 1 | 2 | 3,
-  goal: { id: "bracos_ombros", statement: "Braços e ombros maiores mantendo a cintura", horizonWeeks: 12, metrics: { bracoCm: 1.5, cinturaCm: 0, pesoKg: 1.5, aderenciaPct: 80 } },
-  priorities: ["ombro", "biceps", "triceps"] as C.MuscleId[], remembered: [] as C.Remembered[], calibrate: true,
-  daysUsual: ["seg", "ter", "qui", "sex"], daysTarget: 4, minutes: 60, weekStart: "seg", flexWeek: true, hour: "noite",
-  prefs: {} as Record<string, any>, pinned: {} as Record<string, string>, avoid: [] as string[], dynamics: "tradicional", crowdedStrategy: "halteres",
-  mobility: { squat: true, overhead: true },
-  dayGym: { seg: "acad1", ter: "acad1", qua: "acad2", qui: "acad1", sex: "acad2", sab: "casa", dom: "casa" } as Record<string, string>,
-  diet: { mode: "leve", typical: "", restrictions: [] as string[], supplements: ["whey"], kcal: 2650, protein: 139 },
-  autonomy: "carga_sozinho", tone: "direto", reviewTime: "dom20",
-  tiers: { Hoje: "haiku", Treino: "sonnet", Corpo: "opus", Comida: "haiku", Plano: "opus" } as Record<string, string>,
-  /** prioridades por subdivisão (mapa de músculos); opcional */
-  subPriorities: [] as C.SubMuscleId[],
-};
+/** O perfil padrão e a validação vivem no core (o servidor usa a mesma regra). */
+export const DEFAULT_PROFILE = C.DEFAULT_PROFILE;
 export type Profile = typeof DEFAULT_PROFILE;
 export interface Gym { id: string; name: string; equipment: string[]; busyHours: string[] }
 export const DEFAULT_GYMS: Gym[] = [
@@ -45,7 +33,7 @@ export const S = {
     daysLeft: 1, minutes: 60, gymId: null as string | null, focus: [] as C.MuscleId[], crowded: false, mode: "normal" as C.Mode, format: "tradicional",
     swapsToday: {} as Record<string, string>, locked: false, planSource: undefined as string | undefined, minutesSet: false,
     ckDate: today, ckDraft: null as any, perfilSec: null as string | null, cat: "todos", gymTab: "acad1", bodyView: "frente", promptCat: "Hoje",
-    tierOverride: null as string | null, inboxDraft: "", foodDraft: "", editDraft: null as any, fb: null as any,
+    tierOverride: null as string | null, planFp: null as string | null, inboxDraft: "", foodDraft: "", editDraft: null as any, fb: null as any,
   },
 };
 export type State = typeof S;
@@ -70,14 +58,14 @@ export function saveLocal() {
 export function loadLocal() {
   const v = lsGet<Record<string, any> | null>(key(), null);
   if (!v) return false;
-  for (const k of Object.keys(v)) if (v[k] != null) (S as any)[k] = k === "ui" ? { ...S.ui, ...v.ui } : k === "profile" ? { ...DEFAULT_PROFILE, ...v.profile } : v[k];
+  for (const k of Object.keys(v)) if (v[k] != null) (S as any)[k] = k === "ui" ? { ...S.ui, ...v.ui } : k === "profile" ? { ...clone(DEFAULT_PROFILE), ...v.profile } : v[k];
   return true;
 }
 
 // ---------- servidor ----------
 export async function loadServer() {
   const st = await api("GET", `/api/state?date=${today}`);
-  S.profile = { ...DEFAULT_PROFILE, ...(st.profile ?? {}) };
+  S.profile = { ...clone(DEFAULT_PROFILE), ...(st.profile ?? {}) };
   S.gyms = st.gyms?.length ? st.gyms : S.gyms;
   S.features = st.features ?? S.features;
   S.account = st.account ?? null; S.onboarding = st.onboarding ?? null;
@@ -92,7 +80,7 @@ export async function loadServer() {
   S.history = st.history ?? {};
   S.media = Object.fromEntries((st.media ?? []).filter((m: any) => m.exercise_id).map((m: any) => [m.exercise_id, { kind: m.kind, note: m.note, url: `/api/media/${m.id}` }]));
   S.measures = st.measures ?? [];
-  if (st.dayPlan && !S.ui.locked) { S.plan = st.dayPlan.plan; S.ui.locked = st.dayPlan.source !== "core"; S.ui.planSource = st.dayPlan.source; }
+  if (st.dayPlan && !S.ui.locked) { S.plan = st.dayPlan.plan; S.ui.locked = st.dayPlan.source !== "core"; S.ui.planSource = st.dayPlan.source; S.ui.planFp = st.dayPlan.profileFp ?? null; }
   const open = S.week.sessions.find((s: any) => s.date === today && !s.finished_at);
   if (open && (!S.session || S.session.id !== open.id)) S.session = { id: open.id, date: today, startedAt: open.started_at, plan: S.plan, logs: {}, skipped: {}, rest: null };
 }

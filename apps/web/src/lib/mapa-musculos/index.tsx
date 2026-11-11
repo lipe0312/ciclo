@@ -48,6 +48,20 @@ export interface MapaProps {
 }
 const MIRROR = "matrix(-1 0 0 1 200 0)";
 
+/** Caixa do desenho (os caminhos usam só coordenadas absolutas M/L/C/Z). */
+function bbox(ds: string[]) {
+  const n = ds.join(" ").match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+  const xs = n.filter((_, i) => i % 2 === 0), ys = n.filter((_, i) => i % 2 === 1);
+  return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+}
+/** Área de toque invisível: só cresce o lado que ficaria menor que ~44 px na tela (o desenho não muda). */
+function hitRects(ds: string[], min: number) {
+  const b = bbox(ds), w = b.x1 - b.x0, h = b.y1 - b.y0;
+  if (w >= min && h >= min) return null;
+  const W = Math.max(w, min), H = Math.max(h, min), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+  return { x: cx - W / 2, y: cy - H / 2, width: W, height: H };
+}
+
 function Corpo({ vista, p }: { vista: Vista; p: MapaProps }) {
   const shapes = vista === "frente" ? FRENTE : COSTAS;
   const cls = (id: SubMuscleId) => p.primary?.includes(id) ? "pri" : p.secondary?.includes(id) ? "sec" : p.selected?.includes(id) ? "sel" : "";
@@ -62,6 +76,10 @@ function Corpo({ vista, p }: { vista: Vista; p: MapaProps }) {
         <title>{nm}</title>{ds.map((d, i) => <g key={i}><path d={d} /><path d={d} transform={MIRROR} /></g>)}
       </g>;
     })}
+    {p.onToggle && <g class="hit" aria-hidden="true">{(Object.entries(shapes) as [SubMuscleId, string[]][]).map(([id, ds]) => {
+      const r = hitRects(ds, p.size === "sm" ? 60 : 54); if (!r) return null;
+      return <g key={id}><rect {...r} onClick={() => p.onToggle!(id)} /><rect {...r} transform={MIRROR} onClick={() => p.onToggle!(id)} /></g>;
+    })}</g>}
     <text x="100" y="408" class="lbl">{vista === "frente" ? "Frente" : "Costas"}</text>
   </svg>;
 }

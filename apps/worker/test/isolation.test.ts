@@ -89,7 +89,7 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["ciclo_salvar_treino_do_dia", { date: D, itens: [{ id: "x_inexistente", sets: 2 }], motivo: "t" }],
     ["ciclo_responder_pedido", { id: B.inbox, resposta: "oi" }, true], ["ciclo_marcar_presenca", { date: D, status: "nao_fui" }],
     ["ciclo_registrar_dor", { region: "ombro_e", intensity: 1 }], ["ciclo_registrar_comida", { texto: "pão", date: D }],
-    ["ciclo_revisar_edicoes", {}], ["ciclo_concluir_revisao", { id: B.edit, review: "ok" }, true],
+    ["ciclo_salvar_perfil", { perfil: { minutes: 45 } }], ["ciclo_revisar_edicoes", {}], ["ciclo_concluir_revisao", { id: B.edit, review: "ok" }, true],
   ];
   assert.deepEqual(cases.map((c) => c[0]).concat("DELETE /api/account").sort(), routeSignatures().sort(), "toda rota precisa de caso de isolamento");
   assert.deepEqual(tools.map((t) => t[0]).sort(), [...toolNames].sort(), "toda ferramenta MCP precisa de caso");

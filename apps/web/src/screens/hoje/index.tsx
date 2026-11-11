@@ -115,7 +115,7 @@ function TreinoCard({ plan }: { plan: C.DayPlan }) {
     <ul class="small" style="margin:12px 0 0;padding-left:18px;color:#D4D4D8;display:grid;gap:4px">{plan.why.map((w, i) => <li key={i}>{w}</li>)}</ul>
     <div class="chips" style="margin-top:12px">{Object.entries(plan.perMuscle).map(([m, n]) => <span key={m} class="badge" style="background:#26262B;color:#F4F4F5">{mName(m)} <b class="num">{n}</b></span>)}
       {plan.prehab.length > 0 && <span class="badge" style="background:#26262B;color:#C6F432">+ fortalecimento</span>}</div>
-    {S.ui.locked && <p class="tiny" style="margin-top:10px;color:#A1A1AA">{S.ui.planSource === "claude" ? "Montado pelo Claude" : S.ui.planSource === "semana" ? "Da sua semana planejada" : "Editado por você · o Claude revisa"} · mudar os controles <button type="button" class="btn sm ghost" style="color:#C6F432" onClick={() => { S.ui.locked = false; computePlan(true); commit(); }}>refaz o treino</button></p>}
+    {S.ui.locked && <p class="tiny" style="margin-top:10px;color:#A1A1AA">{S.ui.planSource === "claude" ? "Montado pelo Claude" : S.ui.planSource === "semana" ? "Da sua semana planejada" : S.ui.planSource === "perfil" ? "Feito antes de você mudar o perfil" : "Editado por você · o Claude revisa"} · mudar os controles <button type="button" class="btn sm ghost" style="color:#C6F432" onClick={() => { S.ui.planSource = undefined; S.ui.locked = false; computePlan(true); commit(); }}>refaz o treino</button></p>}
   </div>;
 }
 
