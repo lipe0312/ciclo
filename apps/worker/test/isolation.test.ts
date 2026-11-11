@@ -29,6 +29,8 @@ async function seed(env: any, user: string, tag: string) {
   const inbox = (await ok(c("POST", "/api/inbox", { text: `${tag} pedido` }))).data.id;
   await ok(c("POST", "/api/food", { date: D, text: `${tag} comida` }));
   const media = (await ok(call(env, "POST", `/api/media?note=${tag}`, { user, raw: PNG, ct: "image/png" }))).data.id;
+  await ok(c("GET", `/api/week?date=${D}`));
+  await ok(c("POST", "/api/week/day/2026-11-07", { action: "gerar", today: D, opts: { focus: ["ombro"] } }));
   const tok = (await ok(c("POST", "/api/account/tokens", { label: `${tag} token` }))).data;
   const exp = (await c("GET", "/api/account/export")).data;
   return { pain, inbox, media, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
@@ -64,6 +66,10 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["POST /api/plan-day", () => a("POST", "/api/plan-day", { date: D, daysLeft: 2, gymId: "acad1" })],
     ["PUT /api/day-plan/:date", () => a("PUT", `/api/day-plan/${D}`, { plan: { items: [] } })],
     ["POST /api/plan-edits", () => a("POST", "/api/plan-edits", { date: D, edit: { index: 0, sets: 3 } }), 422],
+    ["GET /api/week", () => a("GET", `/api/week?date=${D}`)],
+    ["PUT /api/week", () => a("PUT", "/api/week", { date: D, version: 1 })],
+    ["POST /api/week/regenerate", () => a("POST", "/api/week/regenerate", { date: D, apply: true, reset: true })],
+    ["POST /api/week/day/:date", () => a("POST", "/api/week/day/2026-11-08", { action: "folga", today: D })],
     ["POST /api/sessions/:id/sets", () => a("POST", `/api/sessions/${SID}/sets`, { exerciseId: "x", muscle: "ombro", setNo: 2, reps: 1 })],
     ["POST /api/sessions/:id/skip", () => a("POST", `/api/sessions/${SID}/skip`, { exerciseId: "x", reason: "dor" })],
     ["POST /api/sessions/:id/finish", () => a("POST", `/api/sessions/${SID}/finish`, { feedback: {} })],

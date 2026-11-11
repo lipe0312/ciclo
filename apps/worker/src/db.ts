@@ -130,12 +130,12 @@ export async function hitRateLimit(env: Env, uid: string, bucket: RateBucket, no
 
 // ---- direitos da conta (LGPD) ----
 /** Tabelas de dado pessoal (todas têm user_id). Ordem de apagar: filhas antes das mães. */
-export const USER_TABLES = ["set_log", "exercise_skip", "media", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym", "profile_history", "profile", "mcp_token", "rate_limit"] as const;
+export const USER_TABLES = ["set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym", "profile_history", "profile", "mcp_token", "rate_limit"] as const;
 
 /** Tudo da conta em JSON (mídia: só metadados; tokens: sem hash). */
 export async function exportAccount(env: Env, uid: string) {
   const q = (sql: string) => env.DB.prepare(sql).bind(uid);
-  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "mcp_token"] as const;
+  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "mcp_token", "week_plan", "day_override"] as const;
   const res = await env.DB.batch([
     q("SELECT id, email, created_at, last_seen_at, onboarding_done_at FROM user WHERE id = ?1"),
     q("SELECT data, updated_at FROM profile WHERE user_id = ?1"),
@@ -154,6 +154,8 @@ export async function exportAccount(env: Env, uid: string) {
     q("SELECT date, arm_cm, waist_cm, shoulder_cm, updated_at FROM measurement WHERE user_id = ?1 ORDER BY date"),
     q("SELECT id, kind, mime, bytes, equipment_id, exercise_id, gym_id, note, setup, created_at FROM media WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT id, label, created_at, last_used_at, revoked_at FROM mcp_token WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT week_start, version, plan_json, source, created_at FROM week_plan WHERE user_id = ?1 ORDER BY week_start, version"),
+    q("SELECT date, kind, opts, updated_at FROM day_override WHERE user_id = ?1 ORDER BY date"),
   ]);
   const out: Record<string, unknown> = { formato: "ciclo-export-1", exportadoEm: new Date().toISOString() };
   names.forEach((n, i) => { out[n] = n === "user" || n === "profile" ? res[i].results[0] ?? null : res[i].results; });
