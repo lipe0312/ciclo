@@ -169,6 +169,8 @@ function decideSplits(inp: WeekInput, days: WeekDay[], open: Set<string>) {
 
 /** Gera a semana: dias fechados mantêm o plano; os abertos são montados em ordem, cada um sabendo o que os anteriores fazem. */
 export function planWeek(inp: WeekInput): WeekPlan {
+  // 1ª abertura depois da segunda: os dias que já passaram recebem o plano "de segunda de manhã" (para ver e cobrar a falta)
+  if (!inp.prev && inp.today > inp.weekStart) inp = { ...inp, prev: planWeek({ ...inp, today: inp.weekStart, sets: {}, attendance: {}, prev: null }) };
   const base = new Set<string>(trainingDows(inp.profile.daysUsual, inp.profile.daysTarget));
   const days: WeekDay[] = weekDates(inp.weekStart).map((date, i) => {
     const dow = DOWS[i], ov = inp.overrides?.[date], fx = inp.fixed?.[date];

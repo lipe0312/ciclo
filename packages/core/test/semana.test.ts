@@ -90,6 +90,14 @@ test("falta na terça: aviso pendente; 'não fui' leva o inferior para quinta; '
   assert.equal(weekView(inp({ ...ctx, attendance: { [D[1]]: "fui" } }), fui).days[1].status, "feito");
 });
 
+test("abrir o app só na quarta: seg/ter ganham o plano de segunda e viram falta pendente (com nome)", () => {
+  const i = inp({ today: D[2] });
+  const v = weekView(i, planWeek(i));
+  assert.deepEqual(v.misses, [D[0], D[1]]);
+  assert.match(v.days[1].plan!.name, /Inferior/);
+  assert.equal(v.days[1].status, "pendente");
+});
+
 test("treino extra no sábado: respeita 48 h (nada de superior depois de sexta superior) e não dobra o volume", () => {
   const w0 = planWeek(inp());
   // seg sup ✓, ter inf ✓, qui faltou, sex fez superior
