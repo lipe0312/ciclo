@@ -171,9 +171,9 @@ test("VAPID: o JWT tem aud do serviço e assinatura ES256 válida", async () => 
 test("cron do descanso: avisa só a conta dona, uma vez, só com sessão aberta; 410 remove a assinatura", async () => {
   const v = await vapidEnv();
   const env = makeEnv({ VAPID_PUBLIC_KEY: v.VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY: v.VAPID_PRIVATE_KEY });
-  const calls: { url: string; auth: string }[] = []; let status = 201;
+  const calls: { url: string; auth: string; redirect?: string }[] = []; let status = 201;
   const real = globalThis.fetch;
-  globalThis.fetch = (async (url: string, init: RequestInit) => { calls.push({ url: String(url), auth: String((init.headers as Record<string, string>).Authorization) }); return new Response(null, { status }); }) as typeof fetch;
+  globalThis.fetch = (async (url: string, init: RequestInit) => { calls.push({ url: String(url), auth: String((init.headers as Record<string, string>).Authorization), redirect: init.redirect }); return new Response(null, { status }); }) as typeof fetch;
   try {
     const sub = (u: string, n: string) => call(env, "POST", "/api/push/subscribe", { user: u, body: { endpoint: `https://fcm.googleapis.com/fcm/send/${n}`, p256dh: "BPk_abc", auth: "xyz" } });
     await sub("ana", "ana-aparelho"); await sub("bia", "bia-aparelho");
@@ -185,6 +185,7 @@ test("cron do descanso: avisa só a conta dona, uma vez, só com sessão aberta;
     assert.equal(await sendDueRests(env, t0 + 65_000), 1);
     assert.deepEqual(calls.map((c) => c.url), ["https://fcm.googleapis.com/fcm/send/ana-aparelho"], "a conta B (sem descanso) não recebe nada");
     assert.match(calls[0].auth, /^vapid t=.+, k=/);
+    assert.equal(calls[0].redirect, "manual", "não segue redirecionamento do serviço de push");
     assert.equal(await sendDueRests(env, t0 + 125_000), 0, "não repete");
     // reagendar (+15) rearma; sessão encerrada não avisa
     await ok(call(env, "PUT", `/api/sessions/${U1}/rest`, { user: "ana", body: { seconds: 20 } }));
@@ -199,4 +200,71 @@ test("cron do descanso: avisa só a conta dona, uma vez, só com sessão aberta;
     const off = makeEnv(); const n0 = calls.length;
     assert.equal(await sendDueRests(off, Date.now()), 0); assert.equal(calls.length, n0);
   } finally { globalThis.fetch = real; }
+});
+
+test("isolamento do resumo e do descanso: A escolhe o MESMO id de sessão da B e tem o mesmo exercício; nada da B entra", async () => {
+  const env = makeEnv(), now = Date.now();
+  // B: histórico antigo do exercício (77.5 kg, já encerrado) + sessão aberta com séries e descanso agendado
+  await startSession(env, "bia", U1, now - 5 * 3600e3); await set(env, "bia", U1, 1, 77.5, 9); await set(env, "bia", U1, 2, 77.5, 8);
+  await ok(call(env, "POST", `/api/sessions/${U1}/finish`, { user: "bia", body: { feedback: {} } }));
+  await startSession(env, "bia", U2, now - 600e3); await set(env, "bia", U2, 1, 55, 6); await set(env, "bia", U2, 2, 55, 6);
+  await ok(call(env, "PUT", `/api/sessions/${U2}/rest`, { user: "bia", body: { seconds: 120 } }));
+  // A: sessão com o id da B (o id vem do aparelho), 1 série de 10 kg
+  await startSession(env, "ana", U2, now);
+  await set(env, "ana", U2, 1, 10, 10);
+  const got = (await ok(call(env, "GET", `/api/sessions/${U2}`, { user: "ana" }))).data;
+  assert.deepEqual(got.sets.map((x: any) => [x.kg, x.reps]), [[10, 10]], "séries só da A");
+  assert.equal(got.rest, null, "descanso da B não aparece na sessão da A");
+  assert.ok(!JSON.stringify(got).includes("77.5") && !JSON.stringify(got).includes('"kg":55'));
+  const fin = (await ok(call(env, "POST", `/api/sessions/${U2}/finish`, { user: "ana", body: { feedback: {} } }))).data.summary;
+  assert.equal(fin.sets, 1, "resumo conta só as séries da A");
+  assert.equal(fin.volume, 100);
+  assert.deepEqual(fin.prs, [], "sem histórico próprio não há recorde (o 77.5 da B não é referência)");
+  assert.equal(fin.perExercise.length, 1);
+  assert.equal(fin.perExercise[0].lastAvgKg, null, "'última vez' da A não vem da B");
+  assert.equal(fin.vs.pct, null);
+  // o resumo salvo e a lista da A também
+  const list = (await ok(call(env, "GET", "/api/sessions", { user: "ana" }))).data.sessions;
+  assert.equal(list.length, 1); assert.equal(list[0].volume, 100); assert.deepEqual(list[0].prs, []);
+  // a sessão da B segue aberta, com o descanso e as séries intactos
+  const b = (await ok(call(env, "GET", `/api/sessions/${U2}`, { user: "bia" }))).data;
+  assert.equal(b.finishedAt, null);
+  assert.deepEqual(b.sets.map((x: any) => x.kg), [55, 55]);
+  assert.ok(b.rest && b.rest.until > Date.now());
+});
+
+test("push: aparelho compartilhado troca de dono; limite de 5 é por conta e só conta o que é da conta", async () => {
+  const env = makeEnv();
+  const ep = (n: string) => `https://fcm.googleapis.com/fcm/send/${n}`;
+  const sub = (u: string, n: string) => call(env, "POST", "/api/push/subscribe", { user: u, body: { endpoint: ep(n), p256dh: "BPk_abc", auth: "xyz" } });
+  const owners = (n: string) => env.DB.raw.prepare("SELECT u.email FROM push_subscription p JOIN user u ON u.id = p.user_id WHERE p.endpoint = ?1").all(ep(n)).map((r: any) => r.email.split("@")[0]);
+  assert.equal((await sub("ana", "tel")).status, 201);
+  assert.deepEqual(owners("tel"), ["ana"]);
+  assert.equal((await sub("bia", "tel")).status, 201, "a Bia entrou no mesmo aparelho");
+  assert.deepEqual(owners("tel"), ["bia"], "o endpoint saiu da Ana: ela não recebe aviso no aparelho da Bia");
+  // a Bia lota (5 aparelhos); a Ana tem o "novo" e a Bia tenta pegá-lo como 6º: 409 e a Ana mantém
+  for (const n of ["b2", "b3", "b4", "b5"]) assert.equal((await sub("bia", n)).status, 201);
+  assert.equal((await sub("ana", "novo")).status, 201);
+  assert.equal((await sub("bia", "novo")).status, 409, "existir na conta de OUTRA pessoa não dá vaga");
+  assert.deepEqual(owners("novo"), ["ana"], "falhou, então não tirou da Ana");
+  assert.equal((await sub("bia", "tel")).status, 201, "reassinar o próprio aparelho com a conta lotada atualiza");
+  // o limite vale na concorrência: 8 pedidos simultâneos de uma conta nova entram no máximo 5
+  const rs = await Promise.all(Array.from({ length: 8 }, (_, i) => sub("caio", `c${i}`)));
+  assert.ok(rs.filter((r) => r.status === 201).length <= 5);
+  assert.ok(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM push_subscription p JOIN user u ON u.id = p.user_id WHERE u.email LIKE 'caio@%'").get().n <= 5);
+});
+
+test("migration 0005: CHECKs recusam dado fora do formato (cardio, descanso, assinatura)", async () => {
+  const env = makeEnv(); await call(env, "GET", "/api/account", { user: "ana" });
+  const uid = env.DB.raw.prepare("SELECT id FROM user").get().id;
+  const bad = (sql: string, ...a: unknown[]) => assert.throws(() => env.DB.raw.prepare(sql).run(...a), /CHECK constraint/, sql);
+  const cardio = "INSERT INTO cardio_log (user_id, id, date, type, minutes, intensity, distance_km, created_at) VALUES (?1, ?2, ?3, ?4, 10, 'zona2', NULL, 1)";
+  env.DB.raw.prepare(cardio).run(uid, "ok", "2026-11-05", "Running_Treadmill");
+  bad(cardio, uid, "d1", "05/11/2026", "Running_Treadmill");
+  bad(cardio, uid, "d2", "2026-11-5x", "Running_Treadmill");
+  bad(cardio, uid, "d3", "2026-11-05", "");
+  bad(cardio, uid, "d4", "2026-11-05", "x".repeat(61));
+  bad("INSERT INTO rest_timer (user_id, session_id, fire_at) VALUES (?1, 's', 0)", uid);
+  bad("INSERT INTO rest_timer (user_id, session_id, fire_at) VALUES (?1, 's', 9999999999999999)", uid);
+  bad("INSERT INTO push_subscription (user_id, endpoint, p256dh, auth, created_at) VALUES (?1, ?2, 'a', 'b', 1)", uid, "https://x/" + "a".repeat(800));
 });

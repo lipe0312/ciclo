@@ -309,13 +309,16 @@ on("POST", "/api/push/subscribe", async (req, env, _p, u) => {
   if (!validEndpoint(b.endpoint)) throw new HttpError(400, "endpoint de push não aceito");
   const p256dh = str(b.p256dh, "p256dh", 200)!, auth = str(b.auth, "auth", 100)!;
   if (!/^[A-Za-z0-9_-]+$/.test(p256dh) || !/^[A-Za-z0-9_-]+$/.test(auth)) throw new HttpError(400, "chaves inválidas");
-  const has = await env.DB.prepare("SELECT 1 AS x FROM push_subscription WHERE user_id = ?1 AND endpoint = ?2").bind(u.id, b.endpoint).first();
-  if (!has) {
-    const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE user_id = ?1").bind(u.id).first<{ n: number }>();
-    if ((n?.n ?? 0) >= 5) throw new HttpError(409, "até 5 aparelhos com aviso; remova um");
-  }
-  await env.DB.prepare("INSERT INTO push_subscription (user_id, endpoint, p256dh, auth, created_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(user_id, endpoint) DO UPDATE SET p256dh = ?3, auth = ?4")
+  // Limite de 5 aparelhos por conta, atômico: o INSERT só entra se o endpoint já é da conta (atualiza) ou se há vaga.
+  const ins = await env.DB.prepare(`INSERT INTO push_subscription (user_id, endpoint, p256dh, auth, created_at)
+    SELECT ?1, ?2, ?3, ?4, ?5
+    WHERE EXISTS (SELECT 1 FROM push_subscription WHERE user_id = ?1 AND endpoint = ?2)
+       OR (SELECT COUNT(*) FROM push_subscription WHERE user_id = ?1) < 5
+    ON CONFLICT(user_id, endpoint) DO UPDATE SET p256dh = ?3, auth = ?4`)
     .bind(u.id, b.endpoint, p256dh, auth, Date.now()).run();
+  if (!ins.meta.changes) throw new HttpError(409, "até 5 aparelhos com aviso; remova um");
+  // aparelho compartilhado: o endpoint passa a ser desta conta; some das outras (não recebem push do aparelho alheio)
+  await env.DB.prepare("DELETE FROM push_subscription WHERE endpoint = ?2 AND user_id <> ?1").bind(u.id, b.endpoint).run();
   return json({ ok: true }, 201);
 });
 on("DELETE", "/api/push/subscribe", async (req, env, _p, u) => {

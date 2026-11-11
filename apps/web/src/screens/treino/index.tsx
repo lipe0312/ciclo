@@ -10,7 +10,7 @@ import { registerMiniBar } from "../../lib/mini-barra/index.tsx";
 import { href, parse } from "../../lib/roteador/index.ts";
 import type { Route } from "../../lib/roteador/index.ts";
 import { fmt } from "../../lib/util.ts";
-import { curIdx, running, startSession } from "./sessao.ts";
+import { OUTCOME_TXT, REASON_TXT, curIdx, running, startSession } from "./sessao.ts";
 import { openEdit, openSwap } from "./folhas.tsx";
 import { Biblioteca, ExImgs } from "./biblioteca.tsx";
 import { Detalhe } from "./detalhe.tsx";
@@ -40,6 +40,10 @@ function AvisoPush() {
     {st === "pedir" && <> <button type="button" class="btn sm" onClick={() => enablePush().then(setSt)}>Ligar aviso</button></>}</span></div>;
 }
 
+/** " (+2,0 kg, −1,5 reps)": só o que mudou; sem mudança nenhuma = sem parênteses. */
+const sgn = (n: number) => (n > 0 ? "+" : "") + fmt(n, 1);
+const deltaTxt = (kg: number, reps: number) => { const p = [kg ? `${sgn(kg)} kg` : "", reps ? `${sgn(reps)} reps` : ""].filter(Boolean); return p.length ? ` (${p.join(", ")})` : " (igual)"; };
+
 /** Resumo do treino encerrado: duração, séries, volume (vs média), PRs e médias vs última vez. */
 function Resumo({ s }: { s: any }) {
   const sm: C.SessionSummary | undefined = s.summary;
@@ -54,8 +58,8 @@ function Resumo({ s }: { s: any }) {
     {sm && sm.prs.length > 0 && <Card style="margin-top:12px"><h2>Recordes</h2><div class="row wrapx" style="gap:6px;margin-top:8px">{sm.prs.map((p, i) => <span class="badge ok num" key={i}>PR {kind[p.kind]} · {EXB[p.exerciseId]?.nm ?? p.exerciseId} {fmt(p.value, p.value % 1 ? 1 : 0)}{p.kind === "reps" ? " reps" : " kg"} (antes {fmt(p.prev, p.prev % 1 ? 1 : 0)})</span>)}</div></Card>}
     {sm && sm.perExercise.length > 0 && <Card style="margin-top:12px"><h2>Médias vs última vez</h2>{sm.perExercise.map((e) => <div class="row between wrapx" key={e.exerciseId} style="padding:8px 0;border-top:1px solid var(--borda)">
       <span style="min-width:0">{EXB[e.exerciseId]?.nm ?? e.exerciseId}</span>
-      <span class="num small">{fmt(e.avgKg, 1)} kg × {fmt(e.avgReps, 1)}{e.deltaReps != null ? <span class="sub"> · antes {fmt(e.lastAvgKg!, 1)} × {fmt(e.lastAvgReps!, 1)} ({e.deltaKg! !== 0 ? `${e.deltaKg! > 0 ? "+" : ""}${fmt(e.deltaKg!, 1)} kg, ` : ""}{e.deltaReps > 0 ? "+" : ""}{fmt(e.deltaReps, 1)} reps)</span> : <span class="sub"> · 1ª vez</span>}</span></div>)}</Card>}
-    <Card style="margin-top:12px">{out.map(({ it, o }, i) => <div class="row between" key={i} style="padding:6px 0"><span>{it.nm}</span><span class={`badge ${o === "feito" ? "ok" : o === "parcial" ? "warn" : o === "nao_fiz" ? "bad" : ""}`}>{o.replace("_", " ")}</span></div>)}</Card></>;
+      <span class="num small">{fmt(e.avgKg, 1)} kg × {fmt(e.avgReps, 1)}{e.deltaReps != null ? <span class="sub"> · antes {fmt(e.lastAvgKg!, 1)} × {fmt(e.lastAvgReps!, 1)}{deltaTxt(e.deltaKg!, e.deltaReps)}</span> : <span class="sub"> · 1ª vez</span>}</span></div>)}</Card>}
+    <Card style="margin-top:12px">{out.map(({ it, o }, i) => <div class="row between" key={i} style="padding:6px 0"><span>{it.nm}</span><span class={`badge ${o === "feito" ? "ok" : o === "parcial" ? "warn" : o === "nao_fiz" ? "bad" : ""}`}>{OUTCOME_TXT[o] ?? o}</span></div>)}</Card></>;
 }
 
 function Hoje() {
@@ -94,7 +98,7 @@ function CardDia({ it, idx, run }: { it: C.PlanItem; idx: number; run: boolean }
     <div class="row between start" style="margin-top:10px"><h3 style="font-size:17px">{it.nm}</h3>{it.manual && <span class="badge warn">seu · em revisão</span>}</div>
     <p class="meta num small" style="margin-top:2px"><b style="color:var(--txt)">{it.sets} × {it.reps[0]}–{it.reps[1]}</b> · {mName(it.muscle)}{sg.kg ? <> · sugestão <b style="color:var(--txt)">{fmt(sg.kg, 1)} kg × {sg.reps}</b></> : null}</p>
     {sg.note && <p class="tiny sub" style="margin-top:2px">{sg.note}</p>}
-    {run && <p class="small num" style="margin-top:6px">{skipped ? `Não feito · ${String(skipped).replace("_", " ")}` : `${d}/${Math.max(it.sets, logs.length)} séries`}</p>}
+    {run && <p class="small num" style="margin-top:6px">{skipped ? `Não feito · ${REASON_TXT[String(skipped)] ?? skipped}` : `${d}/${Math.max(it.sets, logs.length)} séries`}</p>}
     {!run && <div class="acts" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">{it.alts.length > 0 && <button type="button" class="btn" onClick={() => openSwap(idx)}><Icon id="swap" />Trocar</button>}<button type="button" class="btn" onClick={() => openEdit(idx)}><Icon id="edit" />Editar</button></div>}
   </Card>;
 }

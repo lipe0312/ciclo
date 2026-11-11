@@ -29,6 +29,9 @@ export function fireRest() {
   try { if (document.hidden && Notification.permission === "granted") navigator.serviceWorker?.ready.then((r) => r.showNotification("Descanso acabou", { body: "Próxima série!", tag: "rest" })); } catch { /* ok */ }
 }
 
+/** Rótulos em pt-BR (com acento) dos resultados do exercício e dos motivos de "não fiz". */
+export const OUTCOME_TXT: Record<string, string> = { feito: "feito", parcial: "parcial", nao_fiz: "não fiz", nao_registrado: "não registrado" };
+export const REASON_TXT: Record<string, string> = { ocupado: "aparelho ocupado", dor: "dor", sem_tempo: "sem tempo", nao_quis: "não quis", outro: "outro" };
 export const running = () => !!(S.session && !S.session.finishedAt);
 type Log = { kg: string | number; reps: string | number; done: boolean };
 

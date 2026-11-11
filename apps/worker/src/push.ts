@@ -39,11 +39,11 @@ export async function vapidAuth(env: Env, endpoint: string, nowMs = Date.now()):
   return `vapid t=${head}.${body}.${b64u(sig)}, k=${env.VAPID_PUBLIC_KEY}`;
 }
 
-/** Envia o push vazio. Devolve o status HTTP (404/410 = assinatura morta). Erro de rede = 0. */
+/** Envia o push vazio (sem seguir redirecionamentos: o destino validado é o único que recebe a chamada). Devolve o status HTTP (404/410 = assinatura morta). Erro de rede = 0. */
 export async function sendPush(env: Env, endpoint: string): Promise<number> {
   if (!validEndpoint(endpoint)) return 400;
   try {
-    const r = await fetch(endpoint, { method: "POST", headers: { Authorization: await vapidAuth(env, endpoint), TTL: "120", Urgency: "high", "Content-Length": "0" } });
+    const r = await fetch(endpoint, { method: "POST", redirect: "manual", headers: { Authorization: await vapidAuth(env, endpoint), TTL: "120", Urgency: "high", "Content-Length": "0" } });
     return r.status;
   } catch { return 0; }
 }

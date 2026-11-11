@@ -9,7 +9,7 @@ import { go } from "../../lib/roteador/index.ts";
 import { img, uid } from "../../lib/util.ts";
 import { MediaBox } from "./midia.tsx";
 import { ExImgs } from "./biblioteca.tsx";
-import { buildSummary, pastOf } from "./sessao.ts";
+import { OUTCOME_TXT, buildSummary, pastOf } from "./sessao.ts";
 
 export const openSwap = (idx: number) => openSheet(() => <Swap idx={idx} />);
 function pickSwap(idx: number, to: string, scope: "hoje" | "sempre") {
@@ -110,7 +110,7 @@ function Finish() {
       <div><span class="f">Dor articular?</span><Seg opts={[[false, "não"], [true, "sim → mapa"]]} value={f.joint} onPick={(v) => { f.joint = v; commit(); if (v) toast("Depois de salvar, marque no mapa de dor"); }} label="Dor articular" /></div></div>
     <div style="margin-top:12px"><span class="f">Exercícios</span>{out.map(({ it, o }, i) => <div class="row between small" key={i} style="padding:4px 0"><span>{it.nm}</span>
       {o === "nao_registrado" ? <span class="row" style="gap:4px"><span class="badge">sem registro</span><button type="button" class="btn sm" onClick={() => doSkip(i, "outro", true)}>não fiz</button></span>
-        : <span class={`badge ${o === "feito" ? "ok" : o === "parcial" ? "warn" : "bad"}`}>{o.replace("_", " ")}</span>}</div>)}</div>
+        : <span class={`badge ${o === "feito" ? "ok" : o === "parcial" ? "warn" : "bad"}`}>{OUTCOME_TXT[o] ?? o}</span>}</div>)}</div>
     <button type="button" class="btn pri full" style="margin-top:14px" onClick={doFinish}><Icon id="check" />Salvar e encerrar</button></>;
 }
 

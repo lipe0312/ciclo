@@ -8,7 +8,7 @@ import { fmt, img } from "../../lib/util.ts";
 import { ExImgs } from "./biblioteca.tsx";
 import { openEdit, openComoFazer, openFinish, openSkip, openSwap } from "./folhas.tsx";
 import { MediaBox } from "./midia.tsx";
-import { addSet, adjustRest, currentSets, curIdx, doneSets, dropSet, editedSet, ensureLogs, goEx, nextSetOf, onTick, pastAll, pastOf, progress, refsOf, restFor, running, setCur, skipRest, toggleSet } from "./sessao.ts";
+import { REASON_TXT, addSet, adjustRest, currentSets, curIdx, doneSets, dropSet, editedSet, ensureLogs, goEx, nextSetOf, onTick, pastAll, pastOf, progress, refsOf, restFor, running, setCur, skipRest, toggleSet } from "./sessao.ts";
 
 export function useTick() { const [, set] = useState(0); useEffect(() => onTick(() => set((x) => x + 1)), []); }
 const kgReps = (kg: number, reps: number) => `${fmt(kg, kg % 1 ? 1 : 0)} kg × ${fmt(reps, reps % 1 ? 1 : 0)}`;
@@ -62,7 +62,7 @@ function Atual({ it, idx }: { it: C.PlanItem; idx: number }) {
       <div class="row" style="gap:4px">{ex?.stretch && <span class="badge">alongado</span>}{it.manual && <span class="badge warn">seu · em revisão</span>}</div></div>
     <p class="meta num"><b style="color:var(--txt)">{it.sets} × {it.reps[0]}–{it.reps[1]}</b> · {mName(it.muscle)} · descanso {restFor(S.session.plan, idx)}s{sg.kg ? <> · sugestão <b style="color:var(--txt)">{fmt(sg.kg, 1)} kg × {sg.reps}</b></> : null}</p>
     {sg.note && <p class="tiny sub" style="margin-top:2px">{sg.note}</p>}
-    {skipped ? <p class="small" style="margin-top:8px;color:var(--warn)">Não feito · {skipped.replace("_", " ")} <button type="button" class="btn sm ghost" onClick={() => { delete S.session.skipped[it.exerciseId]; commit(); }}>desfazer</button></p>
+    {skipped ? <p class="small" style="margin-top:8px;color:var(--warn)">Não feito · {REASON_TXT[skipped] ?? skipped} <button type="button" class="btn sm ghost" onClick={() => { delete S.session.skipped[it.exerciseId]; commit(); }}>desfazer</button></p>
       : <><Refs exId={it.exerciseId} /><SetRows idx={idx} it={it} /></>}
     <div class="acts"><button type="button" class="btn" onClick={() => openComoFazer(it.exerciseId)}><Icon id="info" />Ver como fazer</button>
       {it.alts.length > 0 && <button type="button" class="btn" onClick={() => openSwap(idx)}><Icon id="swap" />Trocar</button>}
@@ -83,6 +83,10 @@ function Mini({ it, idx, cur }: { it: C.PlanItem; idx: number; cur: number }) {
 
 /** Rodapé: descanso + ação principal ao alcance do polegar. */
 function Rodape({ cur }: { cur: number }) {
+  const foot = useRef<HTMLElement>(null);
+  // o toast sobe acima do rodapé (descanso + botão), seja qual for a altura dele
+  useEffect(() => { const h = foot.current?.offsetHeight ?? 0; document.documentElement.style.setProperty("--modo-foot", `${h}px`); });
+  useEffect(() => () => document.documentElement.style.removeProperty("--modo-foot"), []);
   const s = S.session, items: C.PlanItem[] = s.plan.items, p = progress();
   const k = s.skipped[items[cur]?.exerciseId] ? -1 : nextSetOf(cur);
   const logs = items[cur] ? ensureLogs(items[cur]) : [];
@@ -91,7 +95,7 @@ function Rodape({ cur }: { cur: number }) {
   if (k >= 0) { const l = logs[k]; main = <button type="button" class="btn pri lg full" onClick={() => toggleSet(cur, k)}><Icon id="check" />Concluir série {k + 1}{String(l.kg) ? ` · ${l.kg} kg × ${l.reps}` : ` · ${l.reps} reps`}</button>; }
   else if (pend >= 0) main = <button type="button" class="btn pri lg full" onClick={() => goEx(pend)}>Próximo exercício <Icon id="arrow" /></button>;
   else main = <button type="button" class="btn pri lg full" onClick={openFinish}><Icon id="check" />Terminar treino ({p.setsDone} séries)</button>;
-  return <footer class="modo-foot"><Descanso />{main}</footer>;
+  return <footer class="modo-foot" ref={foot}><Descanso />{main}</footer>;
 }
 
 export function Timeline({ idx }: { idx: number | null }) {
@@ -107,8 +111,9 @@ export function Timeline({ idx }: { idx: number | null }) {
   return <div class="modo" role="region" aria-label="Modo treino">
     <header class="modo-top">
       <a class="iconbtn" href="#treino" aria-label="Sair do modo treino (o treino continua)"><Icon id="x" /></a>
-      <div class="modo-prog"><b class="num">{p.exDone} de {p.exTotal} exercícios · {p.setsDone}/{p.setsTotal} séries</b>
-        <span class="tiny sub num"><Relogio />{vol > 0 && <> · volume {fmt(vol)} kg</>}{vs.pct != null && <> ({vs.pct >= 0 ? "+" : ""}{vs.pct}% vs média das últimas 4)</>}</span></div>
+      <div class="modo-prog"><b class="num">{p.setsDone}/{p.setsTotal} séries</b>
+        <span class="tiny sub num">{p.exDone} de {p.exTotal} exercícios · <Relogio /></span>
+        {vol > 0 && <span class="tiny sub num">volume {fmt(vol)} kg{vs.pct != null && <> ({vs.pct >= 0 ? "+" : ""}{vs.pct}% vs média)</>}</span>}</div>
       <button type="button" class="btn" onClick={openFinish}>Terminar</button></header>
     <div class="modo-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Séries concluídas"><i style={`width:${pct}%`} /></div>
     <div class="modo-list">{items.map((it, i) => i === cur ? <Atual key={it.exerciseId + i} it={it} idx={i} /> : <Mini key={it.exerciseId + i} it={it} idx={i} cur={cur} />)}</div>
