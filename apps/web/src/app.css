@@ -312,3 +312,55 @@ a.altlink{color:inherit;text-decoration:none}
 .main{padding-bottom:calc(104px + env(safe-area-inset-bottom))}
 @media (min-width:960px){.main{padding-bottom:48px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* modo treino (#25): timeline em tela cheia, descanso e rodapé ao alcance do polegar */
+.modo{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;background:var(--bg)}
+.modo-on body{overflow:hidden}
+.modo-top{display:flex;align-items:center;gap:10px;padding:max(8px,env(safe-area-inset-top)) 12px 8px;border-bottom:1px solid var(--borda);background:var(--sup)}
+.modo-prog{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
+.modo-prog b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.modo-prog .clock{font-size:inherit;font-weight:700;letter-spacing:0}
+.modo-bar{height:6px;background:var(--sup-3)}
+.modo-bar i{display:block;height:100%;background:var(--acc-bg);transition:width .2s}
+.modo-list{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:12px 16px 24px;display:flex;flex-direction:column;gap:10px;max-width:720px;width:100%;margin:0 auto}
+.modo-foot{border-top:1px solid var(--borda);background:var(--sup);padding:10px 16px calc(10px + env(safe-area-inset-bottom));display:grid;gap:8px;max-width:720px;width:100%;margin:0 auto}
+@media (min-width:721px){.modo-foot,.modo-list{border-left:1px solid var(--borda);border-right:1px solid var(--borda)}}
+.tl-cur{background:var(--sup);border:1px solid var(--acc);box-shadow:inset 0 0 0 1px var(--acc);border-radius:var(--r);padding:12px;scroll-margin-top:8px}
+.tl-cur.skipped{opacity:.7}
+.tl-cur .meta{font-size:13px;color:var(--sub);margin-top:2px}
+.tl-cur .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.tl-cur .acts .btn{flex:1 1 140px}
+.tl-mini{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:12px;align-items:center;min-height:64px;padding:4px 12px 4px 4px;border:1px solid var(--borda);border-radius:12px;background:var(--sup);color:inherit;text-align:left;cursor:pointer;width:100%}
+.tl-mini .thumb{width:56px;height:56px}
+.tl-mini-t{display:flex;flex-direction:column;min-width:0}
+.tl-mini-t b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-mini.skipped{opacity:.55}
+.tl-mini.feito .thumb{opacity:.6}
+.tl-mini svg.ok{color:var(--ok)}
+.refs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0 0}
+.refs>div{background:var(--sup-2);border-radius:10px;padding:8px 10px;min-width:0}
+.refs dt{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--sub)}
+.refs dd{margin:0;font-weight:700;font-size:14px}
+.refs dd.tiny{font-weight:400}
+.tl-sets{display:grid;gap:6px;margin-top:12px}
+.tl-set{display:grid;grid-template-columns:24px minmax(0,1fr) 76px 64px 52px;gap:6px;align-items:center;font-size:13px}
+.tl-set.head{min-height:0}
+.tl-set .input{min-height:48px;padding:6px 6px;text-align:center;font-size:17px;font-weight:700}
+.tl-set .prev{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-set .ck{width:52px;height:48px;border-radius:10px;border:1px solid var(--borda-ctrl);background:var(--sup);display:grid;place-items:center;cursor:pointer}
+.tl-set.done .ck{background:var(--ok);border-color:var(--ok);color:#fff}
+.tl-set.done .input{color:var(--sub)}
+.tl-rest{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:8px;align-items:center;padding:6px 8px 6px 14px;border-radius:12px;background:var(--acc-bg);color:var(--acc-txt)}
+.tl-rest .btn{min-height:48px;min-width:56px;padding:0 12px}
+.tl-rest-t{font-size:34px;font-weight:800;letter-spacing:-.02em;line-height:1}
+.tl-rest.done{background:var(--bad);color:#fff;animation:pulse 1s infinite}
+.minibar-t{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
+.minibar-in .btn{min-height:44px}
+@media (prefers-reduced-motion:reduce){.tl-rest.done,.rest.done{animation:none}.modo-bar i{transition:none}}
+@media (max-width:380px){.tl-rest{grid-template-columns:minmax(0,1fr) auto auto auto;padding-left:10px}.tl-rest-t{font-size:28px}.tl-rest .btn{min-width:48px;padding:0 8px}}
+.cardio-form .stepper button{width:48px;height:48px}
+.cardio-form .seg button{min-height:44px}
+.cardio-form .chip{min-height:44px;flex:none}
+.cardio-form .tabs{flex-wrap:wrap;overflow:visible}
+.iconbtn{flex:none}
+.tl-cur .exim{aspect-ratio:16/9}

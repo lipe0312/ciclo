@@ -4,8 +4,12 @@ import { EXB, activePlan, dayInput, gymById, mName, profileChanged } from "../..
 import { SERVER, send } from "../../lib/api/index.ts";
 import { SheetHead, closeSheet, openSheet } from "../../lib/folha/index.tsx";
 import { Chip, Icon, Seg, toast } from "../../lib/ui/index.tsx";
+import { Carrossel } from "../../lib/carrossel/index.tsx";
 import { go } from "../../lib/roteador/index.ts";
 import { img, uid } from "../../lib/util.ts";
+import { MediaBox } from "./midia.tsx";
+import { ExImgs } from "./biblioteca.tsx";
+import { buildSummary, pastOf } from "./sessao.ts";
 
 export const openSwap = (idx: number) => openSheet(() => <Swap idx={idx} />);
 function pickSwap(idx: number, to: string, scope: "hoje" | "sempre") {
@@ -85,10 +89,14 @@ function Skip({ idx }: { idx: number }) {
 export function openFinish() { S.ui.fb = S.ui.fb ?? { pump: {}, effort: 2, joint: false }; openSheet(() => <Finish />); }
 async function doFinish() {
   const s = S.session; s.finishedAt = Date.now(); s.closedBy = "usuario"; s.feedback = S.ui.fb; s.rest = null;
-  for (const it of s.plan.items) { const done = (s.logs[it.exerciseId] ?? []).filter((l: any) => l.done); if (done.length) S.history[it.exerciseId] = done.map((l: any) => ({ kg: Number(String(l.kg).replace(",", ".")) || 0, reps: Number(l.reps) })); }
+  s.summary = buildSummary(s.finishedAt); // antes de atualizar o histórico: compara com a "última vez" de verdade
+  for (const it of s.plan.items) {
+    const done = (s.logs[it.exerciseId] ?? []).filter((l: any) => l.done).map((l: any) => ({ kg: Number(String(l.kg).replace(",", ".")) || 0, reps: Number(l.reps) }));
+    if (done.length) { S.history[it.exerciseId] = done; S.past[it.exerciseId] = [done, ...pastOf(it.exerciseId)].slice(0, 5); }
+  }
   const joint = S.ui.fb.joint; S.ui.fb = null; closeSheet();
+  go(joint ? "#corpo" : "#treino"); commit(); toast("Treino salvo");
   await send("POST", `/api/sessions/${s.id}/finish`, { feedback: s.feedback }).catch(() => {});
-  if (joint) go("#corpo"); commit(); toast("Treino salvo");
 }
 function Finish() {
   const s = S.session; if (!s || !S.ui.fb) return null;
@@ -104,4 +112,18 @@ function Finish() {
       {o === "nao_registrado" ? <span class="row" style="gap:4px"><span class="badge">sem registro</span><button type="button" class="btn sm" onClick={() => doSkip(i, "outro", true)}>não fiz</button></span>
         : <span class={`badge ${o === "feito" ? "ok" : o === "parcial" ? "warn" : "bad"}`}>{o.replace("_", " ")}</span>}</div>)}</div>
     <button type="button" class="btn pri full" style="margin-top:14px" onClick={doFinish}><Icon id="check" />Salvar e encerrar</button></>;
+}
+
+/** "Ver como fazer": detalhe do exercício numa folha (sem sair do modo treino): 2 imagens, passo a passo e a mídia do seu aparelho. */
+export const openComoFazer = (exId: string) => openSheet(() => <ComoFazer exId={exId} />);
+function ComoFazer({ exId }: { exId: string }) {
+  const it = C.CATALOG_BY_ID[exId];
+  if (!it) return <><SheetHead kicker="Como fazer" title="Exercício seu" /><p class="small sub" style="margin:10px 0">Exercício fora do catálogo: sem passo a passo. Mantenha o movimento controlado e sobre 1–2 repetições.</p><MediaBox exId={exId} /></>;
+  const src = C.imageSrc(it);
+  return <><SheetHead kicker={it.type === "forca" ? `${C.MUSCLES[it.m].nm} · ${it.kind}` : "Cardio"} title={it.nm} />
+    <div style="margin-top:10px">{it.images.length ? <Carrossel label="Imagens do exercício" items={it.images.map((n) => <img src={img(src, n)} alt={`${it.nm} · ${n ? "fim" : "início"} do movimento`} width={360} height={240} />)} /> : <ExImgs it={it} size="big" />}</div>
+    <h3 style="margin:14px 0 4px">Passo a passo</h3>
+    {it.howTo?.length ? <ol class="steps">{it.howTo.map((t, i) => <li key={i}>{t}</li>)}</ol> : <p class="small sub">Movimento controlado, amplitude completa e sobrar 1–2 repetições.</p>}
+    {it.tips?.length ? <><h3 style="margin:14px 0 4px">Dicas</h3><ol class="steps">{it.tips.map((t, i) => <li key={i}>{t}</li>)}</ol></> : null}
+    <h3 style="margin:14px 0 4px">Seu aparelho</h3><MediaBox exId={exId} /></>;
 }

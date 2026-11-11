@@ -16,4 +16,7 @@ self.addEventListener("fetch", (e) => {
     return r;
   })));
 });
-self.addEventListener("notificationclick", (e) => { e.notification.close(); e.waitUntil(self.clients.matchAll({ type: "window" }).then((cs) => (cs[0] ? cs[0].focus() : self.clients.openWindow("/#treino")))); });
+// Web Push do fim do descanso (#25): o servidor manda um push SEM carga; o texto é fixo (nada de dado pessoal no push).
+// iOS exige mostrar uma notificação a cada push; a mesma tag "rest" substitui a que o app mostra sozinho (sem duplicar).
+self.addEventListener("push", (e) => e.waitUntil(self.registration.showNotification("Descanso acabou", { body: "Próxima série!", tag: "rest", renotify: true, vibrate: [300, 150, 300, 150, 300], icon: "/icon.svg", data: { url: "/#treino/ativo" } })));
+self.addEventListener("notificationclick", (e) => { e.notification.close(); e.waitUntil(self.clients.matchAll({ type: "window" }).then((cs) => (cs[0] ? cs[0].focus() : self.clients.openWindow((e.notification.data && e.notification.data.url) || "/#treino")))); });
