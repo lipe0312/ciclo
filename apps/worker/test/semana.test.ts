@@ -73,6 +73,17 @@ test("falta: terça sem treino aparece como pendente; 'não fui' reorganiza (qui
   assert.equal((await a("POST", `/api/week/day/${QUI}`, { action: "falta", resposta: "nao_fui", today: QUA })).status, 400, "falta só para dia que já chegou");
 });
 
+test("falta no servidor: 1ª abertura na quarta já cobra seg/ter planejados e sem treino, com o nome do treino", async () => {
+  const env = makeEnv();
+  const a = await conta(env, "ana");
+  const w = (await a("GET", `/api/week?date=${QUA}`)).data.week;
+  assert.deepEqual(w.misses, [SEG, TER]);
+  assert.match(w.days[1].plan.name, /Inferior/);
+  const r = await a("POST", `/api/week/day/${TER}`, { action: "falta", resposta: "fui", today: QUA });
+  assert.equal(r.data.week.days[1].status, "feito");
+  assert.deepEqual(r.data.week.misses, [SEG]);
+});
+
 test("treino num dia não planejado vira extra e o resto da semana se reorganiza", async () => {
   const env = makeEnv();
   const a = await conta(env, "ana");
@@ -122,4 +133,76 @@ test("isolamento: as escolhas e versões da conta B não aparecem nem são resta
   const wb = (await b("GET", `/api/week?date=${SEG}`)).data.week;
   assert.equal(wb.version, 3);
   assert.match(wb.days[3].plan.name, /Foco: ombro/);
+});
+
+// ---- isolamento de ESCRITA: DELETE de day_override e poda de week_plan da conta A não tocam a B ----
+const uidOf = async (env: unknown, user: string) => (await call(env, "GET", "/api/account/export", { user })).data.user.id as string;
+const rowsOf = (env: any, uid: string) => JSON.stringify({
+  wp: env.DB.raw.prepare("SELECT week_start, version, plan_json, source, created_at FROM week_plan WHERE user_id = ? ORDER BY week_start, version").all(uid),
+  ov: env.DB.raw.prepare("SELECT date, kind, opts, updated_at FROM day_override WHERE user_id = ? ORDER BY date").all(uid),
+});
+
+test("isolamento de escrita: trocas, desfazer e a poda (> 20 versões) da A não apagam day_override nem week_plan da B", async () => {
+  const env = makeEnv();
+  const b = await conta(env, "bia");
+  await b("GET", `/api/week?date=${SEG}`);
+  assert.equal((await b("POST", `/api/week/day/${QUI}`, { action: "gerar", today: SEG, opts: { focus: ["ombro"] } })).status, 200);
+  const ub = await uidOf(env, "bia");
+  const antes = rowsOf(env, ub);
+  assert.match(antes, /"date":"2026-11-12"/, "B tem override na quinta");
+
+  const a = await conta(env, "ana");
+  await a("GET", `/api/week?date=${SEG}`);
+  assert.equal((await a("POST", `/api/week/day/${TER}`, { action: "gerar", today: SEG, opts: { split: "full" } })).status, 200);
+  assert.equal((await a("PUT", "/api/week", { date: SEG, version: 1 })).status, 200);
+  assert.equal(rowsOf(env, ub), antes, "escrita da A mexeu nas linhas da B");
+  for (let k = 0; k < 22; k++) {
+    const r = await a("POST", "/api/week/day/2026-11-14", { action: k % 2 ? "folga" : "treino", today: SEG });
+    assert.equal(r.status, 200, r.text);
+  }
+  const ua = await uidOf(env, "ana");
+  assert.equal((env as any).DB.raw.prepare("SELECT COUNT(*) AS n FROM week_plan WHERE user_id = ?").get(ua).n, 20, "A podada para 20 versões");
+  assert.equal(rowsOf(env, ub), antes, "a poda da A apagou versões da B");
+});
+
+// ---- isolamento de LEITURA: séries, cargas, feedback e semanas anteriores da B não mudam a semana da A ----
+const SEM_PASSADA = ["2026-11-03", "2026-11-05"], SEMANAS_ANTES = ["2026-10-12", "2026-10-19", "2026-10-26", "2026-11-02"];
+const sid = (k: number, tag: string) => `${tag}0000000-0000-4000-8000-00000000000${k}`;
+async function sessao(f: ReturnType<typeof conta> extends Promise<infer T> ? T : never, id: string, date: string, sets: [string, number, number][], feedback?: unknown) {
+  assert.equal((await f("POST", "/api/sessions", { id, date, plan: { items: [] } })).status, 201);
+  for (const [k, [ex, kg, reps]] of sets.entries()) assert.equal((await f("POST", `/api/sessions/${id}/sets`, { exerciseId: ex, setNo: k + 1, kg, reps })).data.saved, true);
+  if (feedback) await f("POST", `/api/sessions/${id}/finish`, { feedback });
+}
+async function seedA(env: unknown) {
+  const a = await conta(env, "ana");
+  await a("GET", "/api/week?date=2026-11-02"); // A tem a semana passada (sem deload) → o feedback dela vale
+  for (const d of SEM_PASSADA) await a("PUT", `/api/checkin/${d}`, { sleepH: 8, energy: 3, soreness: 0, stress: 1, food: 0 });
+  // tríceps 2× (sem progressão própria); bíceps 1× com pump baixo
+  await sessao(a, sid(1, "a"), SEM_PASSADA[0], [["Cable_Rope_Overhead_Triceps_Extension", 20, 12], ["Incline_Dumbbell_Curl", 12, 10]], { pump: { triceps: 2, biceps: 0 } });
+  await sessao(a, sid(2, "a"), SEM_PASSADA[1], [["Cable_Rope_Overhead_Triceps_Extension", 20, 12]], { pump: { triceps: 2 } });
+  return a;
+}
+async function seedB(env: unknown) {
+  const b = await conta(env, "bia");
+  for (const w of SEMANAS_ANTES) await b("GET", `/api/week?date=${w}`); // 4 semanas sem deload
+  // bíceps 2× na semana passada; tríceps progrediu (retrasada → passada); séries nesta semana
+  await sessao(b, sid(1, "b"), "2026-10-28", [["Triceps_Pushdown", 30, 10]]);
+  await sessao(b, sid(2, "b"), SEM_PASSADA[0], [["Triceps_Pushdown", 40, 12], ["Barbell_Curl", 30, 10]]);
+  await sessao(b, sid(3, "b"), SEM_PASSADA[1], [["Barbell_Curl", 30, 10]]);
+  await sessao(b, sid(4, "b"), SEG, [["Barbell_Curl", 30, 10], ["Leg_Press", 100, 10]]);
+}
+const semanaA = async (env: unknown) => {
+  const w = (await call(env, "GET", `/api/week?date=${QUA}`, { user: "ana" })).data.week;
+  return JSON.stringify({ days: w.days, targets: w.targets, progression: w.progression, projected: w.projected, misses: w.misses, offer: w.offer, extra: w.extraToday });
+};
+
+test("isolamento de leitura: dados da B (séries, cargas, frequência, semanas anteriores) não entram na semana da A", async () => {
+  for (const ex of ["Triceps_Pushdown", "Barbell_Curl", "Leg_Press", "Cable_Rope_Overhead_Triceps_Extension", "Incline_Dumbbell_Curl"]) assert.ok(EXERCISE_BY_ID[ex], ex);
+  const so = makeEnv();
+  await seedA(so);
+  const sozinha = await semanaA(so);
+  const junto = makeEnv();
+  await seedB(junto);
+  await seedA(junto);
+  assert.equal(await semanaA(junto), sozinha, "a semana da A mudou com os dados da B");
 });
