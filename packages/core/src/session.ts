@@ -31,3 +31,56 @@ export function fmtClock(ms: number): string {
   const p = (x: number) => String(x).padStart(2, "0");
   return h ? `${h}:${p(m)}:${p(s)}` : `${p(m)}:${p(s)}`;
 }
+
+// ---------- modo treino: progresso, posição e descanso (puro; o app guarda o estado) ----------
+export interface PlanLite { exerciseId: string; sets: number }
+type LogLite = { done: boolean };
+const doneCount = (l?: LogLite[]) => (l ?? []).filter((x) => x.done).length;
+const planned = (it: PlanLite, l?: LogLite[]) => Math.max(it.sets, l?.length ?? 0);
+
+/** "3 de 8 exercícios · 11/24 séries". Pulado ("não fiz") conta como resolvido e sai do total de séries. */
+export function sessionProgress(items: PlanLite[], logs: Record<string, LogLite[] | undefined>, skipped: Record<string, unknown>) {
+  let exDone = 0, setsDone = 0, setsTotal = 0;
+  for (const it of items) {
+    const l = logs[it.exerciseId], d = doneCount(l), n = planned(it, l);
+    if (skipped[it.exerciseId]) { exDone++; continue; }
+    setsDone += d; setsTotal += n;
+    if (d >= n && n > 0) exDone++;
+  }
+  return { exDone, exTotal: items.length, setsDone, setsTotal };
+}
+
+/** Próximo exercício com série a fazer, a partir de `from` (com volta ao começo). -1 = tudo resolvido. `after` começa no seguinte. */
+export function nextPending(items: PlanLite[], logs: Record<string, LogLite[] | undefined>, skipped: Record<string, unknown>, from: number, after = false): number {
+  const n = items.length;
+  for (let k = after ? 1 : 0; k < n; k++) {
+    const i = (((from + k) % n) + n) % n, it = items[i];
+    if (!it || skipped[it.exerciseId]) continue;
+    if (doneCount(logs[it.exerciseId]) < planned(it, logs[it.exerciseId])) return i;
+  }
+  return -1;
+}
+/** Índice da 1ª série não concluída (-1 = todas feitas; lista inexistente = 0). */
+export const nextSetIndex = (l?: LogLite[]) => (l ? l.findIndex((x) => !x.done) : 0);
+
+export interface Rest { until: number; fired: boolean }
+export const restLeftMs = (r: Rest | null | undefined, now: number) => (r ? Math.max(0, r.until - now) : 0);
+/** +15/−15 s. Zerou = null (descanso acabou). Vencido + positivo recomeça de agora. */
+export function adjustRest(r: Rest, deltaMs: number, now: number): Rest | null {
+  const until = Math.max(now, r.until) + deltaMs;
+  return until <= now ? null : { until, fired: false };
+}
+
+export interface ServerSet { exerciseId: string; setNo: number; kg: number | null; reps: number | null }
+type EditableLog = { kg: string | number; reps: string | number; done: boolean };
+/** Junta as séries gravadas no servidor ao estado local (recarregar/trocar de aparelho). O local ainda não concluído vence. */
+export function mergeSessionSets(local: Record<string, EditableLog[]>, server: ServerSet[]): Record<string, EditableLog[]> {
+  const out: Record<string, EditableLog[]> = Object.fromEntries(Object.entries(local).map(([k, v]) => [k, v.map((l) => ({ ...l }))]));
+  for (const s of server) {
+    const arr = (out[s.exerciseId] ??= []);
+    while (arr.length < s.setNo) arr.push({ kg: s.kg ?? "", reps: s.reps ?? "", done: false });
+    const cur = arr[s.setNo - 1];
+    if (!cur.done && local[s.exerciseId]?.[s.setNo - 1] === undefined) arr[s.setNo - 1] = { kg: s.kg ?? "", reps: s.reps ?? "", done: true };
+  }
+  return out;
+}
