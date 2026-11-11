@@ -25,13 +25,17 @@ async function seed(env: any, user: string, tag: string) {
   await ok(c("POST", "/api/sessions", { id: SID, date: D, plan }));
   await ok(c("POST", `/api/sessions/${SID}/sets`, { exerciseId: plan.items[0].exerciseId, setNo: 1, kg: 10, reps: 10 }));
   await ok(c("POST", `/api/sessions/${SID}/skip`, { exerciseId: plan.items[1].exerciseId, reason: "ocupado" }));
+  await ok(c("PUT", `/api/sessions/${SID}/rest`, { seconds: 60 }));
+  const cardio = (await ok(c("POST", "/api/cardio", { date: D, type: "Running_Treadmill", minutes: 30, intensity: "zona2", distanceKm: 4 }))).data.id;
+  const endpoint = `https://fcm.googleapis.com/fcm/send/${tag}`;
+  await ok(c("POST", "/api/push/subscribe", { endpoint, p256dh: "BPk_abc", auth: "xyz" }));
   const pain = (await ok(c("POST", "/api/pains", { region: "ombro_e", intensity: 2, context: `${tag} dor` }))).data.id;
   const inbox = (await ok(c("POST", "/api/inbox", { text: `${tag} pedido` }))).data.id;
   await ok(c("POST", "/api/food", { date: D, text: `${tag} comida` }));
   const media = (await ok(call(env, "POST", `/api/media?note=${tag}`, { user, raw: PNG, ct: "image/png" }))).data.id;
   const tok = (await ok(c("POST", "/api/account/tokens", { label: `${tag} token` }))).data;
   const exp = (await c("GET", "/api/account/export")).data;
-  return { pain, inbox, media, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
+  return { cardio, endpoint, pain, inbox, media, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
 }
 const snap = async (env: any, user: string) => {
   const e = (await call(env, "GET", "/api/account/export", { user })).data;
@@ -44,7 +48,10 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
   const A = await seed(env, "ana", "MARCA_A");
   const before = await snap(env, "bia");
   const r2Before = [...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length;
-  const secrets = ["MARCA_B", B.uid, B.pain, B.inbox, B.media, B.tokenId, B.edit, "bia@"];
+  const secrets = ["MARCA_B", B.uid, B.pain, B.inbox, B.media, B.tokenId, B.edit, B.cardio, "bia@"];
+  const subsB = () => env.DB.raw.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE endpoint = ?1").get(B.endpoint).n;
+  const restB = () => JSON.stringify(env.DB.raw.prepare("SELECT fire_at, sent_at FROM rest_timer WHERE user_id = ?1").get(B.uid));
+  const restBefore = restB();
   const noLeak = (label: string, text: string) => { for (const s of secrets) assert.ok(!text.includes(s), `${label} vazou ${s}`); };
 
   const a = (m: string, p: string, body?: unknown) => call(env, m, p, { user: "ana", body });
@@ -66,6 +73,19 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["POST /api/plan-edits", () => a("POST", "/api/plan-edits", { date: D, edit: { index: 0, sets: 3 } }), 422],
     ["POST /api/sessions/:id/sets", () => a("POST", `/api/sessions/${SID}/sets`, { exerciseId: "x", muscle: "ombro", setNo: 2, reps: 1 })],
     ["POST /api/sessions/:id/skip", () => a("POST", `/api/sessions/${SID}/skip`, { exerciseId: "x", reason: "dor" })],
+    ["GET /api/sessions/:id", () => a("GET", `/api/sessions/${SID}`)],
+    ["GET /api/sessions", () => a("GET", "/api/sessions")],
+    ["DELETE /api/sessions/:id/sets/:exerciseId/:setNo", () => a("DELETE", `/api/sessions/${SID}/sets/Incline_Dumbbell_Curl/1`)],
+    ["PUT /api/sessions/:id/rest", () => a("PUT", `/api/sessions/${SID}/rest`, { seconds: 30 })],
+    ["DELETE /api/sessions/:id/rest", () => a("DELETE", `/api/sessions/${SID}/rest`)],
+    ["GET /api/exercises/:id/history", () => a("GET", "/api/exercises/Incline_Dumbbell_Curl/history")],
+    ["GET /api/history/last", () => a("GET", "/api/history/last?ids=Incline_Dumbbell_Curl")],
+    ["GET /api/push/key", () => a("GET", "/api/push/key")],
+    ["POST /api/push/subscribe", () => a("POST", "/api/push/subscribe", { endpoint: "https://fcm.googleapis.com/fcm/send/MARCA_A", p256dh: "BPk_abc", auth: "xyz" }), 201],
+    ["DELETE /api/push/subscribe", () => a("DELETE", "/api/push/subscribe", { endpoint: B.endpoint })],
+    ["POST /api/cardio", () => a("POST", "/api/cardio", { date: D, type: "Bicycling_Stationary", minutes: 15, intensity: "moderado" }), 201],
+    ["GET /api/cardio", () => a("GET", "/api/cardio")],
+    ["DELETE /api/cardio/:id", () => a("DELETE", `/api/cardio/${B.cardio}`), 404],
     ["POST /api/sessions/:id/finish", () => a("POST", `/api/sessions/${SID}/finish`, { feedback: {} })],
     ["POST /api/sessions", () => a("POST", "/api/sessions", { id: SID, date: D, plan: {} })],
     ["POST /api/pains", () => a("POST", "/api/pains", { region: "ombro_e", intensity: 3 })],
@@ -104,6 +124,8 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
 
   assert.equal((await a("DELETE", "/api/account", { confirm: "APAGAR" })).status, 200);
   assert.equal(await snap(env, "bia"), before, "dados da B mudaram");
+  assert.equal(subsB(), 1, "assinatura de push da B apagada pela A");
+  assert.equal(restB(), restBefore, "descanso da B alterado pela A");
   assert.equal([...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length, r2Before);
   assert.equal((await mcp(env, B.token, "ciclo_estado")).status, 200);
 });

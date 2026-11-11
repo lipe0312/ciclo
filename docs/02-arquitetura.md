@@ -7,7 +7,7 @@
       │ HTTPS (Access)                │                                    │ + /mcp/media (arquivo do Mac)
       ▼                               ▼                                    ▼
  ┌──────────────────────────── Cloudflare Worker "ciclo" ───────────────────────────────┐
- │ estáticos (apps/web/public)  ·  /api/* (JSON, Access)  ·  /mcp (JSON-RPC)  ·  cron 30 min │
+ │ estáticos (apps/web/public)  ·  /api/* (JSON, Access)  ·  /mcp (JSON-RPC)  ·  cron 1 min  │
  │                 └──────── packages/core (regras puras, testadas) ────────┘                │
  └──────────┬─────────────────────────────┬───────────────────────────┬──────────────────────┘
             ▼                             ▼                           ▼

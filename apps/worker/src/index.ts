@@ -5,6 +5,7 @@ import { handleApi, uploadMedia } from "./api.ts";
 import { HttpError, json } from "./http.ts";
 import { handleMcp } from "./mcp.ts";
 import { closeStaleSessions, hitRateLimit } from "./db.ts";
+import { sendDueRests } from "./push.ts";
 
 const unauthorized = () => json({ error: "não autorizado" }, 401, { "WWW-Authenticate": 'Bearer realm="ciclo"' });
 
@@ -54,8 +55,10 @@ export default {
     return env.ASSETS.fetch(req);
   },
 
-  // Cron (sem IA): fecha treinos esquecidos de todas as contas (iniciou = foi; máx. 2 h).
-  async scheduled(_c: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(closeStaleSessions(env));
+  // Cron de 1 min (sem IA): avisa o fim do descanso por Web Push (#25) e, a cada 30 min, fecha treinos esquecidos
+  // de todas as contas (iniciou = foi; máx. 2 h).
+  async scheduled(c: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(sendDueRests(env).catch(() => 0));
+    if (new Date(c.scheduledTime).getUTCMinutes() % 30 === 0) ctx.waitUntil(closeStaleSessions(env));
   },
 } satisfies ExportedHandler<Env>;

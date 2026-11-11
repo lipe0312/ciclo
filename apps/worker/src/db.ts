@@ -1,8 +1,8 @@
 // Repositório: todo SQL fica aqui (ou nas rotas), sempre com parâmetros (bind) e SEMPRE filtrado por user_id.
 // O uid vem da autenticação (auth.ts), nunca do corpo da requisição.
-import { MAX_SESSION_MS, MUSCLE_IDS, PAIN_REGIONS, mondayOf, weekDates, weeklyTargets } from "@ciclo/core";
+import { MAX_SESSION_MS, MUSCLE_IDS, PAIN_REGIONS, mondayOf, sessionSummary, weekDates, weeklyTargets } from "@ciclo/core";
 import { int, oneOf, str } from "./http.ts";
-import type { DayInput, Group, Mode, MuscleId, Pain } from "@ciclo/core";
+import type { DayInput, Group, Mode, MuscleId, Pain, SetLog } from "@ciclo/core";
 import type { Env } from "./env.ts";
 
 export interface Profile {
@@ -45,13 +45,14 @@ export async function weekState(env: Env, uid: string, anyDate: string) {
   const monday = mondayOf(anyDate);
   const dates = weekDates(monday);
   const [from, to] = [dates[0], dates[6]];
-  const [att, chk, ses, vol, pains, inbox] = await env.DB.batch([
+  const [att, chk, ses, vol, pains, inbox, cardio] = await env.DB.batch([
     env.DB.prepare("SELECT date, status, reason, source FROM attendance WHERE user_id = ?3 AND date BETWEEN ?1 AND ?2").bind(from, to, uid),
     env.DB.prepare("SELECT date, sleep_h, energy, soreness, stress, food, weight_kg, note FROM checkin WHERE user_id = ?3 AND date BETWEEN ?1 AND ?2").bind(from, to, uid),
     env.DB.prepare("SELECT id, date, gym_id, started_at, finished_at, closed_by, json_extract(plan, '$.name') AS name, json_extract(plan, '$.groups') AS groups FROM session WHERE user_id = ?3 AND date BETWEEN ?1 AND ?2 ORDER BY started_at").bind(from, to, uid),
     env.DB.prepare("SELECT l.muscle, COUNT(*) AS sets, COUNT(DISTINCT l.session_id) AS freq FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id WHERE l.user_id = ?3 AND s.date BETWEEN ?1 AND ?2 GROUP BY l.muscle").bind(from, to, uid),
     env.DB.prepare("SELECT id, region, intensity, kind, context, created_at FROM pain WHERE user_id = ?1 AND resolved_at IS NULL ORDER BY created_at DESC").bind(uid),
     env.DB.prepare("SELECT id, created_at, text, action, tier, status, response, change FROM inbox WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 20").bind(uid),
+    env.DB.prepare("SELECT id, date, type, minutes, intensity, distance_km FROM cardio_log WHERE user_id = ?3 AND date BETWEEN ?1 AND ?2 ORDER BY date, created_at").bind(from, to, uid),
   ]);
   const done: Partial<Record<MuscleId, number>> = {}, freq: Partial<Record<MuscleId, number>> = {};
   for (const r of vol.results as { muscle: MuscleId; sets: number; freq: number }[]) { done[r.muscle] = r.sets; freq[r.muscle] = r.freq; }
@@ -62,7 +63,56 @@ export async function weekState(env: Env, uid: string, anyDate: string) {
     sessions: sessions.map((s) => ({ ...s, groups: parse<Group[]>(s.groups, []) })),
     pains: pains.results as (Pain & { id: string; kind: string; context: string })[],
     inbox: (inbox.results as InboxRow[]).map((i) => ({ ...i, change: parse<unknown>(i.change, null) })),
+    // cardio da semana: o app/Claude resumem com cardioWeekSummary (core)
+    cardio: (cardio.results as CardioRow[]).map(cardioOut),
   };
+}
+
+export interface CardioRow { id: string; date: string; type: string; minutes: number; intensity: string; distance_km: number | null }
+export const cardioOut = (r: CardioRow) => ({ id: r.id, date: r.date, type: r.type, minutes: r.minutes, intensity: r.intensity, distanceKm: r.distance_km });
+
+export interface ExerciseSession { sessionId: string; date: string; startedAt: number; sets: { setNo: number; kg: number; reps: number }[] }
+/** Histórico de UM exercício, sessões da mais recente para trás (paginado por `before` = started_at da última recebida). */
+export async function exerciseHistory(env: Env, uid: string, exerciseId: string, before: number | null, limit: number): Promise<ExerciseSession[]> {
+  const { results } = await env.DB.prepare(`SELECT s.id AS session_id, s.date, s.started_at, l.set_no, l.kg, l.reps
+    FROM session s JOIN set_log l ON l.user_id = s.user_id AND l.session_id = s.id
+    WHERE s.user_id = ?1 AND l.exercise_id = ?2 AND (?3 IS NULL OR s.started_at < ?3)
+      AND s.id IN (SELECT s2.id FROM session s2 JOIN set_log l2 ON l2.user_id = s2.user_id AND l2.session_id = s2.id
+        WHERE s2.user_id = ?1 AND l2.exercise_id = ?2 AND (?3 IS NULL OR s2.started_at < ?3) GROUP BY s2.id ORDER BY s2.started_at DESC LIMIT ?4)
+    ORDER BY s.started_at DESC, l.set_no`).bind(uid, exerciseId, before, limit)
+    .all<{ session_id: string; date: string; started_at: number; set_no: number; kg: number | null; reps: number | null }>();
+  const out: ExerciseSession[] = [];
+  for (const r of results) {
+    let cur = out[out.length - 1];
+    if (!cur || cur.sessionId !== r.session_id) { cur = { sessionId: r.session_id, date: r.date, startedAt: r.started_at, sets: [] }; out.push(cur); }
+    cur.sets.push({ setNo: r.set_no, kg: r.kg ?? 0, reps: r.reps ?? 0 });
+  }
+  return out;
+}
+
+/** Resumo do treino encerrado (volume, séries, PRs, médias vs última vez) a partir do que está no banco; grava em session.summary. */
+export async function summarizeSession(env: Env, uid: string, sid: string) {
+  const ses = await env.DB.prepare("SELECT started_at, finished_at FROM session WHERE user_id = ?1 AND id = ?2").bind(uid, sid).first<{ started_at: number; finished_at: number | null }>();
+  if (!ses) return null;
+  const cur = await env.DB.prepare("SELECT exercise_id, kg, reps FROM set_log WHERE user_id = ?1 AND session_id = ?2 ORDER BY exercise_id, set_no").bind(uid, sid).all<{ exercise_id: string; kg: number | null; reps: number | null }>();
+  const current: Record<string, SetLog[]> = {};
+  for (const r of cur.results) (current[r.exercise_id] ??= []).push({ kg: r.kg ?? 0, reps: r.reps ?? 0 });
+  const ids = Object.keys(current);
+  const past: Record<string, SetLog[][]> = {};
+  if (ids.length) {
+    const rows = await env.DB.prepare(`SELECT l.exercise_id, l.session_id, l.kg, l.reps FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
+      WHERE l.user_id = ?1 AND l.session_id <> ?2 AND s.started_at < ?3 AND l.exercise_id IN (SELECT value FROM json_each(?4))
+      ORDER BY s.started_at DESC, l.set_no LIMIT 3000`).bind(uid, sid, ses.started_at, JSON.stringify(ids)).all<{ exercise_id: string; session_id: string; kg: number | null; reps: number | null }>();
+    const lastSid: Record<string, string> = {};
+    for (const r of rows.results) {
+      const list = (past[r.exercise_id] ??= []);
+      if (lastSid[r.exercise_id] !== r.session_id) { lastSid[r.exercise_id] = r.session_id; list.push([]); }
+      list[list.length - 1].push({ kg: r.kg ?? 0, reps: r.reps ?? 0 });
+    }
+  }
+  const sum = sessionSummary(Math.max(0, (ses.finished_at ?? Date.now()) - ses.started_at), current, past);
+  await env.DB.prepare("UPDATE session SET summary = ?3 WHERE user_id = ?1 AND id = ?2").bind(uid, sid, JSON.stringify(sum)).run();
+  return sum;
 }
 
 export async function lastGroup(env: Env, uid: string, beforeDate: string): Promise<Group | "full" | null> {
@@ -130,19 +180,19 @@ export async function hitRateLimit(env: Env, uid: string, bucket: RateBucket, no
 
 // ---- direitos da conta (LGPD) ----
 /** Tabelas de dado pessoal (todas têm user_id). Ordem de apagar: filhas antes das mães. */
-export const USER_TABLES = ["set_log", "exercise_skip", "media", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym", "profile_history", "profile", "mcp_token", "rate_limit"] as const;
+export const USER_TABLES = ["set_log", "exercise_skip", "media", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer"] as const;
 
 /** Tudo da conta em JSON (mídia: só metadados; tokens: sem hash). */
 export async function exportAccount(env: Env, uid: string) {
   const q = (sql: string) => env.DB.prepare(sql).bind(uid);
-  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "mcp_token"] as const;
+  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "mcp_token", "cardio_log"] as const;
   const res = await env.DB.batch([
     q("SELECT id, email, created_at, last_seen_at, onboarding_done_at FROM user WHERE id = ?1"),
     q("SELECT data, updated_at FROM profile WHERE user_id = ?1"),
     q("SELECT data, created_at FROM profile_history WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT id, name, equipment, busy_hours, sort, created_at FROM gym WHERE user_id = ?1 ORDER BY sort"),
     q("SELECT date, gym_id, input, plan, source, created_at FROM day_plan WHERE user_id = ?1 ORDER BY date"),
-    q("SELECT id, date, gym_id, plan, started_at, finished_at, closed_by, feedback FROM session WHERE user_id = ?1 ORDER BY started_at"),
+    q("SELECT id, date, gym_id, plan, started_at, finished_at, closed_by, feedback, summary FROM session WHERE user_id = ?1 ORDER BY started_at"),
     q("SELECT session_id, exercise_id, muscle, set_no, kg, reps, rir, created_at FROM set_log WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT session_id, exercise_id, reason, created_at FROM exercise_skip WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT date, status, reason, source, updated_at FROM attendance WHERE user_id = ?1 ORDER BY date"),
@@ -154,6 +204,7 @@ export async function exportAccount(env: Env, uid: string) {
     q("SELECT date, arm_cm, waist_cm, shoulder_cm, updated_at FROM measurement WHERE user_id = ?1 ORDER BY date"),
     q("SELECT id, kind, mime, bytes, equipment_id, exercise_id, gym_id, note, setup, created_at FROM media WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT id, label, created_at, last_used_at, revoked_at FROM mcp_token WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT id, date, type, minutes, intensity, distance_km, created_at FROM cardio_log WHERE user_id = ?1 ORDER BY date, created_at"),
   ]);
   const out: Record<string, unknown> = { formato: "ciclo-export-1", exportadoEm: new Date().toISOString() };
   names.forEach((n, i) => { out[n] = n === "user" || n === "profile" ? res[i].results[0] ?? null : res[i].results; });
