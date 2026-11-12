@@ -8,6 +8,7 @@ import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, countGyms, del
 import { pushEnabled, validEndpoint } from "./push.ts";
 import { newMcpToken } from "./auth.ts";
 import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
+import { createExam, deleteExam, getDiary, openDiary, putCheckout, saveDaysSummary, setReminder } from "./diario.ts";
 
 type Handler = (req: Request, env: Env, p: Record<string, string>, u: AuthUser) => Promise<Response>;
 const routes: { method: string; path: string; re: RegExp; h: Handler }[] = [];
@@ -201,6 +202,19 @@ on("PUT", "/api/attendance/:date", async (req, env, p, u) => {
     .bind(date(p.date), oneOf(b.status, "status", ["fui", "nao_fui", "folga"] as const), str(b.reason, "reason", 200, false), Date.now(), u.id).run();
   return json({ ok: true });
 });
+
+// ---- diário (#27): checkout da noite, resumo dos dias sem abrir, lembrete sem modal e exames ----
+on("GET", "/api/diario", async (req, env, _p, u) => {
+  const q = new URL(req.url).searchParams;
+  return json(await getDiary(env, u.id, date(q.get("from"), "from"), date(q.get("to"), "to")));
+});
+on("PUT", "/api/checkout/:date", async (req, env, p, u) => json(await putCheckout(env, u.id, date(p.date), await readJson(req, 8 * 1024))));
+on("POST", "/api/diario/abrir", async (req, env, _p, u) => json(await openDiary(env, u.id, date((await readJson(req, 1024)).today, "today"))));
+on("PUT", "/api/diario/lembrete", async (req, env, _p, u) => json(await setReminder(env, u.id, await readJson(req, 1024))));
+on("POST", "/api/diario/resumo", async (req, env, _p, u) => json(await saveDaysSummary(env, u.id, (await readJson(req, 16 * 1024)).dias, "resumo")));
+// Exame: chega só o TEXTO (o PDF é lido no aparelho, até 5 MB); o arquivo nunca vai ao servidor nem ao R2.
+on("POST", "/api/exames", async (req, env, _p, u) => json(await createExam(env, u.id, await readJson(req, 256 * 1024)), 201));
+on("DELETE", "/api/exames/:id", async (_req, env, p, u) => json(await deleteExam(env, u.id, p.id)));
 
 // Gera (não salva) o treino do dia com o core — o mesmo cálculo que o app faz localmente.
 // Conta sem perfil/academia → { plan: null, empty: "sem_perfil" | "sem_academia", message }.

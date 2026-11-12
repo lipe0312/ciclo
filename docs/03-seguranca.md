@@ -19,10 +19,11 @@ O repositório é **público** e os dados são **pessoais** (peso, dor, comida e
 | Arquivos locais (MCP do Mac) | `ciclo_anexar_midia` só lê arquivos de pastas permitidas (Filmes, Imagens, Downloads, Mesa; configurável por `CICLO_MEDIA_DIRS`) e com tipo e tamanho checados | `apps/mcp-local` |
 | Navegador | CSP estrita (`script-src 'self'`, sem script inline, sem terceiros), `frame-ancestors 'none'`, HSTS, `Referrer-Policy: no-referrer`, `Permissions-Policy` (câmera, microfone e localização só do próprio app; `img-src` com os tiles do OpenStreetMap, ADR-0010) | `apps/web/public/_headers` |
 | XSS | Tudo o que vem de dados passa por `esc()` antes de virar HTML | `app.js` |
+| Exames (saúde) | PDF lido **no aparelho** (pdf.js sob demanda, ADR-0009), até 5 MB; só o texto vai ao D1 e é apagado na análise (`ciclo_exame_concluir`) ou em 7 dias (cron). Arquivo nunca vai ao R2; fica só o resumo estruturado | `diario.ts`, migration `0007` |
 | Erros | Mensagem genérica ao cliente; log sem dados pessoais (só a rota e a mensagem) | `api.ts`, `mcp.ts` |
 | Segredos | tokens do Claude só como hash no D1; `.dev.vars` no `.gitignore`; CI com **gitleaks**; *secret scanning* e *push protection* do GitHub | `.github/` |
 | Mapa (#26) | Leaflet + tiles do OpenStreetMap: **o navegador pede os tiles ao OSM, então o OSM vê a região (zona do mapa e zoom) dos lugares que você abre, inclusive a casa**; o app manda só a origem como Referer. Quem não quer isso não marca o ponto (o mapa é opcional). Busca de endereço pelo Worker (User-Agent genérico, sem dado pessoal; só o texto digitado sai), limite global de 1 req/s (`geocode_gate`) e por conta | `apps/web/src/screens/academias`, `api.ts`, ADR-0010 |
-| Dependências | **Zero em runtime**. Dev: wrangler, esbuild, typescript e @types/node, com versões fixadas com ≥ 2 semanas de lançamento; Dependabot semanal | `package.json` |
+| Dependências | Runtime do front: Preact (ADR-0008), pdf.js só na tela de exames (ADR-0009) e Leaflet só no mapa (ADR-0010); Worker: zero. Dev: wrangler, esbuild, typescript e @types/node, com versões fixadas com ≥ 2 semanas de lançamento; Dependabot semanal | `package.json` |
 
 ## O que o Claude pode e não pode
 - Pode: ler o resumo, planejar, salvar o treino do dia **validado**, responder pedidos, registrar dor, comida e presença, e revisar edições.
