@@ -12,6 +12,7 @@ import { GradeAparelhos } from "../../lib/grade-aparelhos/index.tsx";
 import { IlustCorpo, IlustObjetivo } from "../../lib/ilustracoes/index.tsx";
 import { BODY, DAYS_LONG, DIET, GOALS, LEVELS, LIM } from "../../lib/perfil-dados.ts";
 import { DEFAULT_GYMS } from "../../lib/store/index.ts";
+import { limparDispensaCheckup } from "../../lib/faixa-checkup/index.tsx";
 import { lsGet, lsSet, setPath } from "../../lib/util.ts";
 
 const KEY = "ciclo:pp";
@@ -129,7 +130,7 @@ const LAST = PASSOS.length - 1;
 async function concluir(setBusy: (b: boolean) => void) {
   setBusy(true);
   try {
-    S.profile.meta = { filledBy: "app", confirmed: true };
+    S.profile.meta = { filledBy: "app", confirmed: true, checkup: "feito" }; limparDispensaCheckup();
     S.ui.locked = false; S.ui.planSource = undefined; S.ui.minutes = S.profile.minutes; S.ui.format = S.profile.dynamics; S.ui.minutesSet = true;
     S.ui.daysLeft = Math.min(4, Math.max(1, S.profile.daysTarget));
     const plan = computePlan(true);
@@ -140,6 +141,15 @@ async function concluir(setBusy: (b: boolean) => void) {
       await api("PATCH", "/api/account", { onboarding: "concluido" });
     }
     S.onboarding = "concluido"; pp.step = 0; savePP(); commit(); toast("Semana gerada"); go("#hoje");
+  } catch (e: any) { toast(e?.message ?? "Não deu para salvar agora. Tente de novo."); setBusy(false); }
+}
+
+async function pular(setBusy: (b: boolean) => void) {
+  setBusy(true);
+  try {
+    S.profile.meta = { ...S.profile.meta, checkup: "pulado" };
+    if (SERVER) { await api("PUT", "/api/profile", { data: S.profile }); await api("PATCH", "/api/account", { onboarding: "concluido" }); }
+    S.onboarding = "concluido"; commit(); toast("Sem problema: dá para fazer o checkup depois"); go("#hoje");
   } catch (e: any) { toast(e?.message ?? "Não deu para salvar agora. Tente de novo."); setBusy(false); }
 }
 
@@ -158,7 +168,7 @@ export default function PrimeirosPassos({ route }: { route: Route }) {
   return <div class="pp">
     <div class="pp-top"><button type="button" class="btn" disabled={step === 0} onClick={() => goto(step - 1)} aria-label="Voltar uma pergunta"><Icon id="back" />Voltar</button>
       <span class="small sub num" aria-hidden="true">{step + 1} de {PASSOS.length}</span>
-      {feito ? <a class="btn ghost" href="#perfil">Sair</a> : <span />}</div>
+      {feito ? <a class="btn ghost" href="#perfil">Sair</a> : <button type="button" class="btn ghost" disabled={busy} onClick={() => pular(setBusy)}>Pular por agora</button>}</div>
     <div class="pp-bar" role="progressbar" aria-label="Progresso dos Primeiros passos" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><i style={`width:${pct}%`} /></div>
     {porClaude && step === 0 && <div class="note" style="margin-top:14px"><Icon id="chat" /><span>Preenchido pelo Claude. Confira as respostas e siga até o fim para confirmar.</span></div>}
     <h1 class="pp-q">{P.title}</h1><p class="sub pp-sub">{P.sub}</p>
