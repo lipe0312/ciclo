@@ -10,4 +10,6 @@
 - Limite de 5 MB e "só PDF" no core (`checkExamFile`, testado: 5 MB aceito, 6 MB recusado). O servidor nunca recebe o arquivo (`POST /api/exames` só aceita JSON com o texto; corpo grande → 413).
 - **Retenção:** o texto bruto fica em `health_exam.raw_text` só até `ciclo_exame_concluir` (que grava o resumo e apaga o texto na mesma escrita) ou, no máximo, **7 dias** (cron de 30 min + limpeza na leitura). Fica só o resumo estruturado (marcadores com "dentro/fora da referência" do próprio laudo) e o aviso "não é diagnóstico".
 
+- O `pdfjs-dist` declara **`@napi-rs/canvas` (MIT) como dependência opcional, só para Node** (renderizar em servidor). Ela entra no `package-lock.json`, mas não vai para o navegador nem para o Worker: o Vite empacota só a build `legacy` do pdf.js. Também passamos `isEvalSupported: false` (o 6.x já não usa `eval`; a CSP bloquearia de todo jeito).
+
 **Consequências:** ~0,5 MB (pdf.js) + ~1,3 MB (worker) baixados só por quem abre um PDF. PDF escaneado (imagem, sem camada de texto) não é lido: a tela pede para colar o texto. Atualizar o pdf.js segue a regra de versões fixadas com ≥ 2 semanas (Dependabot).

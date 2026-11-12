@@ -10,7 +10,10 @@ const MAX_PAGES = 40;
 /** Texto do PDF (até 40 páginas e `maxChars`). Sem fontes, sem WebAssembly e sem rede: só a camada de texto. */
 export async function pdfText(file: File, maxChars: number): Promise<{ text: string; pages: number; truncated: boolean }> {
   const data = new Uint8Array(await file.arrayBuffer());
-  const task = getDocument({ data, disableFontFace: true, useSystemFonts: false, useWasm: false, enableXfa: false, isOffscreenCanvasSupported: false, stopAtErrors: false });
+  // isEvalSupported: o pdf.js 6.x já não compila funções com eval (e a CSP bloqueia); passamos false mesmo assim,
+  // para valer se uma versão que ainda lê a opção voltar. O tipo 6.x não declara a opção, daí o objeto à parte.
+  const noEval = { isEvalSupported: false } as Record<string, unknown>;
+  const task = getDocument({ data, disableFontFace: true, useSystemFonts: false, useWasm: false, enableXfa: false, isOffscreenCanvasSupported: false, stopAtErrors: false, ...noEval });
   const doc = await task.promise;
   try {
     const out: string[] = [];

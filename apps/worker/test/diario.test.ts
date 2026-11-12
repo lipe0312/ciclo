@@ -74,14 +74,18 @@ test("relato ao Claude: ciclo_registrar_resumo_dias grava com 'confira' e ciclo_
   const env = makeEnv(), c = as(env, "ana"), tok = await token(env, "ana");
   await ok(c("POST", "/api/diario/abrir", { today: MON }));
   await ok(c("POST", "/api/diario/abrir", { today: FRI }));
-  const w = await tool(env, tok, "ciclo_registrar_resumo_dias", { dias: [{ date: TUE, trained: true }, { date: WED, alcohol: 2 }] });
+  await ok(c("PUT", `/api/checkout/${THU}`, { alcohol: 1, note: "nota do dono", mood: 4 })); // registro do app antes do relato
+  const w = await tool(env, tok, "ciclo_registrar_resumo_dias", { dias: [{ date: TUE, trained: true }, { date: WED, alcohol: 2 }, { date: THU, alcohol: 5, note: "relato", sleptWell: true, trained: false }] });
   assert.equal(w.err, false, String(w.out));
   const d = (await ok(c("GET", `/api/diario?from=${MON}&to=${FRI}`))).data;
-  assert.deepEqual(d.checkouts.map((x: any) => x.source), ["claude", "claude"]);
+  assert.deepEqual(d.checkouts.map((x: any) => [x.date, x.source]), [[TUE, "claude"], [WED, "claude"], [THU, "app"]], "não troca a origem do registro do app");
+  const thu = d.checkouts.find((x: any) => x.date === THU);
+  assert.equal(thu.alcohol, 1, "não troca o álcool do dono"); assert.equal(thu.note, "nota do dono", "não troca a nota do dono");
+  assert.equal(thu.sleptWell, true, "completa o que faltava"); assert.equal(thu.trained, false); assert.equal(thu.mood, 4);
   assert.equal(d.reminder.absence, null);
   assert.equal((await tool(env, tok, "ciclo_registrar_resumo_dias", { dias: [{ date: TUE, alcohol: 99 }] })).err, true);
   const r = (await tool(env, tok, "ciclo_diario", { from: MON, to: FRI })).out;
-  assert.equal(r.checkouts.length, 2); assert.match(r.saude, /álcool 1 noites \(2 doses\)/);
+  assert.equal(r.checkouts.length, 3); assert.match(r.saude, /álcool 2 noites \(3 doses\)/);
 });
 
 test("exame: só texto (PDF não sobe); texto bruto some ao concluir; resumo validado; recusa sem o texto", async () => {
@@ -91,8 +95,10 @@ test("exame: só texto (PDF não sobe); texto bruto some ao concluir; resumo val
   assert.equal((await c("POST", "/api/exames", { text: "x".repeat(60001) })).status, 400);
   assert.equal((await c("POST", "/api/exames", { text: "   " })).status, 400);
   const e = (await ok(c("POST", "/api/exames", { label: "Sangue (fictício)", text: "VITAMINA D 22 ng/mL (ref. 30 a 100)" }), 201)).data;
-  const pend = (await tool(env, tok, "ciclo_exame_pendente")).out.exames;
-  assert.equal(pend.length, 1); assert.match(pend[0].texto, /VITAMINA D/);
+  const e2 = (await ok(c("POST", "/api/exames", { label: "Urina (fictício)", text: "pH 6,0" }), 201)).data;
+  const p1 = (await tool(env, tok, "ciclo_exame_pendente")).out;
+  assert.equal(p1.exame.id, e.id, "1 por chamada, o mais antigo primeiro"); assert.match(p1.exame.texto, /VITAMINA D/); assert.equal(p1.depoisDeste, 1);
+  await ok(c("DELETE", `/api/exames/${e2.id}`));
   assert.equal((await tool(env, tok, "ciclo_exame_concluir", { id: e.id, resumo: { marcadores: [{ nome: "Vitamina D", valor: 22, status: "talvez" }] } })).err, true, "resumo inválido não apaga nada");
   assert.ok(env.DB.raw.prepare("SELECT raw_text FROM health_exam WHERE id = ?").get(e.id).raw_text);
   const fim = await tool(env, tok, "ciclo_exame_concluir", { id: e.id, resumo: { data: "2026-10-30", marcadores: [{ nome: "Vitamina D", valor: 22, unidade: "ng/mL", referencia: "30–100", status: "fora" }], mudancas: ["Conversar com o médico sobre vitamina D"] } });
@@ -101,7 +107,7 @@ test("exame: só texto (PDF não sobe); texto bruto some ao concluir; resumo val
   assert.equal(row.raw_text, null, "texto bruto apagado do banco"); assert.equal(row.status, "analisado"); assert.ok(row.analyzed_at);
   assert.match(row.summary_json, /não é diagnóstico/);
   assert.equal((await tool(env, tok, "ciclo_exame_concluir", { id: e.id, resumo: { marcadores: [{ nome: "a", valor: 1, status: "dentro" }] } })).err, true, "não conclui 2×");
-  assert.equal((await tool(env, tok, "ciclo_exame_pendente")).out.exames.length, 0);
+  assert.deepEqual((await tool(env, tok, "ciclo_exame_pendente")).out, { exame: null, depoisDeste: 0 });
   const ex = (await ok(c("GET", `/api/diario?from=${MON}&to=${FRI}`))).data.exams[0];
   assert.equal(ex.status, "analisado"); assert.equal(ex.hasText, false); assert.equal(ex.summary.marcadores[0].status, "fora");
   assert.ok(!JSON.stringify(ex).includes("VITAMINA D 22"), "o app não recebe o texto bruto");
@@ -124,11 +130,12 @@ test("exame não analisado: texto bruto some depois de 7 dias (cron e leitura)",
   await Promise.all(waits);
   const row = env.DB.raw.prepare("SELECT raw_text, status FROM health_exam WHERE id = ?").get(e.id);
   assert.equal(row.raw_text, null); assert.equal(row.status, "expirado");
-  assert.equal((await tool(env, tok, "ciclo_exame_pendente")).out.exames.length, 0);
+  assert.equal((await tool(env, tok, "ciclo_exame_pendente")).out.exame, null);
   assert.equal((await tool(env, tok, "ciclo_exame_concluir", { id: e.id, resumo: { marcadores: [{ nome: "TSH", valor: 2.1, status: "dentro" }] } })).err, true, "vencido não conclui");
-  // na leitura também: vencido de outra forma (relógio) some sem esperar o cron
+  // vencido pelo relógio: ciclo_exame_pendente (só leitura) já não mostra; o GET do Diário apaga sem esperar o cron
   const e2 = (await ok(c("POST", "/api/exames", { text: "glicemia fictícia" }), 201)).data;
   env.DB.raw.prepare("UPDATE health_exam SET expires_at = 1 WHERE id = ?").run(e2.id);
+  assert.equal((await tool(env, tok, "ciclo_exame_pendente")).out.exame, null);
   await ok(c("GET", `/api/diario?from=${MON}&to=${FRI}`));
   assert.equal(env.DB.raw.prepare("SELECT raw_text FROM health_exam WHERE id = ?").get(e2.id).raw_text, null);
 });

@@ -48,7 +48,7 @@ export function CheckoutCard() {
       <div class="ckrow"><span class="small">Fumo / vape</span><Seg opts={SIMNAO} value={c.smoke} label="Fumo ou vape" onPick={(v) => set({ smoke: v, smokeQty: v ? c.smokeQty ?? 1 : null })} /></div>
       {c.smoke && <div class="ckrow"><span class="small">Quantos?</span><Stepper value={c.smokeQty ?? 1} step={1} onStep={(s) => set({ smokeQty: clamp((c.smokeQty ?? 1) + s, 1, 100) })} /></div>}
       <div class="ckrow"><span class="small">Cafeína após 16h</span><Seg opts={SIMNAO} value={c.caffeineLate} label="Cafeína depois das 16h" onPick={(v) => set({ caffeineLate: v })} /></div>
-      <div class="ckrow"><span class="small">Humor</span><Seg opts={HUMOR} value={c.mood} label="Humor" onPick={(v) => set({ mood: v })} /></div>
+      <div><span class="f" id="coHumor">Humor</span><Seg cls="dia-humor" opts={HUMOR} value={c.mood} label="Humor" onPick={(v) => set({ mood: v })} /></div>
       <div><label class="f" for="coNote">Nota livre</label>
         <div class="row start" style="gap:8px"><textarea class="input" id="coNote" maxLength={1000} placeholder="Algo diferente hoje? (texto ou voz)" value={c.note ?? ""} onInput={(e) => set({ note: e.currentTarget.value || null })} />
           <Mic value={c.note ?? ""} onChange={(v) => set({ note: v.slice(0, 1000) || null })} label="Ditar nota" /></div></div>

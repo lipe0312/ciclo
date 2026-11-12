@@ -39,3 +39,5 @@
 .ex-val{font-weight:800;text-align:right}
 .ex-ref{grid-column:1 / -1}
 .ex-st.fora{color:var(--bad)} .ex-st.dentro{color:var(--ok)} .ex-st.sem_referencia{color:var(--sub)}
+.dia-humor{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%}
+.dia-humor button{min-width:0;min-height:44px;padding:0 4px;font-size:13px}

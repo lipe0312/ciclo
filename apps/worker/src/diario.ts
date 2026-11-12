@@ -76,9 +76,13 @@ export async function saveDaysSummary(env: Env, uid: string, input: unknown, sou
     const d = date(o.date, `dias[${i}].date`);
     if (seen.has(d)) throw new HttpError(400, `dias[${i}].date repetida`); seen.add(d);
     const trained = bool(o.trained, `dias[${i}].trained`);
+    // Formulário do próprio dono ('resumo'): o que ele marcou vale. Relato via Claude: SÓ completa o que falta
+    // (COALESCE(coluna, novo)) e nunca troca nota, álcool nem a origem de um registro que já existe.
+    const upd = source === "claude"
+      ? "trained = COALESCE(trained, ?3), alcohol_units = COALESCE(alcohol_units, ?4), sleep_ok = COALESCE(sleep_ok, ?5), note = COALESCE(note, ?6)"
+      : "trained = COALESCE(?3, trained), alcohol_units = COALESCE(?4, alcohol_units), sleep_ok = COALESCE(?5, sleep_ok), note = COALESCE(?6, note)";
     const q = [env.DB.prepare(`INSERT INTO checkout (user_id, date, trained, alcohol_units, sleep_ok, note, source, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-      ON CONFLICT(user_id, date) DO UPDATE SET trained = COALESCE(?3, trained), alcohol_units = COALESCE(?4, alcohol_units), sleep_ok = COALESCE(?5, sleep_ok),
-        note = COALESCE(?6, note), source = CASE WHEN ?7 = 'claude' THEN 'claude' ELSE source END, updated_at = ?8`)
+      ON CONFLICT(user_id, date) DO UPDATE SET ${upd}, updated_at = ?8`) // upd é constante do código, não do usuário
       .bind(uid, d, trained, int(o.alcohol, `dias[${i}].alcohol`, 0, 30, false), bool(o.sleptWell, `dias[${i}].sleptWell`), str(o.note, `dias[${i}].note`, 500, false), source, now)];
     // "foi treinar?" também vira presença, sem sobrescrever o que o app já marcou (ex.: iniciou = foi)
     if (trained != null) q.push(env.DB.prepare("INSERT INTO attendance (user_id, date, status, source, updated_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(user_id, date) DO NOTHING")
@@ -190,11 +194,18 @@ export async function purgeExpiredExams(env: Env, now = Date.now(), uid: string 
     WHERE raw_text IS NOT NULL AND expires_at <= ?1 AND (?2 IS NULL OR user_id = ?2)`).bind(now, uid).run();
 }
 
-export async function pendingExams(env: Env, uid: string, now = Date.now()) {
-  await purgeExpiredExams(env, now, uid);
-  const { results } = await env.DB.prepare("SELECT id, label, created_at, expires_at, raw_text FROM health_exam WHERE user_id = ?1 AND status = 'pendente' AND raw_text IS NOT NULL AND expires_at > ?2 ORDER BY created_at LIMIT 3")
-    .bind(uid, now).all<{ id: string; label: string; created_at: number; expires_at: number; raw_text: string }>();
-  return results.map((e) => ({ id: e.id, rotulo: e.label, enviadoEm: new Date(e.created_at).toISOString().slice(0, 10), expiraEm: new Date(e.expires_at).toISOString().slice(0, 10), texto: e.raw_text }));
+/** Só leitura (a purga fica no cron e no GET /api/diario): o vencido já fica de fora pelo expires_at. 1 exame por chamada. */
+export async function pendingExam(env: Env, uid: string, now = Date.now()) {
+  const [one, count] = await env.DB.batch([
+    env.DB.prepare("SELECT id, label, created_at, expires_at, raw_text FROM health_exam WHERE user_id = ?1 AND status = 'pendente' AND raw_text IS NOT NULL AND expires_at > ?2 ORDER BY created_at LIMIT 1").bind(uid, now),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM health_exam WHERE user_id = ?1 AND status = 'pendente' AND raw_text IS NOT NULL AND expires_at > ?2").bind(uid, now),
+  ]);
+  const e = one.results[0] as { id: string; label: string; created_at: number; expires_at: number; raw_text: string } | undefined;
+  const n = (count.results[0] as { n: number }).n;
+  return {
+    exame: e ? { id: e.id, rotulo: e.label, enviadoEm: new Date(e.created_at).toISOString().slice(0, 10), expiraEm: new Date(e.expires_at).toISOString().slice(0, 10), texto: e.raw_text } : null,
+    depoisDeste: Math.max(0, n - 1),
+  };
 }
 
 /** Salva o resumo estruturado (validado no core) e apaga o texto bruto na mesma escrita. */

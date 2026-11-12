@@ -66,7 +66,8 @@ export function Exames() {
         <label class="f" for="exText" style="margin-top:12px">Texto do laudo</label>
         <textarea class="input" id="exText" rows={6} maxLength={C.EXAM_MAX_TEXT} placeholder="ou cole aqui o texto do laudo" value={text} onInput={(e) => setText(e.currentTarget.value)} />
         <p class="tiny sub num" style="margin-top:4px">{fmt(text.length)} / {fmt(C.EXAM_MAX_TEXT)} caracteres</p>
-        <button type="button" class="btn pri full" style="margin-top:12px" disabled={busy || !text.trim()} onClick={enviar}><Icon id="send" />Enviar para análise</button></Card></div>
+        <button type="button" class="btn pri full" style="margin-top:12px" disabled={busy || !text.trim()} onClick={enviar} aria-describedby="exHint"><Icon id="send" />Enviar para análise</button>
+        {(busy || !text.trim()) && <p class="tiny sub" id="exHint" style="margin-top:6px">{busy ? "Aguarde: lendo ou enviando…" : "Falta o texto: escolha um PDF ou cole o laudo acima."}</p>}</Card></div>
       <div class="stack">{D.exams.length ? D.exams.map((e) => <ExameCard key={e.id} e={e} />)
         : <Card><p class="small sub">Nenhum exame ainda. O resumo mostra vitamina D, ferritina, glicemia, perfil lipídico, testosterona, TSH etc., com “dentro/fora da referência” do próprio laudo.</p></Card>}</div></div>
   </>;
