@@ -9,7 +9,7 @@ import { pushEnabled, validEndpoint } from "./push.ts";
 import { newMcpToken } from "./auth.ts";
 import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
 import { registerComida } from "./comida.ts";
-import { createExam, deleteExam, getDiary, openDiary, putCheckout, saveDaysSummary, setReminder } from "./diario.ts";
+import { createExam, deleteExam, getDiary, openDiary, putCheckout, saveDaysSummary, saveRecap, setReminder } from "./diario.ts";
 
 type Handler = (req: Request, env: Env, p: Record<string, string>, u: AuthUser) => Promise<Response>;
 const routes: { method: string; path: string; re: RegExp; h: Handler }[] = [];
@@ -209,9 +209,11 @@ on("GET", "/api/diario", async (req, env, _p, u) => {
   return json(await getDiary(env, u.id, date(q.get("from"), "from"), date(q.get("to"), "to")));
 });
 on("PUT", "/api/checkout/:date", async (req, env, p, u) => json(await putCheckout(env, u.id, date(p.date), await readJson(req, 8 * 1024))));
-on("POST", "/api/diario/abrir", async (req, env, _p, u) => json(await openDiary(env, u.id, date((await readJson(req, 1024)).today, "today"))));
+// #42: o dia do diário vem do relógio do servidor (vira às 07:00); o corpo ({ today }) é aceito e ignorado
+on("POST", "/api/diario/abrir", async (_req, env, _p, u) => json(await openDiary(env, u.id)));
 on("PUT", "/api/diario/lembrete", async (req, env, _p, u) => json(await setReminder(env, u.id, await readJson(req, 1024))));
 on("POST", "/api/diario/resumo", async (req, env, _p, u) => json(await saveDaysSummary(env, u.id, (await readJson(req, 16 * 1024)).dias, "resumo")));
+on("POST", "/api/diario/recap", async (req, env, _p, u) => json(await saveRecap(env, u.id, await readJson(req, 64 * 1024))));
 // Exame: chega só o TEXTO (o PDF é lido no aparelho, até 5 MB); o arquivo nunca vai ao servidor nem ao R2.
 on("POST", "/api/exames", async (req, env, _p, u) => json(await createExam(env, u.id, await readJson(req, 256 * 1024)), 201));
 on("DELETE", "/api/exames/:id", async (_req, env, p, u) => json(await deleteExam(env, u.id, p.id)));

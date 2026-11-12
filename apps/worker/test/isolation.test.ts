@@ -47,6 +47,8 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   await ok(c("POST", "/api/diario/abrir", { today: D }));
   await ok(c("PUT", "/api/diario/lembrete", { snoozedOn: D }));
   await ok(c("POST", "/api/diario/resumo", { dias: [{ date: "2026-11-04", alcohol: 1, note: `${tag} resumo` }] }));
+  // #42 recap: bebida e refeição viram registros na Comida, texto livre na nota
+  await ok(c("POST", "/api/diario/recap", { from: "2026-10-30", to: "2026-11-01", dias: [{ date: "2026-10-31", alcool: { cerveja: 2 }, sleptWell: true }], refeicoes: [{ date: "2026-10-31", meal: "almoco", text: `${tag} almoço` }], texto: `${tag} recap` }));
   const exam = (await ok(c("POST", "/api/exames", { label: `${tag} exame`, text: `${tag} laudo` }))).data.id;
   const tok = (await ok(c("POST", "/api/account/tokens", { label: `${tag} token` }))).data;
   const exp = (await c("GET", "/api/account/export")).data;
@@ -92,6 +94,7 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["POST /api/diario/abrir", () => a("POST", "/api/diario/abrir", { today: "2026-11-09" })],
     ["PUT /api/diario/lembrete", () => a("PUT", "/api/diario/lembrete", { absenceDays: 3, dismissAbsence: true })],
     ["POST /api/diario/resumo", () => a("POST", "/api/diario/resumo", { dias: [{ date: "2026-11-04", trained: true, note: "A" }, { date: D, alcohol: 5 }] })],
+    ["POST /api/diario/recap", () => a("POST", "/api/diario/recap", { from: "2026-10-30", to: "2026-11-01", dias: [{ date: "2026-10-31", alcool: {}, sleptWell: false, trained: true }], refeicoes: [{ date: "2026-10-31", meal: "almoco", naoLembro: true }], texto: "A" })],
     ["POST /api/exames", () => a("POST", "/api/exames", { text: "A laudo 2" }), 201],
     ["DELETE /api/exames/:id", () => a("DELETE", `/api/exames/${B.exam}`), 404],
     ["POST /api/plan-day", () => a("POST", "/api/plan-day", { date: D, daysLeft: 2, gymId: "acad1" })],

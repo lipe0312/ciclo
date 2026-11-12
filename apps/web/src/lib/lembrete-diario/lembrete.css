@@ -4,3 +4,4 @@
 .ld-link{flex:1;min-width:0;display:flex;align-items:center;gap:6px;min-height:44px;font-weight:700;font-size:14px;color:var(--txt);text-decoration:none}
 .ld-link svg{width:16px;height:16px;color:var(--acc);flex:none}
 .ld-later{color:var(--sub);flex:none}
+.ld-sim{flex:none;min-height:44px;min-width:56px}
