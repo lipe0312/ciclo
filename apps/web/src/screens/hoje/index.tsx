@@ -1,59 +1,16 @@
-// Hoje: objetivo, check-in, semana flexível, compensatório, treino do dia, volume, Claude e mini-cartões.
+// Hoje: objetivo, semana flexível, compensatório, treino do dia, volume, Claude e mini-cartões.
 // A semana planejada (screens/semana) dá o treino de hoje e os dias que restam; faltas perguntam aqui, inline.
+// O check-in mudou para o Diário (#27); o lembrete é a faixa fina do topo (lib/lembrete-diario).
 import { useEffect } from "preact/hooks";
 import { C, S, commit, dates, today } from "../../lib/store/index.ts";
 import { FOCUS, computePlan, defaultGymFor, foodTotals, gymById, mName } from "../../lib/store/regras.ts";
 import { SERVER, send } from "../../lib/api/index.ts";
 import { Card, Chip, Icon, Seg, toast } from "../../lib/ui/index.tsx";
 import { BarraSimples, BarraVolume } from "../../lib/grafico/index.tsx";
-import { DOW_NM, dowIdx, fmt, longDate } from "../../lib/util.ts";
+import { DOW_NM, fmt, longDate } from "../../lib/util.ts";
 import { CaixaClaude } from "../claude/caixa.tsx";
 import { AvisoFalta } from "../semana/aviso.tsx";
 import { diaDe, garantirSemana, getSemana } from "../semana/estado.ts";
-
-const CK: Record<string, { nm: string; opts: [number, string][] }> = {
-  sleepH: { nm: "Sono", opts: [[5, "≤5h"], [6, "6h"], [7, "7h"], [8, "8h"], [9, "9h+"]] },
-  energy: { nm: "Energia", opts: [[1, "baixa"], [2, "ok"], [3, "alta"]] },
-  soreness: { nm: "Dor muscular", opts: [[0, "zero"], [1, "leve"], [2, "alta"]] },
-  stress: { nm: "Estresse", opts: [[1, "baixo"], [2, "médio"], [3, "alto"]] },
-  food: { nm: "Comida ontem", opts: [[-1, "menos"], [0, "normal"], [1, "mais"]] },
-};
-const draftOf = () => (S.ui.ckDraft?.date === S.ui.ckDate ? S.ui.ckDraft : { date: S.ui.ckDate, ...(S.week.checkins[S.ui.ckDate] ?? {}) });
-
-function saveCheckin() {
-  const d = draftOf();
-  const w = parseFloat(((document.getElementById("ckWeight") as HTMLInputElement | null)?.value || "").replace(",", "."));
-  if (Number.isFinite(w)) d.weightKg = w;
-  const miss = Object.keys(CK).filter((k) => d[k] == null);
-  if (miss.length) return toast(`Falta: ${miss.map((k) => CK[k].nm.toLowerCase()).join(", ")}`);
-  const { date, ...vals } = d; S.week.checkins[date] = vals; S.ui.ckDraft = null;
-  const next = C.coverage(Object.keys(S.week.checkins).map((x) => ({ date: x })), dates, today).missing[0];
-  if (next) S.ui.ckDate = next;
-  commit(); toast(next ? `Salvo · falta ${DOW_NM[dowIdx(next)]}` : "Check-in salvo");
-  send("PUT", `/api/checkin/${date}`, { sleepH: vals.sleepH, energy: vals.energy, soreness: vals.soreness, stress: vals.stress, food: vals.food, weightKg: vals.weightKg ?? null }).catch(() => {});
-}
-
-function Checkin() {
-  const d = S.ui.ckDate, ck = S.week.checkins[d] ?? {}, saved = !!S.week.checkins[d];
-  const draft = draftOf();
-  const cov = C.coverage(Object.keys(S.week.checkins).map((date) => ({ date })), dates, today);
-  const r = saved ? C.readiness(ck) : null;
-  return <Card cls={!S.week.checkins[today] ? "hl" : ""} id="ckCard">
-    <div class="row between wrapx"><div><p class="kicker">Check-in · {d === today ? "hoje" : longDate(d)}</p>
-      <h2 style="margin-top:2px">{saved ? `Prontidão: ${r!.label}` : "Como você está? (10 s)"}</h2></div>
-      <span class={`badge ${cov.missing.length ? "warn" : "ok"} num`}>{cov.filled}/{cov.due} dias</span></div>
-    <p class="small sub" style="margin-top:4px">{saved ? r!.advice : "É o dado mais importante da revisão de domingo. Toque e pronto."}</p>
-    <div style="margin-top:12px">{Object.entries(CK).map(([k, c]) => <div class="ckrow" key={k}><span class="small">{c.nm}</span>
-      <Seg opts={c.opts} value={draft[k]} label={c.nm} onPick={(v) => { S.ui.ckDraft = { ...draft, [k]: v }; commit(); }} /></div>)}
-      <div class="ckrow"><label class="small" for="ckWeight">Peso (opcional)</label><input class="input num" id="ckWeight" inputMode="decimal" placeholder="kg" value={draft.weightKg ?? ""} style="max-width:120px" /></div></div>
-    <div class="row between wrapx" style="margin-top:12px">
-      <div class="dots" style="flex:1;min-width:240px;margin:0">{dates.map((x, i) => {
-        const st = x > today ? "fut" : S.week.checkins[x] ? "ok" : "miss";
-        return <button type="button" key={x} class={`dot-day ${st} ${x === d ? "sel" : ""}`} disabled={x > today} onClick={() => { S.ui.ckDate = x; S.ui.ckDraft = null; commit(); }}
-          aria-label={`${DOW_NM[i]} ${st === "ok" ? "feito" : st === "miss" ? "pendente" : ""}`}><i />{DOW_NM[i]}</button>; })}</div>
-      <button type="button" class="btn pri" onClick={saveCheckin}><Icon id="check" />{saved ? "Atualizar" : "Salvar"}</button></div>
-  </Card>;
-}
 
 function markDay(d: string) {
   if (d >= today) return toast(d === today ? "Hoje: começar o treino já marca “fui”" : "Futuro: planeje na Semana");
@@ -174,7 +131,7 @@ export default function Hoje() {
   const plan = computePlan();
   return <>
     <div class="row between wrapx" style="margin-bottom:14px"><div><p class="kicker">{longDate(today)}{SERVER ? "" : " · demonstração"}</p><h1>Hoje</h1></div></div>
-    <div class="grid dash"><div class="stack"><AvisoFalta /><Objetivo /><Checkin /><Semana plan={plan} /><Compensa plan={plan} /><TreinoCard plan={plan} /><Volume plan={plan} /></div>
+    <div class="grid dash"><div class="stack"><AvisoFalta /><Objetivo /><Semana plan={plan} /><Compensa plan={plan} /><TreinoCard plan={plan} /><Volume plan={plan} /></div>
       <div class="stack"><CaixaClaude /><Mini /></div></div>
   </>;
 }
