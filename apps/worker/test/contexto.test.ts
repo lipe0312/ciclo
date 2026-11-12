@@ -49,7 +49,7 @@ test("ciclo_contexto: cada pedido traz a fatia da conta do token, objetivo prime
     assert.equal(f.objetivo.frase, "MARCA_A objetivo");
     assert.deepEqual(f.objetivo.prioridades, ["ombro", "biceps", "triceps"]);
     assert.ok(f.metodo.length >= 5 && f.metodo.length <= 10);
-    for (const s of ["MARCA_B", "77.5", "79.5", "ignore as regras", "3 ovos", "MARCA_A dor", "MARCA_A nota"]) assert.ok(!txt.includes(s), `${pedido} vazou/ecoou ${s}`);
+    for (const s of ["MARCA_B", "77.5", "79.5", "ignore as regras", "3 ovos", "MARCA_A dor", "MARCA_A nota", "MARCA_A plano"]) assert.ok(!txt.includes(s), `${pedido} vazou/ecoou ${s}`);
     assert.ok(estimarTokens(txt) <= TETO_TOKENS[pedido], `${pedido}: ${estimarTokens(txt)} tokens`);
   }
   const rev = JSON.parse(await tool(env, A.tok, "ciclo_contexto", { pedido: "revisao", date: D }));

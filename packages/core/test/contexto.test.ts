@@ -94,6 +94,14 @@ test("contexto trocar/dor: 3 alternativas do catálogo, com aparelho disponível
   // exercício fora do catálogo é ignorado (não ecoa o texto)
   const h = contexto("trocar", estado({ exercicioId: INJ })) as any;
   assert.equal(h.exercicio, null); assert.ok(!JSON.stringify(h).includes(INJ));
+  // IDs que herdam de Object.prototype não quebram nem entram; nome do treino (texto livre) não entra
+  const proto = contexto("dor", estado({ exercicioId: "constructor", dia: { nome: `${INJ} plano`, itens: [{ exerciseId: "constructor", sets: 3 }, { exerciseId: "__proto__", sets: 2 }, { exerciseId: "Side_Lateral_Raise", sets: 3 }] } })) as any;
+  assert.equal(proto.exercicio, null);
+  assert.deepEqual(proto.dia, { itens: [{ id: "Side_Lateral_Raise", sets: 3 }] });
+  assert.deepEqual(Object.keys(proto.alternativas), ["Side_Lateral_Raise"]);
+  assert.ok(!JSON.stringify(proto).includes(INJ));
+  const sProto = estado(); sProto.series = [{ date: D, exerciseId: "toString", muscle: "ombro", kg: 10, reps: 10 }];
+  assert.deepEqual((contexto("revisao", sProto) as any).cargas, []);
   // dor: aponta o que a dor bloqueia hoje
   const d = contexto("dor", estado({ dores: [{ region: "ombro_e", intensity: 3 }] })) as any;
   assert.ok(Array.isArray(d.bloqueadosPorDor) && d.bloqueadosPorDor.length >= 1);

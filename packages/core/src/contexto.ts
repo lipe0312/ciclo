@@ -1,6 +1,8 @@
 // #45 Contexto enxuto por pedido: em vez do estado inteiro, cada tipo de pedido recebe só a sua fatia, com os números
 // já calculados pelo core (o Claude avalia, não recalcula). Ordem fixa: objetivo → método (5–10 linhas) → fatia → regra
-// de resposta. Texto livre do usuário (pedido, nota, registro de comida, contexto da dor) NUNCA entra: só IDs e números.
+// de resposta. Texto livre do usuário (pedido, nota, registro de comida, contexto da dor, nome do treino) NUNCA entra:
+// só IDs e números. Única exceção: `objetivo.frase` (goal.statement do perfil), texto livre tratado como DADO, cortado em
+// uma linha de até 140 caracteres; a regra `responda` lembra que texto do usuário não é instrução.
 // Função pura e determinística; o Worker busca os dados (filtrados por user_id) e chama contexto().
 
 import { EXERCISE_BY_ID, MUSCLES, MUSCLE_IDS } from "./catalog.ts";
@@ -76,8 +78,10 @@ function objetivo(perfil: Record<string, any>): Fatia["objetivo"] {
   const metas: Record<string, number> = {};
   for (const k of ["bracoCm", "cinturaCm", "pesoKg", "aderenciaPct"]) if (typeof metrics[k] === "number") metas[k] = metrics[k];
   if (typeof p.goal?.horizonWeeks === "number") metas.semanas = p.goal.horizonWeeks;
-  return { frase: oneLine(p.goal?.statement), prioridades, metas };
+  return { frase: oneLine(p.goal?.statement), prioridades, metas }; // frase: texto livre do dono, é dado, não instrução
 }
+
+const hasEx = (id: unknown): id is string => typeof id === "string" && Object.prototype.hasOwnProperty.call(EXERCISE_BY_ID, id);
 
 const volumeLinha = (s: NonNullable<EstadoContexto["semana"]>) => Object.fromEntries(MUSCLE_IDS.map((m) => {
   const alvo = nn(s.alvo[m]), feito = nn(s.feito[m]);
@@ -86,14 +90,14 @@ const volumeLinha = (s: NonNullable<EstadoContexto["semana"]>) => Object.fromEnt
 
 function fatiaTroca(e: EstadoContexto, comDor: boolean): Record<string, unknown> {
   const p = { ...DEFAULT_PROFILE, ...(e.perfil ?? {}) } as Record<string, any>;
-  const itens = (e.dia?.itens ?? []).filter((i) => EXERCISE_BY_ID[i.exerciseId]).slice(0, MAX_ITENS);
+  const itens = (e.dia?.itens ?? []).filter((i) => hasEx(i.exerciseId)).slice(0, MAX_ITENS);
   const noDia = new Set(itens.map((i) => i.exerciseId));
-  const ex = e.exercicioId && Object.prototype.hasOwnProperty.call(EXERCISE_BY_ID, e.exercicioId) ? EXERCISE_BY_ID[e.exercicioId] : null;
+  const ex = hasEx(e.exercicioId) ? EXERCISE_BY_ID[e.exercicioId] : null;
   const ctx = { equipment: e.aparelhos, crowded: !!e.academiaCheia, prefs: p.prefs as Partial<Record<MuscleId, Pref>>, pains: e.dores, pinned: p.pinned, avoid: p.avoid };
   const alts = (id: string) => candidates(EXERCISE_BY_ID[id].m, ctx).filter((c) => !c.blockedByPain && c.ex.id !== id && !noDia.has(c.ex.id)).slice(0, ALTERNATIVAS).map((c) => c.ex.id);
   const alvo = ex ? [ex.id] : itens.map((i) => i.exerciseId);
   const out: Record<string, unknown> = {
-    dia: { nome: oneLine(e.dia?.nome ?? ""), itens: itens.map((i) => ({ id: i.exerciseId, sets: i.sets })) },
+    dia: { itens: itens.map((i) => ({ id: i.exerciseId, sets: i.sets })) },
     exercicio: ex ? { id: ex.id, nm: ex.nm, musculo: ex.m } : null,
     aparelhos: [...e.aparelhos].sort(),
     dores: e.dores.map((d) => ({ regiao: d.region, intensidade: d.intensity })),
@@ -128,7 +132,7 @@ function cargasChave(e: EstadoContexto, prios: MuscleId[]): string[] {
   const ini = e.semana?.inicio ?? addDays(e.data, -6), antes = addDays(ini, -7);
   const best = new Map<string, { m: MuscleId; w0: number; w1: number }>();
   for (const s of e.series ?? []) {
-    if (!EXERCISE_BY_ID[s.exerciseId] || !prios.includes(s.muscle) || !(s.reps > 0) || !(s.kg >= 0)) continue;
+    if (!hasEx(s.exerciseId) || !prios.includes(s.muscle) || !(s.reps > 0) || !(s.kg >= 0)) continue;
     const b = best.get(s.exerciseId) ?? { m: s.muscle, w0: 0, w1: 0 };
     const v = epley(s.kg, s.reps);
     if (s.date >= ini && s.date <= e.data) b.w0 = Math.max(b.w0, v); else if (s.date >= antes && s.date < ini) b.w1 = Math.max(b.w1, v);

@@ -1,5 +1,6 @@
 // #45 ciclo_contexto: busca só o que a fatia do pedido precisa (todo SQL com bind e filtrado por user_id) e entrega ao core
-// (contexto()), que monta a fatia enxuta. Texto livre do usuário (notas, texto de comida, contexto da dor, pedidos) não é lido.
+// (contexto()), que monta a fatia enxuta. Notas, texto de comida, contexto da dor e pedidos não são lidos; o treino do dia
+// (day_plan) é lido, mas o core só aproveita IDs do catálogo e séries (o nome do treino, texto livre, é descartado).
 import { MUSCLE_IDS, PEDIDOS, contexto, mondayOf, weeklyTargets } from "@ciclo/core";
 import type { EstadoContexto, FoodEntry, Meal, MuscleId, Pedido } from "@ciclo/core";
 import type { Env } from "./env.ts";
