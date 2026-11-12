@@ -17,3 +17,5 @@ export * from "./diario.ts";
 export * from "./lugares.ts";
 export * from "./midia.ts";
 export * from "./mp4.ts";
+export * from "./contexto-metodo.ts";
+export * from "./contexto.ts";
