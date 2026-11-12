@@ -1,0 +1,41 @@
+/* Diário (#27). Só tokens do app.css; toques ≥ 44 px; 390 px primeiro; a cor nunca é o único sinal. */
+.dia-campos{display:grid;gap:12px;margin-top:12px}
+.dia-campos .ckrow{grid-template-columns:112px minmax(0,1fr)}
+@media (max-width:420px){.dia-campos .ckrow{grid-template-columns:92px minmax(0,1fr)}}
+.dia-sel{flex:1;min-width:0;max-width:260px}
+.dia-confira,.dia-alerta,.dia-aviso{display:flex;gap:8px;align-items:flex-start}
+.dia-confira svg{color:var(--info)}
+.dia-alerta{margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--sup-2);border-left:4px solid var(--warn)}
+.dia-alerta svg{color:var(--warn)}
+.dia-aviso{margin-top:12px}
+.dia-aviso svg{width:16px;height:16px}
+.dia-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px}
+.dia-stat{font-size:20px;font-weight:800;line-height:1.2;margin:2px 0}
+@media (max-width:360px){.dia-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal-dow{text-align:center;font-weight:700}
+.cal-dia{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:48px;border-radius:10px;border:1.5px solid var(--borda);background:var(--sup);font-weight:700;cursor:pointer;padding:4px 0;color:var(--txt)}
+.cal-dia.st-vazio{border-style:dashed;border-color:var(--warn)}
+.cal-dia.st-futuro{opacity:.4}
+.cal-dia.hoje{border-color:var(--acc)}
+.cal-dia.sel{background:var(--sup-2);box-shadow:inset 0 0 0 2px var(--acc)}
+.cal-marcas{display:flex;gap:3px}
+.cal-marcas i{width:10px;height:4px;border-radius:2px;background:var(--sup-3)}
+.cal-marcas i.on{background:var(--ok)}
+.cal-claude{position:absolute;top:2px;right:4px;font-size:10px;font-weight:800;color:var(--info)}
+
+.rs-dia{padding:12px 0;border-top:1px solid var(--borda);display:grid;gap:10px}
+.rs-dia:first-child{border-top:0;padding-top:0}
+.rs-dia .ckrow{grid-template-columns:112px minmax(0,1fr)}
+.rs-dia .ckrow+.ckrow{margin-top:0}
+
+.ex-file{position:relative;cursor:pointer}
+.ex-file:focus-within{outline:3px solid var(--foco);outline-offset:2px}
+.ex-file-in{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.ex-marc{list-style:none;margin:12px 0 0;padding:0;display:grid}
+.ex-marc li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:10px 0;border-top:1px solid var(--borda)}
+.ex-nome{font-weight:700}
+.ex-val{font-weight:800;text-align:right}
+.ex-ref{grid-column:1 / -1}
+.ex-st.fora{color:var(--bad)} .ex-st.dentro{color:var(--ok)} .ex-st.sem_referencia{color:var(--sub)}
