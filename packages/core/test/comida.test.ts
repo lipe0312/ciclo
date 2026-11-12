@@ -196,6 +196,25 @@ test("adaptiveTarget: limites de segurança 1200..6000 kcal", () => {
   assert.ok(r.kcal >= 1200);
 });
 
+test("adaptiveTarget: o ajuste fica sempre em ±150, mesmo com a meta atual fora da faixa de segurança", () => {
+  const args = { weights: W("2026-10-19", Array(21).fill(72)), intake: intake("2026-10-19", 21, 2400), end: "2026-11-08", pace: "moderado" as const };
+  const baixa = adaptiveTarget({ ...args, currentKcal: 800 });
+  assert.equal(baixa.adjust, 150);
+  assert.equal(baixa.kcal, 950);
+  const alta = adaptiveTarget({ ...args, currentKcal: 7000, pace: "lento" });
+  assert.ok(Math.abs(alta.adjust) <= 150);
+});
+
+test("adaptiveTarget: números que não fecham (gasto ou tendência implausíveis) não mexem na meta", () => {
+  // 21 dias subindo 0,5 kg/dia (~3,5 kg/sem) comendo 1000: gasto estimado negativo
+  const kgs = Array.from({ length: 21 }, (_, i) => 60 + i * 0.5);
+  const r = adaptiveTarget({ weights: W("2026-10-19", kgs), intake: intake("2026-10-19", 21, 1000), currentKcal: 2650, pace: "moderado", end: "2026-11-08" });
+  assert.equal(r.code, "sem_dados");
+  assert.equal(r.adjust, 0);
+  assert.equal(r.kcal, 2650);
+  assert.match(r.reason, /não fecham|implaus/i);
+});
+
 // ---------- motor de voz ----------
 test("pickVoiceEngine: Whisper > navegador > nenhum, e diz o motivo", () => {
   const base = { secure: true, recorder: true, recognition: true, server: true, serverAi: true };

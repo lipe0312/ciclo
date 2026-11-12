@@ -158,6 +158,8 @@ export const PACE_NM: Record<Pace, string> = { lento: "Lento", moderado: "Modera
 export const MAX_WEEKLY_ADJUST = 150;
 export const KCAL_MIN = 1200, KCAL_MAX = 6000;
 const MIN_LOGGED_DAYS = 7, MIN_DAY_KCAL = 800;
+/** Fora disto os dados (pesagem errada, comida faltando) não sustentam um ajuste. */
+const PLAUSIBLE_TDEE: [number, number] = [800, 8000], MAX_PLAUSIBLE_TREND = 3;
 
 export interface AdaptiveInput {
   weights: readonly WeightPoint[]; intake: readonly { date: string; kcal: number }[]; currentKcal: number; pace: Pace; end: string;
@@ -184,7 +186,8 @@ const clampKcal = (n: number) => Math.max(KCAL_MIN, Math.min(KCAL_MAX, n));
 export function adaptiveTarget(i: AdaptiveInput): AdaptiveResult {
   const cur = i.currentKcal;
   const result = (p: Partial<AdaptiveResult> & Pick<AdaptiveResult, "code" | "adjust" | "reason">): AdaptiveResult => {
-    const kcal = clampKcal(cur + p.adjust);
+    // piso/teto de segurança, e nunca mais que ±150 da meta atual (mesmo que ela já esteja fora da faixa)
+    const kcal = Math.max(cur - MAX_WEEKLY_ADJUST, Math.min(cur + MAX_WEEKLY_ADJUST, clampKcal(cur + p.adjust)));
     return { tdee: null, avgIntake: null, trendKgWeek: null, desired: null, loggedDays: 0, ...p, kcal, adjust: kcal - cur, faixa: [kcal - 100, kcal + 100] };
   };
   const trend = weightTrend(i.weights, i.end);
@@ -201,6 +204,9 @@ export function adaptiveTarget(i: AdaptiveInput): AdaptiveResult {
   const avgIntake = Math.round([...days.values()].reduce((s, v) => s + v, 0) / n);
   const tdee = Math.round(avgIntake - (trend.perWeek * KCAL_PER_KG) / 7);
   const desired = Math.round(tdee + (PACE_KG_WEEK[i.pace] * KCAL_PER_KG) / 7);
+  if (tdee < PLAUSIBLE_TDEE[0] || tdee > PLAUSIBLE_TDEE[1] || Math.abs(trend.perWeek) > MAX_PLAUSIBLE_TREND) {
+    return result({ code: "sem_dados", adjust: 0, avgIntake, trendKgWeek: trend.perWeek, loggedDays: n, reason: `Os números não fecham (gasto estimado de ~${br(tdee)} kcal com o peso variando ${kg2(trend.perWeek)} kg/semana). Confira os pesos e a comida registrada; não vou mexer na meta com isso.` });
+  }
   const base = { avgIntake, tdee, desired, trendKgWeek: trend.perWeek, loggedDays: n };
   const visto = `Você comeu em média ${br(avgIntake)} kcal/dia (${n} dias registrados) e a tendência do peso ficou em ${kg2(trend.perWeek)} kg/semana: gasto estimado de ~${br(tdee)} kcal.`;
 

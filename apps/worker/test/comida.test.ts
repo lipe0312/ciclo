@@ -36,6 +36,26 @@ test("transcrição: erros tipados (501 sem Whisper, 415 tipo, 400 vazio, 502 fa
   assert.ok(!falha.text.includes("TEXTO_SECRETO"), "não vaza o erro do modelo");
 });
 
+test("transcrição: só áudio da allowlist (415) e usa o limite de upload (20 por 10 min → 429)", async () => {
+  const env = makeEnv();
+  for (const ct of ["video/webm", "video/mp4", "image/png", "application/octet-stream", "text/plain"]) {
+    const r = await call(env, "POST", "/api/transcribe", { user: "ana", raw: audio(100), ct });
+    assert.deepEqual([ct, r.status, r.data.code], [ct, 415, "tipo_invalido"]);
+  }
+  for (const ct of ["audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/wav", "audio/webm;codecs=opus"]) {
+    assert.equal((await call(env, "POST", "/api/transcribe", { user: "bia", raw: audio(100), ct })).status, 200, ct);
+  }
+  // limite de upload: 20 por 10 min por conta (a bia já gastou 6; a ana, 5 das recusas)
+  const cnt = (u: string) => env.DB.raw.prepare("SELECT count FROM rate_limit WHERE bucket = 'upload' AND user_id = (SELECT id FROM user WHERE email LIKE ?1)").get(`${u}@%`)?.count;
+  assert.equal(cnt("bia"), 6);
+  let last = 0;
+  for (let i = 0; i < 20; i++) last = (await call(env, "POST", "/api/transcribe", { user: "bia", raw: audio(100), ct: "audio/webm" })).status;
+  assert.equal(last, 429);
+  assert.ok(env.DB.raw.prepare("SELECT 1 FROM rate_limit WHERE bucket = 'write' AND user_id = (SELECT id FROM user WHERE email LIKE 'bia@%')").get() === undefined, "não gasta o limite de escrita");
+  // a ana não é afetada pela bia
+  assert.equal((await call(env, "POST", "/api/transcribe", { user: "ana", raw: audio(100), ct: "audio/webm" })).status, 200);
+});
+
 test("registro: estimativa pelo core, refeição, editar (re-estima), ajuste manual e apagar", async () => {
   const env = makeEnv();
   const c = (m: string, p: string, body?: unknown) => call(env, m, p, { user: "ana", body });
@@ -78,8 +98,37 @@ test("Claude confere com a TACO: ciclo_comida_dia mostra dicas e ciclo_comida_co
   const e = (await ok(call(env, "GET", `/api/food?from=${D}&to=${D}`, { user: "ana" }))).data.entries[0];
   assert.deepEqual([e.kcal, e.prot, e.source, e.confidence], [640, 52, "claude", "media"]);
   assert.equal(e.kcalEst, 590, "estimativa local preservada ao lado da conferida");
+  // registro editado à mão pela pessoa: o Claude não sobrescreve sem forcar:true
+  await ok(call(env, "PUT", `/api/food/${e.id}`, { user: "ana", body: { kcal: 700, protein: 60 } }));
+  const dia2 = JSON.parse((await mcp(env, tok, "ciclo_comida_dia", { date: D })).data.result.content[0].text);
+  assert.equal(dia2.registros[0].editadoPelaPessoa, true);
+  assert.equal(dia2.registros[0].taco, undefined, "sem dicas: o valor é da pessoa");
+  const barrado = await mcp(env, tok, "ciclo_comida_corrigir", { id: e.id, kcal: 500, proteina: 40, confianca: "alta" });
+  assert.equal(barrado.data.result.isError, true);
+  assert.match(barrado.data.result.content[0].text, /forcar/);
+  let atual = (await ok(call(env, "GET", `/api/food?from=${D}&to=${D}`, { user: "ana" }))).data.entries[0];
+  assert.deepEqual([atual.kcal, atual.prot, atual.source], [700, 60, "local"], "valor da pessoa intacto");
+  const forca = await mcp(env, tok, "ciclo_comida_corrigir", { id: e.id, kcal: 500, proteina: 40, confianca: "alta", forcar: true });
+  assert.ok(!forca.data.result.isError, forca.text);
+  atual = (await ok(call(env, "GET", `/api/food?from=${D}&to=${D}`, { user: "ana" }))).data.entries[0];
+  assert.deepEqual([atual.kcal, atual.prot, atual.source], [500, 40, "claude"]);
+  assert.equal((await mcp(env, tok, "ciclo_comida_corrigir", { id: e.id, kcal: 1, proteina: 1, confianca: "alta", forcar: "sim" })).data.result.isError, true, "forcar só aceita true");
   const nada = await mcp(env, tok, "ciclo_comida_corrigir", { id: "nao-existe", kcal: 1, proteina: 1, confianca: "alta" });
   assert.equal(nada.data.result.isError, true);
+});
+
+test("migration 0008: CHECKs de faixa em diet_target_history", () => {
+  const env = makeEnv();
+  env.DB.raw.prepare("INSERT INTO user (id, email, created_at) VALUES ('u1', 'u1@x', 1)").run();
+  const ins = (adjust: number, tdee: number | null, trend: number | null, code: string) => env.DB.raw.prepare(
+    "INSERT INTO diet_target_history (user_id, id, date, kcal_before, kcal_after, adjust, tdee, trend_kg_week, code, reason, created_at) VALUES ('u1', ?1, '2026-11-01', 2400, 2550, ?2, ?3, ?4, ?5, 'r', 1)").run(Math.random().toString(), adjust, tdee, trend, code);
+  assert.doesNotThrow(() => ins(150, 2400, 0.2, "ok"));
+  assert.doesNotThrow(() => ins(-150, null, null, "cintura"));
+  assert.throws(() => ins(151, 2400, 0.2, "ok"), /CHECK/);
+  assert.throws(() => ins(-151, 2400, 0.2, "ok"), /CHECK/);
+  assert.throws(() => ins(0, 100, 0.2, "ok"), /CHECK/);
+  assert.throws(() => ins(0, 2400, 9, "ok"), /CHECK/);
+  assert.throws(() => ins(0, 2400, 0.2, "sem_dados"), /CHECK/);
 });
 
 test("TACO estática: busca por palavras e dicas compactas", () => {

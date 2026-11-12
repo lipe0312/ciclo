@@ -438,7 +438,7 @@ export async function handleApi(req: Request, env: Env, u: AuthUser): Promise<Re
     if (!m) continue;
     try {
       if (isWrite(req.method)) {
-        const wait = await hitRateLimit(env, u.id, r.path === "/api/media" ? "upload" : "write");
+        const wait = await hitRateLimit(env, u.id, r.path === "/api/media" || r.path === "/api/transcribe" ? "upload" : "write");
         if (wait) return json({ error: "muitas requisições; tente de novo em instantes" }, 429, { "Retry-After": String(wait) });
       }
       return await r.h(req, env, (m.groups ?? {}) as Record<string, string>, u);

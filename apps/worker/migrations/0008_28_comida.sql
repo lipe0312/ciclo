@@ -5,6 +5,8 @@
 ALTER TABLE food_log ADD COLUMN meal TEXT CHECK (meal IS NULL OR meal IN ('cafe', 'almoco', 'lanche', 'jantar', 'ceia'));
 ALTER TABLE food_log ADD COLUMN kcal_est REAL CHECK (kcal_est IS NULL OR kcal_est BETWEEN 0 AND 20000);
 ALTER TABLE food_log ADD COLUMN protein_est REAL CHECK (protein_est IS NULL OR protein_est BETWEEN 0 AND 1000);
+-- manual = 1 quando a PESSOA ajustou kcal/proteína à mão: o Claude não sobrescreve sem `forcar` (ciclo_comida_corrigir).
+ALTER TABLE food_log ADD COLUMN manual INTEGER NOT NULL DEFAULT 0 CHECK (manual IN (0, 1));
 ALTER TABLE food_log ADD COLUMN source TEXT NOT NULL DEFAULT 'local' CHECK (source IN ('local', 'claude'));
 UPDATE food_log SET source = 'claude' WHERE kcal IS NOT NULL AND confidence IS NOT NULL;
 
@@ -28,10 +30,10 @@ CREATE TABLE diet_target_history (
   date TEXT NOT NULL CHECK (length(date) = 10 AND date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
   kcal_before INTEGER NOT NULL CHECK (kcal_before BETWEEN 800 AND 8000),
   kcal_after INTEGER NOT NULL CHECK (kcal_after BETWEEN 800 AND 8000),
-  adjust INTEGER NOT NULL,
-  tdee INTEGER,
-  trend_kg_week REAL,
-  code TEXT NOT NULL,
+  adjust INTEGER NOT NULL CHECK (adjust BETWEEN -150 AND 150), -- teto semanal do ajuste
+  tdee INTEGER CHECK (tdee IS NULL OR tdee BETWEEN 800 AND 8000),
+  trend_kg_week REAL CHECK (trend_kg_week IS NULL OR trend_kg_week BETWEEN -5 AND 5),
+  code TEXT NOT NULL CHECK (code IN ('ok', 'dentro', 'cintura')), -- 'sem_dados' nunca é gravado
   reason TEXT NOT NULL CHECK (length(reason) <= 1200),
   created_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, id)
