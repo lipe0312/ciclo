@@ -1,11 +1,13 @@
 // Servidor MCP remoto mínimo (Streamable HTTP, respostas JSON, sem estado) — zero dependências.
 // Usado como "connector personalizado" no claude.ai / Desktop / app do celular e, via apps/mcp-local, no Claude Code.
 // Princípio de custo: ferramentas devolvem JSON COMPACTO; o Claude manda só IDs/números e o core valida e hidrata.
-import { EQUIPMENT, EXERCISES, MUSCLES, MUSCLE_IDS, PAIN_REGIONS, contextSummary, hydrate, planDay, readiness, validateItems } from "@ciclo/core";
+import { EQUIPMENT, EXERCISES, MEALS, MUSCLES, MUSCLE_IDS, PAIN_REGIONS, contextSummary, hydrate, planDay, readiness, validateItems } from "@ciclo/core";
 import type { CompactItem, Mode, MuscleId } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { EMPTY_MSG, buildDayInput, closeStaleSessions, getProfile, hitRateLimit, listGyms, saveProfile, upsertPain, weekState } from "./db.ts";
 import { HttpError, date, id, int, json, num, oneOf, str } from "./http.ts";
+import { FOOD_COLS, foodOut } from "./comida.ts";
+import { TACO_FONTE, tacoHints } from "./taco.ts";
 
 type Args = Record<string, unknown>;
 interface Tool { name: string; description: string; inputSchema: Record<string, unknown>; readOnly?: boolean; run: (a: Args, env: Env, uid: string) => Promise<unknown> }
@@ -118,12 +120,44 @@ const TOOLS: Tool[] = [
   },
   {
     name: "ciclo_registrar_comida",
-    description: "Registra o que a pessoa comeu (texto livre + sua estimativa de kcal/proteína com a tabela TACO). Aproximado é ok.",
-    inputSchema: obj({ date: S.date, texto: { type: "string" }, kcal: { type: "number" }, proteina: { type: "number" }, confianca: { type: "string", enum: ["alta", "media", "baixa"] } }, ["texto"]),
+    description: "Registra o que a pessoa comeu (texto livre + sua estimativa de kcal/proteína com a tabela TACO). Aproximado é ok. Para corrigir um registro que o app já criou, use ciclo_comida_corrigir.",
+    inputSchema: obj({ date: S.date, texto: { type: "string" }, kcal: { type: "number" }, proteina: { type: "number" }, confianca: { type: "string", enum: ["alta", "media", "baixa"] }, refeicao: { type: "string", enum: MEALS } }, ["texto"]),
     run: async (a, env, uid) => {
-      await env.DB.prepare("INSERT INTO food_log (user_id, id, date, raw_text, kcal, protein, confidence, created_at) VALUES (?8, ?1, ?2, ?3, ?4, ?5, ?6, ?7)")
-        .bind(id(), a.date ? date(a.date) : today(), str(a.texto, "texto", 2000), num(a.kcal, "kcal", 0, 20000, false), num(a.proteina, "proteina", 0, 1000, false),
-          a.confianca ? oneOf(a.confianca, "confianca", ["alta", "media", "baixa"] as const) : "media", Date.now(), uid).run();
+      const kcal = num(a.kcal, "kcal", 0, 20000, false), prot = num(a.proteina, "proteina", 0, 1000, false);
+      await env.DB.prepare("INSERT INTO food_log (user_id, id, date, raw_text, meal, kcal, protein, confidence, source, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)")
+        .bind(uid, id(), a.date ? date(a.date) : today(), str(a.texto, "texto", 2000), a.refeicao ? oneOf(a.refeicao, "refeicao", MEALS) : null, kcal, prot,
+          a.confianca ? oneOf(a.confianca, "confianca", ["alta", "media", "baixa"] as const) : "media", kcal != null || prot != null ? "claude" : "local", Date.now()).run();
+      return { ok: true };
+    },
+  },
+  {
+    name: "ciclo_comida_dia", readOnly: true,
+    description: "Comida de um dia: registros (id, refeição, texto, kcal/proteína em vigor, fonte local|claude, confiança), total vs metas e, para cada registro ainda só com a estimativa local, dicas da TACO (por 100 g). Use antes de ciclo_comida_corrigir.",
+    inputSchema: obj({ date: S.date }),
+    run: async (a, env, uid) => {
+      const d = a.date ? date(a.date) : today();
+      const [rows, profile] = await Promise.all([
+        env.DB.prepare(`SELECT ${FOOD_COLS} FROM food_log WHERE user_id = ?1 AND date = ?2 ORDER BY created_at LIMIT 100`).bind(uid, d).all<Parameters<typeof foodOut>[0]>(),
+        getProfile(env, uid),
+      ]);
+      const diet = (profile?.diet ?? {}) as { kcal?: number; protein?: number };
+      const list = rows.results.map(foodOut);
+      return {
+        date: d, metas: { kcal: diet.kcal ?? null, proteina: diet.protein ?? null },
+        total: { kcal: Math.round(list.reduce((s, r) => s + (r.kcal ?? 0), 0)), proteina: Math.round(list.reduce((s, r) => s + (r.prot ?? 0), 0)) },
+        registros: list.map((r) => ({ id: r.id, refeicao: r.meal, texto: r.text, kcal: r.kcal, proteina: r.prot, fonte: r.source, confianca: r.confidence, taco: r.source === "local" ? tacoHints(r.text) : undefined })),
+        fonteTaco: TACO_FONTE,
+      };
+    },
+  },
+  {
+    name: "ciclo_comida_corrigir",
+    description: "Corrige a estimativa de UM registro de comida (id de ciclo_comida_dia) com os valores conferidos na TACO. Marca fonte=claude e a confiança. Não muda o texto que a pessoa escreveu.",
+    inputSchema: obj({ id: { type: "string" }, kcal: { type: "number" }, proteina: { type: "number" }, confianca: { type: "string", enum: ["alta", "media", "baixa"] } }, ["id", "kcal", "proteina", "confianca"]),
+    run: async (a, env, uid) => {
+      const r = await env.DB.prepare("UPDATE food_log SET kcal = ?3, protein = ?4, confidence = ?5, source = 'claude' WHERE user_id = ?1 AND id = ?2")
+        .bind(uid, str(a.id, "id", 80), num(a.kcal, "kcal", 0, 20000), num(a.proteina, "proteina", 0, 1000), oneOf(a.confianca, "confianca", ["alta", "media", "baixa"] as const)).run();
+      if (!r.meta.changes) throw new HttpError(404, "registro não encontrado");
       return { ok: true };
     },
   },
