@@ -45,7 +45,11 @@ export function fakeR2() {
   return {
     m,
     async put(key: string, body: BodyInit | null) { const b = new Uint8Array(await new Response(body).arrayBuffer()); m.set(key, b); return { key, size: b.length }; },
-    async get(key: string) { const b = m.get(key); return b ? { body: new Response(b).body, size: b.length } : null; },
+    async get(key: string, o?: { range?: { offset: number; length: number } }) {
+      const b = m.get(key); if (!b) return null;
+      const part = o?.range ? b.slice(o.range.offset, o.range.offset + o.range.length) : b;
+      return { body: new Response(part).body, size: part.length };
+    },
     async delete(k: string | string[]) { for (const x of [k].flat()) m.delete(x); },
     async list(o: { prefix?: string; cursor?: string; limit?: number }) {
       const keys = [...m.keys()].filter((k) => k.startsWith(o.prefix ?? "")).sort();
