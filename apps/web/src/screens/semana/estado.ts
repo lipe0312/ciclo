@@ -102,8 +102,8 @@ const demo = (() => {
       weekStart: monday, today, sets, attendance: S.week.attendance as C.WeekInput["attendance"],
       profile: { daysUsual: p.daysUsual, daysTarget: p.daysTarget, minutes: p.minutes, priorities: p.priorities, dayGym: p.dayGym,
         gyms: S.gyms.map((g) => ({ id: g.id, equipment: g.equipment })), prefs: p.prefs, pinned: p.pinned, avoid: p.avoid,
-        pains: S.pains.map((x) => ({ region: x.region, intensity: x.intensity })) },
-      targets: prog().targets, overrides, prev,
+        pains: S.pains.map((x) => ({ region: x.region, intensity: x.intensity })), goalId: S.profile.goal?.id ?? null },
+      targets: prog().targets, overrides, prev, cardioLog: S.week.cardio,
     };
   };
   const load = () => lsGet<Stored[]>(KEY, []);
@@ -127,7 +127,7 @@ const demo = (() => {
       let ov = c.overrides;
       if (b.action === "falta") { S.week.attendance[date] = b.resposta!; }
       else {
-        const r = C.applyDayAction(c.plan, c.overrides, { type: b.action, date, opts: b.opts ?? {}, to: b.to } as C.DayAction, input(c.overrides, c.plan));
+        const r = C.applyDayAction(c.plan, c.overrides, { type: b.action, date, opts: b.opts ?? {}, geracao: b.opts ?? {}, to: b.to } as C.DayAction, input(c.overrides, c.plan));
         if ("error" in r) throw Object.assign(new Error(r.error), { status: 409 });
         ov = r.overrides;
       }
