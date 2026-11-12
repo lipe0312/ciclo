@@ -17,16 +17,19 @@ const ALLOWED_DIRS = (process.env.CICLO_MEDIA_DIRS ?? `${homedir()}/Movies,${hom
 
 const LOCAL_TOOLS = [{
   name: "ciclo_anexar_midia",
-  description: "Anexa um vídeo (10–15 s) ou foto do SEU aparelho a um exercício, a partir de um arquivo no Mac (Filmes, Imagens, Downloads ou Mesa). Use na montagem do treino quando ciclo_estado/ciclo_planejar_dia mostrar exercício sem mídia.",
+  description: "Anexa um vídeo (10–15 s) ou foto do SEU aparelho a um exercício, a partir de um arquivo no Mac (Filmes, Imagens, Downloads ou Mesa). Use na montagem do treino quando ciclo_estado/ciclo_planejar_dia mostrar exercício sem mídia. REGRA: mídia de aparelho (equipmentId) exige gymId, o lugar onde o aparelho está (use o campo `academia` de ciclo_planejar_dia); o aparelho vem de `aparelhos` em ciclo_catalogo. Sem equipmentId a mídia fica só no exercício.",
   inputSchema: { type: "object", additionalProperties: false, required: ["path", "exerciseId"], properties: {
     path: { type: "string", description: "caminho do arquivo .mp4/.mov/.webm/.jpg/.png/.webp" },
-    exerciseId: { type: "string" }, equipmentId: { type: "string" }, gymId: { type: "string" },
+    exerciseId: { type: "string" },
+    equipmentId: { type: "string", description: "ID do aparelho (ciclo_catalogo → aparelhos). Se informar, gymId é obrigatório." },
+    gymId: { type: "string", description: "ID do lugar (academia/casa/hotel) da conta. Obrigatório quando houver equipmentId." },
     note: { type: "string", description: "regulagem: pino, banco, pegada (≤ 300 caracteres)" },
   } },
   annotations: { readOnlyHint: false, destructiveHint: false },
 }];
 
 async function anexar(a) {
+  if (a.equipmentId && !a.gymId) throw new Error("gymId obrigatório quando houver equipmentId: informe o lugar do aparelho (campo `academia` de ciclo_planejar_dia).");
   const p = resolve(String(a.path ?? "").replace(/^~(?=\/)/, homedir()));
   if (!ALLOWED_DIRS.some((d) => p.startsWith(d + "/"))) throw new Error(`Arquivo fora das pastas permitidas (${ALLOWED_DIRS.join(", ")}).`);
   const type = MIME[extname(p).toLowerCase()];

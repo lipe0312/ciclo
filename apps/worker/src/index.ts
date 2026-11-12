@@ -4,7 +4,7 @@ import { DEV_USER_RE, authenticateApi, authenticateMcp, isLocalDev } from "./aut
 import { handleApi, uploadMedia } from "./api.ts";
 import { HttpError, json } from "./http.ts";
 import { handleMcp } from "./mcp.ts";
-import { closeStaleSessions, hitRateLimit } from "./db.ts";
+import { closeStaleSessions, hitRateLimit, purgeTrash } from "./db.ts";
 import { sendDueRests } from "./push.ts";
 import { purgeExpiredExams } from "./diario.ts";
 
@@ -64,5 +64,6 @@ export default {
       ctx.waitUntil(closeStaleSessions(env));
       ctx.waitUntil(purgeExpiredExams(env, c.scheduledTime).catch(() => null)); // #27: texto bruto de exame some em até 7 dias
     }
+    if (new Date(c.scheduledTime).getUTCMinutes() === 0) ctx.waitUntil(purgeTrash(env).catch(() => null)); // lixeira de 30 dias (#26)
   },
 } satisfies ExportedHandler<Env>;

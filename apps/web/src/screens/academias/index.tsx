@@ -1,29 +1,105 @@
-// Academias: aparelhos de cada academia (grade com imagens), horários de lotação e academia padrão por dia.
-import { C, S, commit, today } from "../../lib/store/index.ts";
-import { gymById, gymChanged, profileChanged } from "../../lib/store/regras.ts";
-import { Chip, Icon } from "../../lib/ui/index.tsx";
-import { EQ_CATS, GradeAparelhos } from "../../lib/grade-aparelhos/index.tsx";
-import { DOW, DOW_NM, dowIdx } from "../../lib/util.ts";
+// Academias (Mais → Academias): lugares onde você treina (academia, casa, hotel), cada um com tipo, endereço e ponto no mapa;
+// criar/editar pelo passo a passo, apagar com confirmação (reatribuindo os dias) e a página de cada aparelho com a sua mídia.
+// Rotas: #academias · #academias/novo · #academias/<id> · #academias/<id>/editar · #academias/<id>/aparelho/<aparelho>
+import { C, S, commit } from "../../lib/store/index.ts";
+import type { Gym } from "../../lib/store/index.ts";
+import { Icon, toast } from "../../lib/ui/index.tsx";
+import { go, href } from "../../lib/roteador/index.ts";
+import type { Route } from "../../lib/roteador/index.ts";
+import { closeSheet, openSheet, SheetHead } from "../../lib/folha/index.tsx";
+import { DOW_NM, img } from "../../lib/util.ts";
+import { FotoAparelho } from "../../lib/grade-aparelhos/index.tsx";
+import { apagarLugar, diasDoLugar, kindNm, midiaDoAparelho } from "../../lib/lugares/index.ts";
+import { PassoAPasso } from "./passos.tsx";
+import { Mapa, linkMapa } from "./mapa.tsx";
+import { PaginaAparelho } from "./aparelho.tsx";
+import "./academias.css";
 
-export function GymEditor() {
-  const g = gymById(S.ui.gymTab), p = S.profile;
-  if (!g) return null;
-  const ch = () => { gymChanged(g); commit(); };
+export { PassoAPasso } from "./passos.tsx";
+
+const dias = (id: string) => diasDoLugar(id).map((d) => DOW_NM[C.DOWS.indexOf(d)]).join(", ");
+
+// ---------- apagar (com confirmação e reatribuição de dias) ----------
+let destino: string | null = null, apagando = false;
+function Apagar({ g }: { g: Gym }) {
+  const dd = diasDoLugar(g.id), outros = S.gyms.filter((x) => x.id !== g.id), n = S.gymMedia.filter((m) => m.gymId === g.id).length;
+  const falta = dd.length > 0 && outros.length > 0 && !destino;
   return <>
-    <div class="tabs">{S.gyms.map((x) => <Chip key={x.id} on={x.id === g.id} onClick={() => { S.ui.gymTab = x.id; commit(); }}>{x.name}</Chip>)}
-      <Chip onClick={() => { const id = "acad" + (S.gyms.length + 1) + "_" + Math.random().toString(36).slice(2, 5); S.gyms.push({ id, name: `Academia ${S.gyms.length + 1}`, equipment: ["halteres", "banco"], busyHours: [] }); S.ui.gymTab = id; gymChanged(gymById(id)); commit(); }}><Icon id="plus" />Nova</Chip></div>
-    <div class="row wrapx" style="margin-top:12px;gap:10px"><input class="input" value={g.name} maxLength={40} style="max-width:220px" aria-label="Nome da academia" onChange={(e) => { g.name = e.currentTarget.value.trim().slice(0, 40) || g.name; ch(); }} />
-      <span class="badge num">{g.equipment.length} de {C.EQUIPMENT.length}</span>
-      <button type="button" class="btn sm" onClick={() => { g.equipment = C.EQUIPMENT.map((e) => e.id); ch(); }}>Completa</button><button type="button" class="btn sm" onClick={() => { g.equipment = []; ch(); }}>Limpar</button></div>
-    <div class="chips" style="margin:12px 0">{EQ_CATS.filter(([k]) => k === "todos" || C.EQUIPMENT.some((e) => e.cat === k)).map(([k, n]) => <Chip key={k} on={S.ui.cat === k} onClick={() => { S.ui.cat = k; commit(); }}>{n}</Chip>)}</div>
-    <GradeAparelhos selected={g.equipment} cat={S.ui.cat} onToggle={(id) => { const i = g.equipment.indexOf(id); i >= 0 ? g.equipment.splice(i, 1) : g.equipment.push(id); ch(); }} />
-    <div style="margin-top:16px"><span class="f">Horários em que lota</span><div class="chips">{["6-8", "12-14", "17-18", "18-20", "20-22"].map((h) => <Chip key={h} on={g.busyHours.includes(h)} onClick={() => { const i = g.busyHours.indexOf(h); i >= 0 ? g.busyHours.splice(i, 1) : g.busyHours.push(h); ch(); }}>{h.replace("-", "–")}h</Chip>)}</div></div>
-    <div style="margin-top:16px"><span class="f">Academia padrão por dia (dá para trocar no dia)</span><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr))">
-      {DOW.map((d, i) => <label key={d} class="small">{DOW_NM[i]}<select class="input" value={p.dayGym[d]} onChange={(e) => { p.dayGym[d] = e.currentTarget.value; profileChanged(); if (d === DOW[dowIdx(today)]) S.ui.gymId = e.currentTarget.value; commit(); }}>
-        {S.gyms.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>)}</div></div>
-    <div class="note" style="margin-top:16px"><Icon id="cam" /><span>Fotos e vídeos do <b>seu</b> aparelho entram na montagem do treino (botão “Gravar” em cada exercício), não aqui.</span></div>
+    <SheetHead kicker="Apagar lugar" title={`Apagar ${g.name}?`} />
+    <p class="small" style="margin:10px 0">{n ? `As ${n} mídia(s) deste lugar vão para a lixeira e somem de vez em 30 dias.` : "Este lugar não tem mídia guardada."} Os treinos já feitos continuam no histórico.</p>
+    {dd.length > 0 && (outros.length
+      ? <fieldset class="lug-dest"><legend class="f">Você vai nestes dias: {dias(g.id)}. Para qual lugar mudar?</legend>
+        {outros.map((o) => <label key={o.id} class="lug-radio"><input type="radio" name="destino" checked={destino === o.id} onChange={() => { destino = o.id; commit(); }} /><span>{o.name}<span class="tiny sub"> · {kindNm(o.kind)}</span></span></label>)}</fieldset>
+      : <div class="note warn"><Icon id="warn" /><span>Não há outro lugar: os dias ({dias(g.id)}) ficam sem lugar padrão.</span></div>)}
+    <div class="row wrapx" style="gap:8px;margin-top:16px">
+      <button type="button" class="btn danger" disabled={falta || apagando} onClick={async () => {
+        apagando = true; commit();
+        try { await apagarLugar(g.id, dd.length ? destino : null); closeSheet(); toast("Lugar apagado"); go(href("academias")); }
+        catch (e: any) { toast(e?.message || "Não consegui apagar"); }
+        finally { apagando = false; commit(); }
+      }}><Icon id="x" />{apagando ? "Apagando…" : "Apagar"}</button>
+      <button type="button" class="btn" onClick={closeSheet}>Cancelar</button></div>
+    {falta && <p class="tiny sub" style="margin-top:8px">Escolha para qual lugar os dias vão.</p>}
   </>;
 }
-export default function Academias() {
-  return <><p class="kicker">Onde você treina</p><h1 style="margin-bottom:14px">Academias</h1><div class="card"><GymEditor /></div></>;
+const abrirApagar = (g: Gym) => { destino = null; apagando = false; openSheet(() => <Apagar g={g} />); };
+
+// ---------- lista ----------
+function Lista() {
+  return <>
+    <div class="row between start"><div><p class="kicker">Onde você treina</p><h1 style="margin-bottom:14px">Academias</h1></div>
+      <a class="btn pri" href={href("academias", ["novo"])}><Icon id="plus" />Novo lugar</a></div>
+    {S.gyms.length === 0 && <div class="note"><Icon id="gym" /><span>Nenhum lugar ainda. Cadastre onde você treina para o app montar o treino com os aparelhos certos.</span></div>}
+    <ul class="lug-lista" aria-label="Seus lugares">{S.gyms.map((g) => {
+      const ponto = g.lat != null && g.lng != null ? { lat: g.lat, lng: g.lng } : null, d = dias(g.id);
+      return <li key={g.id} class="lug-card">
+        <a class="lug-card-main" href={href("academias", [g.id])}>
+          <span class="n"><Icon id="gym" /></span>
+          <span class="lug-card-t"><b>{g.name}</b><span class="tiny sub">{kindNm(g.kind)} · {g.equipment.length} aparelho(s){d ? ` · ${d}` : ""}</span>
+            <span class="tiny sub">{g.address || (ponto ? "Ponto marcado no mapa" : "Sem endereço")}</span></span>
+          <Icon id="arrow" /></a>
+        {ponto && <a class="btn sm ghost" href={linkMapa(ponto)} target="_blank" rel="noopener noreferrer" aria-label={`Abrir ${g.name} no mapa (nova aba)`}><Icon id="target" />Mapa</a>}
+      </li>;
+    })}</ul>
+  </>;
+}
+
+// ---------- página do lugar ----------
+function Lugar({ g }: { g: Gym }) {
+  const ponto = g.lat != null && g.lng != null ? { lat: g.lat, lng: g.lng } : null, d = dias(g.id);
+  const eqs = C.EQUIPMENT.filter((e) => g.equipment.includes(e.id));
+  return <>
+    <div class="row between" style="margin-bottom:10px"><a class="btn sm" href={href("academias")}><Icon id="back" />Academias</a>
+      <div class="row" style="gap:8px"><a class="btn sm" href={href("academias", [g.id, "editar"])}><Icon id="edit" />Editar</a>
+        <button type="button" class="btn sm danger" onClick={() => abrirApagar(g)}><Icon id="x" />Apagar</button></div></div>
+    <p class="kicker">{kindNm(g.kind)}</p><h1 style="margin:2px 0 4px">{g.name}</h1>
+    <p class="sub">{g.address || "Sem endereço"}</p>
+    <div class="grid dash" style="margin-top:14px"><div class="stack">
+      <div class="card"><h2>No mapa</h2>
+        {ponto ? <><div style="margin-top:10px"><Mapa ponto={ponto} rotulo={`Mapa com a localização de ${g.name}`} /></div>
+          <a class="btn sm" style="margin-top:10px" href={linkMapa(ponto)} target="_blank" rel="noopener noreferrer"><Icon id="target" />Abrir no OpenStreetMap</a></>
+          : <p class="small sub" style="margin-top:6px">Sem ponto marcado. <a class="link44" href={href("academias", [g.id, "editar"])}>Marcar no mapa</a></p>}</div>
+      <div class="card"><h2>Rotina</h2>
+        <dl class="refs"><div><dt>Dias</dt><dd>{d || "—"}</dd></div><div><dt>Lota</dt><dd>{g.busyHours.length ? g.busyHours.map((h) => h.replace("-", "–") + "h").join(", ") : "—"}</dd></div></dl></div>
+    </div><div class="stack">
+      <div class="card"><h2>Aparelhos <span class="badge num">{eqs.length}</span></h2>
+        <p class="small sub" style="margin:4px 0 10px">Toque em um aparelho para ver os exercícios e guardar a mídia da sua regulagem.</p>
+        {eqs.length ? <ul class="lug-aps">{eqs.map((e) => { const n = midiaDoAparelho(g.id, e.id).length; return <li key={e.id}>
+          <a class="lug-ap" href={href("academias", [g.id, "aparelho", e.id])}><FotoAparelho src={img(e.img)} w={64} h={48} />
+            <span><b>{e.nm}</b>{n > 0 && <span class="tiny sub"> · {n} mídia(s)</span>}</span><Icon id="arrow" /></a></li>; })}</ul>
+          : <p class="small sub">Nenhum aparelho marcado. <a class="link44" href={href("academias", [g.id, "editar"])}>Marcar aparelhos</a></p>}</div>
+    </div></div></>;
+}
+
+export default function Academias({ route }: { route?: Route }) {
+  const [a, b, c] = route?.parts ?? [];
+  if (a === "novo") return <PassoAPasso key="novo" onDone={(g) => go(href("academias", [g.id]))} onCancel={() => go(href("academias"))} />;
+  if (a) {
+    const g = S.gyms.find((x) => x.id === a);
+    if (!g) return <><a class="btn sm" href={href("academias")}><Icon id="back" />Academias</a><p class="sub" style="margin-top:12px">Lugar não encontrado.</p></>;
+    if (b === "editar") return <PassoAPasso key={g.id} inicial={g} onDone={() => go(href("academias", [g.id]))} onCancel={() => go(href("academias", [g.id]))} />;
+    if (b === "aparelho" && c) return <PaginaAparelho gym={g} eqId={c} />;
+    return <Lugar g={g} />;
+  }
+  return <Lista />;
 }

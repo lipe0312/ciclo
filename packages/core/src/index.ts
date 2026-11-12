@@ -12,3 +12,6 @@ export * from "./semana.ts";
 export * from "./semana-volume.ts";
 export * from "./perfil.ts";
 export * from "./diario.ts";
+export * from "./lugares.ts";
+export * from "./midia.ts";
+export * from "./mp4.ts";

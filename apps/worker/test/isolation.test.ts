@@ -35,6 +35,10 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   const inbox = (await ok(c("POST", "/api/inbox", { text: `${tag} pedido` }))).data.id;
   await ok(c("POST", "/api/food", { date: D, text: `${tag} comida` }));
   const media = (await ok(call(env, "POST", `/api/media?note=${tag}`, { user, raw: PNG, ct: "image/png" }))).data.id;
+  // #26: lugar só desta conta (nome, endereço e ponto no mapa com a marca) e mídia de aparelho dentro dele
+  const lug = `lug_${user}`;
+  await ok(c("PUT", `/api/gyms/${lug}`, { name: `${tag} lugar`, kind: "hotel", address: `${tag} rua`, lat: tag === "MARCA_B" ? -10.123 : -30.5, lng: tag === "MARCA_B" ? -20.456 : -50.5, equipment: ["halteres"], weekdays: ["sab"] }));
+  const mediaLug = (await ok(call(env, "POST", `/api/media?gymId=${lug}&equipmentId=halteres&note=${tag}`, { user, raw: PNG, ct: "image/png" }))).data.id;
   await ok(c("GET", `/api/week?date=${D}`));
   await ok(c("POST", "/api/week/day/2026-11-07", { action: "gerar", today: D, opts: { focus: ["ombro"] } }));
   // #27 diário: checkout, lembrete, resumo dos dias e exame (texto bruto marcado)
@@ -45,20 +49,21 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   const exam = (await ok(c("POST", "/api/exames", { label: `${tag} exame`, text: `${tag} laudo` }))).data.id;
   const tok = (await ok(c("POST", "/api/account/tokens", { label: `${tag} token` }))).data;
   const exp = (await c("GET", "/api/account/export")).data;
-  return { sid: SID, ex, cardio, endpoint, pain, inbox, media, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
+  return { sid: SID, ex, cardio, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
 }
 const snap = async (env: any, user: string) => {
   const e = (await call(env, "GET", "/api/account/export", { user })).data;
   delete e.exportadoEm; delete e.user.last_seen_at; return JSON.stringify(e);
 };
 
-test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas)", async () => {
+test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas)", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response("[]", { status: 200 })); // Nominatim (busca de endereço) não sai da máquina
   const env = makeEnv();
   const B = await seed(env, "bia", "MARCA_B", SID_B, MARK_KG);
   const A = await seed(env, "ana", "MARCA_A", SID_A, 10);
   const before = await snap(env, "bia");
   const r2Before = [...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length;
-  const secrets = ["MARCA_B", B.uid, B.pain, B.inbox, B.media, B.tokenId, B.edit, B.cardio, B.exam, String(MARK_KG), "bia@"];
+  const secrets = ["MARCA_B", B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, String(MARK_KG), "bia@"];
   const subsB = () => env.DB.raw.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE endpoint = ?1").get(B.endpoint).n;
   const restB = () => JSON.stringify(env.DB.raw.prepare("SELECT fire_at, sent_at FROM rest_timer WHERE user_id = ?1").get(B.uid));
   const restBefore = restB();
@@ -75,7 +80,10 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["DELETE /api/account/tokens/:id", () => a("DELETE", `/api/account/tokens/${B.tokenId}`), 404],
     ["PUT /api/measurements/:date", () => a("PUT", `/api/measurements/${D}`, { armCm: 40 })],
     ["PUT /api/profile", () => a("PUT", "/api/profile", profile("A2"))],
+    ["GET /api/gyms", () => a("GET", "/api/gyms")],
     ["PUT /api/gyms/:id", () => a("PUT", "/api/gyms/acad1", { name: "A2", equipment: ["halteres"] })],
+    ["DELETE /api/gyms/:id", () => a("DELETE", `/api/gyms/${B.lug}`), 404],
+    ["GET /api/geocode", () => a("GET", "/api/geocode?q=Avenida%20Paulista")],
     ["PUT /api/checkin/:date", () => a("PUT", `/api/checkin/${D}`, { sleepH: 5, energy: 1, soreness: 0, stress: 1, food: 1 })],
     ["PUT /api/attendance/:date", () => a("PUT", `/api/attendance/${D}`, { status: "fui" })],
     ["GET /api/diario", () => a("GET", `/api/diario?from=2026-10-20&to=${D}`)],
@@ -117,7 +125,11 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["POST /api/transcribe", () => call(env, "POST", "/api/transcribe", { user: "ana", raw: PNG, ct: "audio/webm" })],
     ["POST /api/media", () => call(env, "POST", "/api/media", { user: "ana", raw: PNG, ct: "image/png" })],
     ["GET /api/media", () => a("GET", "/api/media")],
+    ["GET /api/media (lugar da B)", () => a("GET", `/api/media?gymId=${B.lug}&equipmentId=halteres`)],
+    ["POST /api/media (lugar da B)", () => call(env, "POST", `/api/media?gymId=${B.lug}&equipmentId=halteres`, { user: "ana", raw: PNG, ct: "image/png" }), 404],
+    ["POST /api/media (tipo errado)", () => call(env, "POST", "/api/media?gymId=acad1&equipmentId=halteres", { user: "ana", raw: PNG, ct: "text/html" }), 415],
     ["GET /api/media/:id", () => a("GET", `/api/media/${B.media}`), 404],
+    ["GET /api/media/:id (mídia do lugar da B)", () => a("GET", `/api/media/${B.mediaLug}`), 404],
   ];
   const tools: [string, Record<string, unknown>, boolean?][] = [
     ["ciclo_estado", { date: D }], ["ciclo_catalogo", { muscle: "ombro", gymId: "acad1" }], ["ciclo_planejar_dia", { date: D, daysLeft: 2 }],
@@ -128,7 +140,7 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["ciclo_diario", { from: "2026-11-01", to: D }], ["ciclo_registrar_resumo_dias", { dias: [{ date: D, alcohol: 3, sleptWell: false }] }],
     ["ciclo_exame_pendente", {}], ["ciclo_exame_concluir", { id: B.exam, resumo: { marcadores: [{ nome: "TSH", valor: 1, status: "dentro" }] } }, true],
   ];
-  assert.deepEqual(cases.map((c) => c[0]).concat("DELETE /api/account").sort(), routeSignatures().sort(), "toda rota precisa de caso de isolamento");
+  assert.deepEqual([...new Set(cases.map((c) => c[0].replace(/ \(.*\)$/, "")))].concat("DELETE /api/account").sort(), routeSignatures().sort(), "toda rota precisa de caso de isolamento");
   assert.deepEqual(tools.map((t) => t[0]).sort(), [...toolNames].sort(), "toda ferramenta MCP precisa de caso");
 
   for (const [sig, run, status] of cases) {
