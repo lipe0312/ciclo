@@ -37,9 +37,15 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   const media = (await ok(call(env, "POST", `/api/media?note=${tag}`, { user, raw: PNG, ct: "image/png" }))).data.id;
   await ok(c("GET", `/api/week?date=${D}`));
   await ok(c("POST", "/api/week/day/2026-11-07", { action: "gerar", today: D, opts: { focus: ["ombro"] } }));
+  // #27 diário: checkout, lembrete, resumo dos dias e exame (texto bruto marcado)
+  await ok(c("PUT", `/api/checkout/${D}`, { trained: false, alcohol: 2, smoke: true, note: `${tag} checkout`, cardio: { type: "Rope_Jumping", minutes: 10 } }));
+  await ok(c("POST", "/api/diario/abrir", { today: D }));
+  await ok(c("PUT", "/api/diario/lembrete", { snoozedOn: D }));
+  await ok(c("POST", "/api/diario/resumo", { dias: [{ date: "2026-11-04", alcohol: 1, note: `${tag} resumo` }] }));
+  const exam = (await ok(c("POST", "/api/exames", { label: `${tag} exame`, text: `${tag} laudo` }))).data.id;
   const tok = (await ok(c("POST", "/api/account/tokens", { label: `${tag} token` }))).data;
   const exp = (await c("GET", "/api/account/export")).data;
-  return { sid: SID, ex, cardio, endpoint, pain, inbox, media, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
+  return { sid: SID, ex, cardio, endpoint, pain, inbox, media, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
 }
 const snap = async (env: any, user: string) => {
   const e = (await call(env, "GET", "/api/account/export", { user })).data;
@@ -52,7 +58,7 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
   const A = await seed(env, "ana", "MARCA_A", SID_A, 10);
   const before = await snap(env, "bia");
   const r2Before = [...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length;
-  const secrets = ["MARCA_B", B.uid, B.pain, B.inbox, B.media, B.tokenId, B.edit, B.cardio, String(MARK_KG), "bia@"];
+  const secrets = ["MARCA_B", B.uid, B.pain, B.inbox, B.media, B.tokenId, B.edit, B.cardio, B.exam, String(MARK_KG), "bia@"];
   const subsB = () => env.DB.raw.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE endpoint = ?1").get(B.endpoint).n;
   const restB = () => JSON.stringify(env.DB.raw.prepare("SELECT fire_at, sent_at FROM rest_timer WHERE user_id = ?1").get(B.uid));
   const restBefore = restB();
@@ -72,6 +78,13 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["PUT /api/gyms/:id", () => a("PUT", "/api/gyms/acad1", { name: "A2", equipment: ["halteres"] })],
     ["PUT /api/checkin/:date", () => a("PUT", `/api/checkin/${D}`, { sleepH: 5, energy: 1, soreness: 0, stress: 1, food: 1 })],
     ["PUT /api/attendance/:date", () => a("PUT", `/api/attendance/${D}`, { status: "fui" })],
+    ["GET /api/diario", () => a("GET", `/api/diario?from=2026-10-20&to=${D}`)],
+    ["PUT /api/checkout/:date", () => a("PUT", `/api/checkout/${D}`, { alcohol: 0, cardio: { type: "HIIT", minutes: 5 } })],
+    ["POST /api/diario/abrir", () => a("POST", "/api/diario/abrir", { today: "2026-11-09" })],
+    ["PUT /api/diario/lembrete", () => a("PUT", "/api/diario/lembrete", { absenceDays: 3, dismissAbsence: true })],
+    ["POST /api/diario/resumo", () => a("POST", "/api/diario/resumo", { dias: [{ date: "2026-11-04", trained: true, note: "A" }, { date: D, alcohol: 5 }] })],
+    ["POST /api/exames", () => a("POST", "/api/exames", { text: "A laudo 2" }), 201],
+    ["DELETE /api/exames/:id", () => a("DELETE", `/api/exames/${B.exam}`), 404],
     ["POST /api/plan-day", () => a("POST", "/api/plan-day", { date: D, daysLeft: 2, gymId: "acad1" })],
     ["PUT /api/day-plan/:date", () => a("PUT", `/api/day-plan/${D}`, { plan: { items: [] } })],
     ["POST /api/plan-edits", () => a("POST", "/api/plan-edits", { date: D, edit: { index: 0, sets: 3 } }), 422],
@@ -112,6 +125,8 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["ciclo_responder_pedido", { id: B.inbox, resposta: "oi" }, true], ["ciclo_marcar_presenca", { date: D, status: "nao_fui" }],
     ["ciclo_registrar_dor", { region: "ombro_e", intensity: 1 }], ["ciclo_registrar_comida", { texto: "pão", date: D }],
     ["ciclo_salvar_perfil", { perfil: { minutes: 45 } }], ["ciclo_revisar_edicoes", {}], ["ciclo_concluir_revisao", { id: B.edit, review: "ok" }, true],
+    ["ciclo_diario", { from: "2026-11-01", to: D }], ["ciclo_registrar_resumo_dias", { dias: [{ date: D, alcohol: 3, sleptWell: false }] }],
+    ["ciclo_exame_pendente", {}], ["ciclo_exame_concluir", { id: B.exam, resumo: { marcadores: [{ nome: "TSH", valor: 1, status: "dentro" }] } }, true],
   ];
   assert.deepEqual(cases.map((c) => c[0]).concat("DELETE /api/account").sort(), routeSignatures().sort(), "toda rota precisa de caso de isolamento");
   assert.deepEqual(tools.map((t) => t[0]).sort(), [...toolNames].sort(), "toda ferramenta MCP precisa de caso");

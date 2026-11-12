@@ -6,6 +6,7 @@ import { HttpError, json } from "./http.ts";
 import { handleMcp } from "./mcp.ts";
 import { closeStaleSessions, hitRateLimit } from "./db.ts";
 import { sendDueRests } from "./push.ts";
+import { purgeExpiredExams } from "./diario.ts";
 
 const unauthorized = () => json({ error: "não autorizado" }, 401, { "WWW-Authenticate": 'Bearer realm="ciclo"' });
 
@@ -56,9 +57,12 @@ export default {
   },
 
   // Cron de 1 min (sem IA): avisa o fim do descanso por Web Push (#25) e, a cada 30 min, fecha treinos esquecidos
-  // de todas as contas (iniciou = foi; máx. 2 h).
+  // de todas as contas (iniciou = foi; máx. 2 h) e apaga o texto bruto de exames vencidos (#27).
   async scheduled(c: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(sendDueRests(env).catch(() => 0));
-    if (new Date(c.scheduledTime).getUTCMinutes() % 30 === 0) ctx.waitUntil(closeStaleSessions(env));
+    if (new Date(c.scheduledTime).getUTCMinutes() % 30 === 0) {
+      ctx.waitUntil(closeStaleSessions(env));
+      ctx.waitUntil(purgeExpiredExams(env, c.scheduledTime).catch(() => null)); // #27: texto bruto de exame some em até 7 dias
+    }
   },
 } satisfies ExportedHandler<Env>;
