@@ -4,7 +4,7 @@ import { DEV_USER_RE, authenticateApi, authenticateMcp, isLocalDev } from "./aut
 import { handleApi, uploadMedia } from "./api.ts";
 import { HttpError, json } from "./http.ts";
 import { handleMcp } from "./mcp.ts";
-import { closeStaleSessions, hitRateLimit } from "./db.ts";
+import { closeStaleSessions, hitRateLimit, purgeTrash } from "./db.ts";
 import { sendDueRests } from "./push.ts";
 
 const unauthorized = () => json({ error: "não autorizado" }, 401, { "WWW-Authenticate": 'Bearer realm="ciclo"' });
@@ -60,5 +60,6 @@ export default {
   async scheduled(c: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(sendDueRests(env).catch(() => 0));
     if (new Date(c.scheduledTime).getUTCMinutes() % 30 === 0) ctx.waitUntil(closeStaleSessions(env));
+    if (new Date(c.scheduledTime).getUTCMinutes() === 0) ctx.waitUntil(purgeTrash(env).catch(() => null)); // lixeira de 30 dias (#26)
   },
 } satisfies ExportedHandler<Env>;

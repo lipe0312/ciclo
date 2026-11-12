@@ -1,10 +1,10 @@
 // API JSON do app (atrás do Cloudflare Access). Rotas pequenas, um estado agregado por chamada (/api/state)
 // para o celular fazer 1 requisição ao abrir. Toda rota recebe o usuário autenticado (u) e filtra por u.id.
-import { CARDIO_BY_ID, EXERCISE_BY_ID, INTENSITIES, MUSCLE_IDS, PROMPTS, applyManualEdit, checkCardio, classify, planDay } from "@ciclo/core";
+import { CARDIO_BY_ID, EQUIPMENT_BY_ID, EXERCISE_BY_ID, INTENSITIES, MAX_PLACES, MEDIA_MAX_BYTES, MUSCLE_IDS, PROMPTS, applyManualEdit, checkCardio, classify, planDay, validatePlace } from "@ciclo/core";
 import type { DayPlan, Intensity, ManualEdit, Mode, MuscleId, Tier } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, id, int, json, num, oneOf, readJson, str } from "./http.ts";
-import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, deleteAccount, exerciseHistory, exportAccount, getProfile, hitRateLimit, listGyms, mediaPrefix, parse, planProfileFingerprint, saveProfile, summarizeSession, upsertPain, weekState } from "./db.ts";
+import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, countGyms, deleteAccount, exerciseHistory, exportAccount, getGymRow, getProfile, gymDays, gymView, hitRateLimit, listGyms, mediaPrefix, parse, planProfileFingerprint, saveProfile, setGymWeekdays, summarizeSession, takeGeocodeSlot, trashGym, upsertPain, weekState } from "./db.ts";
 import { pushEnabled, validEndpoint } from "./push.ts";
 import { newMcpToken } from "./auth.ts";
 import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
@@ -17,7 +17,7 @@ const on = (method: string, path: string, h: Handler) =>
 const MODES = ["normal", "compensatorio", "expresso"] as const;
 const TIERS = ["haiku", "sonnet", "opus"] as const;
 const MEDIA_MIME: Record<string, "foto" | "video"> = { "image/jpeg": "foto", "image/png": "foto", "image/webp": "foto", "video/mp4": "video", "video/webm": "video", "video/quicktime": "video" };
-const MAX_MEDIA = 20 * 1024 * 1024;
+const MAX_MEDIA = MEDIA_MAX_BYTES;
 const MAX_AUDIO = 4 * 1024 * 1024;
 const MAX_TOKENS = 10;
 
@@ -35,7 +35,7 @@ on("GET", "/api/state", async (req, env, _p, u) => {
     env.DB.prepare(`SELECT l.exercise_id, l.kg, l.reps FROM set_log l
       WHERE l.user_id = ?1 AND l.session_id = (SELECT s2.session_id FROM set_log s2 WHERE s2.user_id = ?1 AND s2.exercise_id = l.exercise_id ORDER BY s2.created_at DESC LIMIT 1)
       ORDER BY l.exercise_id, l.set_no LIMIT 400`).bind(u.id).all<{ exercise_id: string; kg: number; reps: number }>(),
-    env.DB.prepare("SELECT id, kind, exercise_id, equipment_id, note FROM media WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 200").bind(u.id).all(),
+    env.DB.prepare("SELECT id, kind, exercise_id, equipment_id, gym_id, note FROM media WHERE user_id = ?1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 200").bind(u.id).all(),
     env.DB.prepare("SELECT date, arm_cm AS braco, waist_cm AS cintura FROM measurement WHERE user_id = ?1 ORDER BY date DESC LIMIT 12").bind(u.id).all(),
   ]);
   const history: Record<string, { kg: number; reps: number }[]> = {};
@@ -108,21 +108,81 @@ on("PUT", "/api/profile", async (req, env, _p, u) => {
   return json({ ok: true });
 });
 
+// ---- lugares (academia, casa, hotel) ----
+const GYM_ID = /^[a-z0-9_-]{1,40}$/;
+const gymId = (v: unknown) => { const g = str(v, "id", 40)!; if (!GYM_ID.test(g)) throw new HttpError(400, "id inválido"); return g; };
+/** Corpo opcional (DELETE pode vir sem corpo). */
+async function optJson(req: Request, max = 2 * 1024): Promise<Record<string, unknown>> {
+  if (!req.headers.get("Content-Type") && !Number(req.headers.get("Content-Length") ?? "0")) return {};
+  const b = await readJson<unknown>(req, max);
+  if (typeof b !== "object" || b === null || Array.isArray(b)) throw new HttpError(400, "corpo inválido");
+  return b as Record<string, unknown>;
+}
+
+on("GET", "/api/gyms", async (_req, env, _p, u) => json({ gyms: await listGyms(env, u.id) }));
+
+// Cria ou edita. Edição é parcial: o que não veio fica como está. `weekdays` (opcional) troca os dias em que o lugar é o padrão.
 on("PUT", "/api/gyms/:id", async (req, env, p, u) => {
-  const b = await readJson<{ name: string; equipment: string[]; busyHours?: string[]; sort?: number }>(req);
-  const gid = str(p.id, "id", 40)!;
-  if (!/^[a-z0-9_-]+$/.test(gid)) throw new HttpError(400, "id inválido");
-  if (!Array.isArray(b.equipment) || b.equipment.length > 80 || !b.equipment.every((e) => typeof e === "string" && e.length < 40)) throw new HttpError(400, "equipment inválido");
-  const busy = b.busyHours ?? [];
-  if (!Array.isArray(busy) || busy.length > 24 || !busy.every((h) => typeof h === "string" && h.length < 12)) throw new HttpError(400, "busyHours inválido");
-  const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM gym WHERE user_id = ?1").bind(u.id).first<{ n: number }>();
-  if ((count?.n ?? 0) >= 20) {
-    const exists = await env.DB.prepare("SELECT 1 AS x FROM gym WHERE user_id = ?1 AND id = ?2").bind(u.id, gid).first();
-    if (!exists) throw new HttpError(409, "até 20 academias");
+  const gid = gymId(p.id);
+  const row = await getGymRow(env, u.id, gid);
+  const live = row && row.deleted_at == null ? row : null; // id de um lugar apagado pode ser usado de novo
+  const v = validatePlace(await readJson(req, 16 * 1024), { partial: !!live });
+  if (!v.ok) throw new HttpError(400, v.errors.join("; "));
+  const n = v.value;
+  if (!live && (await countGyms(env, u.id)) >= MAX_PLACES) throw new HttpError(409, `até ${MAX_PLACES} lugares`);
+  const cur = live ?? { name: "", equipment: "[]", busy_hours: "[]", kind: "academia", lat: null, lng: null, address: null, sort: await countGyms(env, u.id) };
+  await env.DB.prepare(`INSERT INTO gym (user_id, id, name, equipment, busy_hours, kind, lat, lng, address, sort, created_at, deleted_at)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL)
+      ON CONFLICT(user_id, id) DO UPDATE SET name = ?3, equipment = ?4, busy_hours = ?5, kind = ?6, lat = ?7, lng = ?8, address = ?9, sort = ?10, deleted_at = NULL,
+        created_at = CASE WHEN gym.deleted_at IS NULL THEN gym.created_at ELSE ?11 END`)
+    .bind(u.id, gid, n.name ?? cur.name, n.equipment ? JSON.stringify(n.equipment) : cur.equipment, n.busyHours ? JSON.stringify(n.busyHours) : cur.busy_hours,
+      n.kind ?? cur.kind, n.lat !== undefined ? n.lat : cur.lat, n.lng !== undefined ? n.lng : cur.lng, n.address !== undefined ? n.address : cur.address,
+      n.sort ?? cur.sort, Date.now()).run();
+  if (n.weekdays) await setGymWeekdays(env, u.id, gid, n.weekdays);
+  const saved = await getGymRow(env, u.id, gid);
+  return json({ ok: true, gym: await gymView(env, u.id, saved!) });
+});
+
+// Apagar: o lugar e a mídia dele vão para a lixeira por 30 dias. Se o lugar tem dias da semana, `reassignTo` diz para qual lugar eles vão.
+on("DELETE", "/api/gyms/:id", async (req, env, p, u) => {
+  const gid = gymId(p.id);
+  const b = await optJson(req);
+  const row = await getGymRow(env, u.id, gid);
+  if (!row || row.deleted_at != null) throw new HttpError(404, "lugar não encontrado");
+  const others = (await listGyms(env, u.id)).filter((g) => g.id !== gid);
+  const days = await gymDays(env, u.id, gid);
+  let to: string | null = null;
+  if (b.reassignTo != null) {
+    to = gymId(b.reassignTo);
+    if (to === gid || !others.some((g) => g.id === to)) throw new HttpError(404, "lugar de destino não encontrado");
+  } else if (days.length && others.length) {
+    return json({ error: "este lugar tem dias da semana: informe para qual lugar mudar (reassignTo)", days, options: others.map((g) => g.id) }, 409);
   }
-  await env.DB.prepare("INSERT INTO gym (user_id, id, name, equipment, busy_hours, sort, created_at) VALUES (?6, ?1, ?2, ?3, ?4, ?7, ?5) ON CONFLICT(user_id, id) DO UPDATE SET name = ?2, equipment = ?3, busy_hours = ?4, sort = ?7")
-    .bind(gid, str(b.name, "name", 60), JSON.stringify(b.equipment), JSON.stringify(busy), Date.now(), u.id, int(b.sort, "sort", 0, 99, false) ?? (count?.n ?? 0)).run();
-  return json({ ok: true });
+  await trashGym(env, u.id, gid, to);
+  return json({ ok: true, reassignedTo: to, days });
+});
+
+// Busca de endereço (Nominatim/OpenStreetMap) pelo servidor: o Worker é quem se identifica (User-Agent do app, sem dado pessoal) e o limite é 1 req/s.
+on("GET", "/api/geocode", async (req, env, _p, u) => {
+  const q = (str(new URL(req.url).searchParams.get("q"), "q", 120) ?? "").replace(/\s+/g, " ").trim();
+  if (q.length < 3) throw new HttpError(400, "digite ao menos 3 letras");
+  const wait = await hitRateLimit(env, u.id, "geocode");
+  if (wait) return json({ error: "muitas buscas; espere um instante" }, 429, { "Retry-After": String(wait) });
+  const global = await takeGeocodeSlot(env); // 1 req/s do app inteiro (política do Nominatim)
+  if (global) return json({ error: "o serviço de endereços está ocupado; tente de novo em instantes" }, 429, { "Retry-After": String(global) });
+  let rows: unknown;
+  try {
+    const r = await fetch("https://nominatim.openstreetmap.org/search?" + new URLSearchParams({ q, format: "jsonv2", limit: "5", "accept-language": "pt-BR" }),
+      { headers: { "User-Agent": "Ciclo-app/1.0", Accept: "application/json" }, signal: AbortSignal.timeout(6000) });
+    if (!r.ok) throw new Error("status");
+    rows = await r.json();
+  } catch { throw new HttpError(502, "a busca de endereço está indisponível; marque o ponto no mapa"); }
+  const results = (Array.isArray(rows) ? rows : []).flatMap((x: any) => {
+    const lat = Number(x?.lat), lng = Number(x?.lon);
+    return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && typeof x?.display_name === "string"
+      ? [{ label: x.display_name.slice(0, 160), lat: Math.round(lat * 1e5) / 1e5, lng: Math.round(lng * 1e5) / 1e5 }] : [];
+  }).slice(0, 5);
+  return json({ results });
 });
 
 on("PUT", "/api/checkin/:date", async (req, env, p, u) => {
@@ -413,6 +473,7 @@ on("POST", "/api/transcribe", async (req, env) => {
 });
 
 // Mídia do SEU aparelho → R2 privado, sob o prefixo da conta. Upload passa pelo Worker (simples, valida tipo e tamanho).
+// Mídia de aparelho (equipmentId) exige o lugar (gymId) e o lugar tem que ser desta conta.
 export async function uploadMedia(req: Request, env: Env, uid: string): Promise<Response> {
   if (!env.MEDIA) throw new HttpError(501, "R2 não configurado");
   const url = new URL(req.url);
@@ -422,27 +483,50 @@ export async function uploadMedia(req: Request, env: Env, uid: string): Promise<
   const len = Number(req.headers.get("Content-Length") ?? "0");
   if (!len || len > MAX_MEDIA) throw new HttpError(413, "até 20 MB (vídeo de 10–15 s)");
   const q = (k: string, max = 80) => str(url.searchParams.get(k), k, max, false);
-  const meta = [q("equipmentId"), q("exerciseId"), q("gymId", 40), q("note", 300)];
+  const equipmentId = q("equipmentId"), exerciseId = q("exerciseId"), gid = q("gymId", 40), note = q("note", 300);
+  if (equipmentId && !Object.prototype.hasOwnProperty.call(EQUIPMENT_BY_ID, equipmentId)) throw new HttpError(400, "equipmentId inválido");
+  if (equipmentId && !gid) throw new HttpError(400, "gymId obrigatório para mídia de aparelho");
+  if (gid) {
+    const g = await getGymRow(env, uid, gid);
+    if (!g || g.deleted_at != null) throw new HttpError(404, "lugar não encontrado");
+  }
   const mid = id(), key = `${mediaPrefix(uid)}media/${new Date().toISOString().slice(0, 7)}/${mid}`;
   const obj = await env.MEDIA.put(key, req.body, { httpMetadata: { contentType: mime } });
   if (!obj || obj.size > MAX_MEDIA) { if (obj) await env.MEDIA.delete(key); throw new HttpError(413, "arquivo grande demais"); }
-  await env.DB.prepare("INSERT INTO media (user_id, id, kind, r2_key, mime, bytes, equipment_id, exercise_id, gym_id, note, created_at) VALUES (?11, ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)")
-    .bind(mid, kind, key, mime, obj.size, ...meta, Date.now(), uid).run();
+  try {
+    await env.DB.prepare("INSERT INTO media (user_id, id, kind, r2_key, mime, bytes, equipment_id, exercise_id, gym_id, note, created_at) VALUES (?11, ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)")
+      .bind(mid, kind, key, mime, obj.size, equipmentId, exerciseId, gid, note, Date.now(), uid).run();
+  } catch (e) { await env.MEDIA.delete(key); throw e; }
   return json({ id: mid, kind }, 201);
 }
 on("POST", "/api/media", (req, env, _p, u) => uploadMedia(req, env, u.id));
 on("GET", "/api/media", async (req, env, _p, u) => {
   const url = new URL(req.url);
   const ex = str(url.searchParams.get("exerciseId"), "exerciseId", 80, false);
-  const { results } = await env.DB.prepare("SELECT id, kind, equipment_id, exercise_id, gym_id, note, setup, created_at FROM media WHERE user_id = ?2 AND (?1 IS NULL OR exercise_id = ?1) ORDER BY created_at DESC LIMIT 100").bind(ex, u.id).all();
+  const gid = str(url.searchParams.get("gymId"), "gymId", 40, false), eq = str(url.searchParams.get("equipmentId"), "equipmentId", 80, false);
+  const { results } = await env.DB.prepare(`SELECT id, kind, equipment_id, exercise_id, gym_id, note, setup, bytes, created_at FROM media
+    WHERE user_id = ?4 AND deleted_at IS NULL AND (?1 IS NULL OR exercise_id = ?1) AND (?2 IS NULL OR gym_id = ?2) AND (?3 IS NULL OR equipment_id = ?3)
+    ORDER BY created_at DESC LIMIT 100`).bind(ex, gid, eq, u.id).all();
   return json({ media: results });
 });
-on("GET", "/api/media/:id", async (_req, env, p, u) => {
+// Com suporte a Range (Safari só toca vídeo se o servidor responder 206).
+on("GET", "/api/media/:id", async (req, env, p, u) => {
   if (!env.MEDIA) throw new HttpError(501, "R2 não configurado");
-  const row = await env.DB.prepare("SELECT r2_key, mime FROM media WHERE id = ?1 AND user_id = ?2").bind(p.id, u.id).first<{ r2_key: string; mime: string }>();
-  const obj = row && (await env.MEDIA.get(row.r2_key));
+  const row = await env.DB.prepare("SELECT r2_key, mime, bytes FROM media WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL").bind(p.id, u.id).first<{ r2_key: string; mime: string; bytes: number }>();
+  if (!row) throw new HttpError(404, "não encontrado");
+  const base = { "Content-Type": row.mime, "Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff", "Accept-Ranges": "bytes" };
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get("Range") ?? "");
+  if (m && (m[1] || m[2]) && row.bytes > 0) {
+    let start = m[1] ? Number(m[1]) : Math.max(0, row.bytes - Number(m[2])), end = m[1] && m[2] ? Number(m[2]) : row.bytes - 1;
+    end = Math.min(end, row.bytes - 1);
+    if (start > end || start >= row.bytes) return new Response(null, { status: 416, headers: { ...base, "Content-Range": `bytes */${row.bytes}` } });
+    const part = await env.MEDIA.get(row.r2_key, { range: { offset: start, length: end - start + 1 } });
+    if (!part) throw new HttpError(404, "não encontrado");
+    return new Response(part.body, { status: 206, headers: { ...base, "Content-Range": `bytes ${start}-${end}/${row.bytes}`, "Content-Length": String(end - start + 1) } });
+  }
+  const obj = await env.MEDIA.get(row.r2_key);
   if (!obj) throw new HttpError(404, "não encontrado");
-  return new Response(obj.body, { headers: { "Content-Type": row!.mime, "Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff" } });
+  return new Response(obj.body, { headers: base });
 });
 
 /** Assinaturas "MÉTODO /caminho" de todas as rotas (o teste de isolamento confere que cobre todas). */

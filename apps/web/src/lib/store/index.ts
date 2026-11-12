@@ -14,18 +14,20 @@ export const dates = C.weekDates(monday);
 /** O perfil padrão e a validação vivem no core (o servidor usa a mesma regra). */
 export const DEFAULT_PROFILE = C.DEFAULT_PROFILE;
 export type Profile = typeof DEFAULT_PROFILE;
-export interface Gym { id: string; name: string; equipment: string[]; busyHours: string[] }
+export interface Gym { id: string; name: string; equipment: string[]; busyHours: string[]; kind?: C.PlaceKind; address?: string | null; lat?: number | null; lng?: number | null }
+/** Foto/vídeo da regulagem de um aparelho de um lugar (#26). `url` só existe depois de enviada (ou no demo, em memória). */
+export interface GymMedia { id: string; kind: "foto" | "video"; equipmentId: string; gymId: string; note: string | null; url?: string }
 export const DEFAULT_GYMS: Gym[] = [
-  { id: "acad1", name: "Academia 1", equipment: C.EQUIPMENT.map((e) => e.id).filter((e) => !["hack", "kettle", "scott", "roscamaq", "tricmaq", "pantsent"].includes(e)), busyHours: ["18-20"] },
-  { id: "acad2", name: "Academia 2", equipment: ["halteres", "banco", "polia", "puxador", "legpress", "extensora", "flexora", "barrafixa"], busyHours: [] },
-  { id: "casa", name: "Casa", equipment: ["halteres", "elastico", "barrafixa"], busyHours: [] },
+  { id: "acad1", name: "Academia 1", kind: "academia", equipment: C.EQUIPMENT.map((e) => e.id).filter((e) => !["hack", "kettle", "scott", "roscamaq", "tricmaq", "pantsent"].includes(e)), busyHours: ["18-20"] },
+  { id: "acad2", name: "Academia 2", kind: "academia", equipment: ["halteres", "banco", "polia", "puxador", "legpress", "extensora", "flexora", "barrafixa"], busyHours: [] },
+  { id: "casa", name: "Casa", kind: "casa", equipment: ["halteres", "elastico", "barrafixa"], busyHours: [] },
 ];
 
 export const S = {
   profile: clone(DEFAULT_PROFILE), gyms: clone(DEFAULT_GYMS),
   week: { done: {} as Record<string, number>, freq: {} as Record<string, number>, attendance: {} as Record<string, string>, checkins: {} as Record<string, any>, sessions: [] as any[],
     /** cardio da semana (resumo: C.cardioWeekSummary) */ cardio: [] as C.CardioEntry[] },
-  pains: [] as any[], inbox: [] as any[], food: [] as any[], media: {} as Record<string, any>, history: {} as Record<string, C.SetLog[]>,
+  pains: [] as any[], inbox: [] as any[], food: [] as any[], media: {} as Record<string, any>, gymMedia: [] as GymMedia[], history: {} as Record<string, C.SetLog[]>,
   /** últimas sessões de cada exercício (mais recente primeiro): médias, "última vez" e melhor marca do modo treino */
   past: {} as Record<string, C.SetLog[][]>, measures: [] as any[], edits: [] as any[],
   features: { ai: false, media: false } as Record<string, boolean>,
@@ -82,7 +84,8 @@ export async function loadServer() {
   };
   S.pains = w.pains ?? []; S.inbox = w.inbox ?? [];
   S.history = st.history ?? {};
-  S.media = Object.fromEntries((st.media ?? []).filter((m: any) => m.exercise_id).map((m: any) => [m.exercise_id, { kind: m.kind, note: m.note, url: `/api/media/${m.id}` }]));
+  S.media = Object.fromEntries((st.media ?? []).filter((m: any) => m.exercise_id && !m.gym_id).map((m: any) => [m.exercise_id, { kind: m.kind, note: m.note, url: `/api/media/${m.id}` }]));
+  S.gymMedia = (st.media ?? []).filter((m: any) => m.gym_id && m.equipment_id).map((m: any) => ({ id: m.id, kind: m.kind, equipmentId: m.equipment_id, gymId: m.gym_id, note: m.note, url: `/api/media/${m.id}` }));
   S.measures = st.measures ?? [];
   if (st.dayPlan && !S.ui.locked) { S.plan = st.dayPlan.plan; S.ui.locked = st.dayPlan.source !== "core"; S.ui.planSource = st.dayPlan.source; S.ui.planFp = st.dayPlan.profileFp ?? null; }
   const open = S.week.sessions.find((s: any) => s.date === today && !s.finished_at);
@@ -121,10 +124,10 @@ export function seedDemo() {
     Incline_Dumbbell_Press: [{ kg: 24, reps: 10 }, { kg: 24, reps: 9 }],
     "Wide-Grip_Lat_Pulldown": [{ kg: 55, reps: 10 }, { kg: 55, reps: 9 }],
   };
-  S.media = {
-    Cable_Rope_Overhead_Triceps_Extension: { kind: "video", note: "Polia da esquerda, corda curta, pino 4", dur: "0:12" },
-    Leg_Press: { kind: "foto", note: "Banco no furo 3 · pés no meio da plataforma" },
-  };
+  S.gymMedia = [
+    { id: "dm1", kind: "video", equipmentId: "polia", gymId: "acad1", note: "Polia da esquerda, corda curta, pino 4" },
+    { id: "dm2", kind: "foto", equipmentId: "legpress", gymId: "acad1", note: "Banco no furo 3 · pés no meio da plataforma" },
+  ];
   S.week.cardio = [
     { id: "c1", date: dates[0], type: "Running_Treadmill", minutes: 25, intensity: "zona2", distanceKm: 3.4 },
     { id: "c2", date: dates[1], type: "Bicycling_Stationary", minutes: 20, intensity: "moderado", distanceKm: null },
