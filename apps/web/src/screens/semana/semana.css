@@ -58,7 +58,7 @@
 .ger{gap:10px}
 .ger .f{display:block;margin-bottom:4px}
 .ger-eq{gap:6px 5px}
-.ger-eq .chip{padding:0 10px;font-size:12.5px}
+.ger-eq .chip{padding:0 10px;font-size:12.5px;min-height:44px;flex:none}
 .ger .seg{display:flex}
 .ger .seg button{flex:1 1 0;padding:0 6px;font-size:13px}
 .ger-go{margin-top:8px}
@@ -68,3 +68,5 @@
 .cd-mod svg{width:24px;height:24px}
 .cd-mod[aria-pressed="true"]{background:var(--txt);color:var(--bg);border-color:var(--txt)}
 .cd-plan{display:flex;align-items:center;gap:10px}
+.sem-aviso .sem-acts{flex-direction:column;align-items:stretch}
+.sem-aviso .sem-acts .btn{flex:none;width:100%;justify-content:center}

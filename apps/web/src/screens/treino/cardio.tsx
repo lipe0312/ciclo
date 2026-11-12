@@ -47,9 +47,9 @@ export function Cardio() {
         <button type="button" class="btn pri lg full" style="margin-top:12px" onClick={save} disabled={!!err}><Icon id="check" />Registrar</button></Card></div>
       <div class="stack"><Card><p class="kicker">Cardio da semana</p>
         <p class="big num" style="margin-top:6px">{w.minutes}<span class="small sub"> min</span></p>
-        <p class="small sub num" style="margin-top:4px">{w.sessions} sessão(ões){w.km ? ` · ${fmt(w.km, 1)} km` : ""} · ≈ {fmt(w.kcal)} kcal</p>
-        <p class="small num" style="margin-top:8px"><b>Gasto do cardio hoje: ≈ {fmt(C.cardioDayKcal(S.week.cardio, today, S.profile.weightKg))} kcal</b> <span class="sub">(soma no gasto do dia)</span></p></Card>
-        <Card><h2>Registros da semana</h2>{S.week.cardio.length ? [...S.week.cardio].sort((a, b) => (a.date < b.date ? 1 : -1)).map((e) => <div class="row between" key={e.id} style="padding:8px 0;border-top:1px solid var(--borda)">
+        <p class="small sub num" style="margin-top:4px">{w.sessions} {w.sessions === 1 ? "sessão" : "sessões"}{w.km ? ` · ${fmt(w.km, 1)} km` : ""} · ≈ {fmt(w.kcal)} kcal</p>
+        {(() => { const k = C.cardioDayKcal(S.week.cardio, today, S.profile.weightKg); return k > 0 ? <p class="small num" style="margin-top:8px"><b>Gasto do cardio hoje: ≈ {fmt(k)} kcal</b> <span class="sub">(soma no gasto do dia)</span></p> : <p class="small sub" style="margin-top:8px">Nenhum cardio hoje.</p>; })()}</Card>
+        <Card><h2 style="margin-bottom:8px">Registros da semana</h2>{S.week.cardio.length ? [...S.week.cardio].sort((a, b) => (a.date < b.date ? 1 : -1)).map((e) => <div class="row between" key={e.id} style="padding:8px 0;border-top:1px solid var(--borda)">
           <div><b>{cardioName(e.type)}</b><p class="small sub num">{longDate(e.date)} · {cardioLine(e)} · ≈ {fmt(C.cardioKcalOf(e, S.profile.weightKg))} kcal</p></div>
           <button type="button" class="iconbtn" onClick={() => del(e)} aria-label={`Apagar ${cardioName(e.type)} de ${longDate(e.date)}`}><Icon id="x" /></button></div>) : <p class="small sub" style="margin-top:6px">Nenhum cardio registrado nesta semana.</p>}</Card></div></div></>;
 }
