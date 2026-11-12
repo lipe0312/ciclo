@@ -1,7 +1,10 @@
 // Diário (#27): checkout da noite, resumo dos dias sem abrir, lembrete e exames. SQL só com bind e SEMPRE por user_id.
 // Regras no core (@ciclo/core: diario.ts); aqui só formato (http.ts) e banco. Dado de saúde nunca vai para log.
-import { CARDIO_BY_ID, EXAM_MAX_TEXT, absenceGap, checkExamSummary, checkoutCardioEntry, examExpiresAt, healthMaintenance, healthText, healthWeek, mondayOf, weekDates } from "@ciclo/core";
-import type { CheckoutLite } from "@ciclo/core";
+import {
+  BEBIDAS, CARDIO_BY_ID, EXAM_MAX_TEXT, MEALS, RECAP_MES_DIAS, alcoolKcal, bebidaTexto, checkExamSummary, checkoutCardioEntry, estimateFood, estimativaRefeicao,
+  examExpiresAt, healthMaintenance, healthText, healthWeek, mergeRecap, mondayOf, recapDias, reviewWindow, totalDoses, weekDates,
+} from "@ciclo/core";
+import type { CheckoutLite, Doses, Meal } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { HttpError, date, id, int, oneOf, str } from "./http.ts";
 import { parse } from "./db.ts";
@@ -17,6 +20,7 @@ function bool(v: unknown, field: string): 0 | 1 | null {
   return v ? 1 : 0;
 }
 const days = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
+const addDays = (iso: string, n: number) => new Date(Date.parse(iso + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 
 // ---------- checkout ----------
 interface CheckoutRow { date: string; trained: number | null; cardio_json: string | null; water_ml: number | null; alcohol_units: number | null; smoke: number | null; smoke_qty: number | null; caffeine_late: number | null; mood: number | null; sleep_ok: number | null; note: string | null; source: string; updated_at: number }
@@ -94,28 +98,115 @@ export async function saveDaysSummary(env: Env, uid: string, input: unknown, sou
   return { ok: true, dias: [...seen].sort() };
 }
 
+// ---------- recap do período (#42) ----------
+const RECAP_REFEICOES_MAX = 120;
+function parseDoses(v: unknown, field: string): Doses | null {
+  if (v == null) return null;
+  if (typeof v !== "object" || Array.isArray(v)) throw new HttpError(400, `${field} inválido`);
+  const o = v as Record<string, unknown>, out: Doses = {};
+  for (const k of Object.keys(o)) {
+    const b = oneOf(k, `${field}.tipo`, BEBIDAS);
+    out[b] = int(o[k], `${field}.${b}`, 0, 30)!;
+  }
+  if (totalDoses(out) > 30) throw new HttpError(400, `${field}: até 30 doses no dia`);
+  return out;
+}
+
+/**
+ * Recap do período: completa cada dia sem apagar o que existe (regra da #27: o que o dono marcou vale; vazio não apaga),
+ * bebida vira registro "bebida-…" na Comida do dia (regravar substitui, não duplica), refeição que faltou entra só se
+ * aquela refeição ainda não tem registro ("não lembro" = estimativa), o texto livre fica na nota do último dia e o
+ * recap pendente sai da faixa. Só confirmar = mandar só o período.
+ */
+export async function saveRecap(env: Env, uid: string, b: Record<string, unknown>) {
+  const from = date(b.from, "from"), to = date(b.to, "to");
+  if (from > to || days(from, to) >= RECAP_MES_DIAS) throw new HttpError(400, `período de até ${RECAP_MES_DIAS} dias`);
+  const inP = new Set(recapDias({ from, to }));
+  const dias = b.dias ?? [], refs = b.refeicoes ?? [];
+  if (!Array.isArray(dias) || dias.length > RECAP_MES_DIAS) throw new HttpError(400, `dias: até ${RECAP_MES_DIAS}`);
+  if (!Array.isArray(refs) || refs.length > RECAP_REFEICOES_MAX) throw new HttpError(400, `refeicoes: até ${RECAP_REFEICOES_MAX}`);
+  const texto = (str(b.texto, "texto", 1000, false) ?? "").trim() || null;
+  const now = Date.now(), seen = new Set<string>(), st: D1PreparedStatement[] = [];
+  const kcalDia: Record<string, number> = {};
+  dias.forEach((x, i) => {
+    const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+    const d = date(o.date, `dias[${i}].date`);
+    if (!inP.has(d)) throw new HttpError(400, `dias[${i}].date fora do período`);
+    if (seen.has(d)) throw new HttpError(400, `dias[${i}].date repetida`); seen.add(d);
+    const trained = bool(o.trained, `dias[${i}].trained`), smoke = bool(o.smoke, `dias[${i}].smoke`);
+    const doses = parseDoses(o.alcool, `dias[${i}].alcool`);
+    const cardio = o.cardio == null ? null : parseCardio(o.cardio);
+    const entry = checkoutCardioEntry(d, cardio as never);
+    st.push(env.DB.prepare(`INSERT INTO checkout (user_id, date, trained, cardio_json, alcohol_units, smoke, smoke_qty, sleep_ok, source, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'resumo', ?9)
+      ON CONFLICT(user_id, date) DO UPDATE SET trained = COALESCE(?3, trained), cardio_json = COALESCE(?4, cardio_json), alcohol_units = COALESCE(?5, alcohol_units),
+        smoke = COALESCE(?6, smoke), smoke_qty = CASE WHEN ?6 IS NULL THEN smoke_qty ELSE ?7 END, sleep_ok = COALESCE(?8, sleep_ok), updated_at = ?9`)
+      .bind(uid, d, trained, cardio ? JSON.stringify(cardio) : null, doses ? totalDoses(doses) : null, smoke,
+        smoke ? int(o.smokeQty, `dias[${i}].smokeQty`, 1, 100, false) : null, bool(o.sleptWell, `dias[${i}].sleptWell`), now));
+    if (entry) st.push(env.DB.prepare(`INSERT INTO cardio_log (user_id, id, date, type, minutes, intensity, distance_km, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7)
+      ON CONFLICT(user_id, id) DO UPDATE SET type=?4, minutes=?5, intensity=?6`).bind(uid, entry.id, d, entry.type, entry.minutes, entry.intensity, now));
+    if (trained != null) st.push(env.DB.prepare("INSERT INTO attendance (user_id, date, status, source, updated_at) VALUES (?1, ?2, ?3, 'resumo', ?4) ON CONFLICT(user_id, date) DO NOTHING")
+      .bind(uid, d, trained ? "fui" : "nao_fui", now));
+    if (doses) {
+      // a bebida do dia é UM registro na Comida ("bebida-…"): regravar troca, nunca soma de novo
+      const kcal = alcoolKcal(doses);
+      st.push(env.DB.prepare("DELETE FROM food_log WHERE user_id = ?1 AND date = ?2 AND id LIKE 'bebida-%'").bind(uid, d));
+      if (kcal > 0) st.push(env.DB.prepare(`INSERT INTO food_log (user_id, id, date, raw_text, meal, kcal, protein, kcal_est, protein_est, source, created_at)
+        VALUES (?1, ?2, ?3, ?4, NULL, ?5, 0, ?5, 0, 'local', ?6)`).bind(uid, `bebida-${id()}`, d, bebidaTexto(doses), kcal, now));
+      kcalDia[d] = kcal;
+    }
+  });
+  if (refs.length) {
+    const { results: hist } = await env.DB.prepare("SELECT meal, kcal FROM food_log WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 AND meal IS NOT NULL AND kcal IS NOT NULL")
+      .bind(uid, addDays(to, -28), to).all<{ meal: Meal; kcal: number }>();
+    const seenRef = new Set<string>();
+    refs.forEach((x, i) => {
+      const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+      const d = date(o.date, `refeicoes[${i}].date`);
+      if (!inP.has(d)) throw new HttpError(400, `refeicoes[${i}].date fora do período`);
+      const meal = oneOf(o.meal, `refeicoes[${i}].meal`, MEALS);
+      if (seenRef.has(`${d}|${meal}`)) throw new HttpError(400, `refeicoes[${i}] repetida`); seenRef.add(`${d}|${meal}`);
+      const text = (str(o.text, `refeicoes[${i}].text`, 500, false) ?? "").trim();
+      const naoLembro = o.naoLembro === true;
+      if (!text && !naoLembro) throw new HttpError(400, `refeicoes[${i}]: texto ou naoLembro`);
+      const est = text ? estimateFood(text) : { kcal: 0, prot: 0 };
+      const kcal = est.kcal || estimativaRefeicao(meal, hist), prot = est.prot || null;
+      // só entra se essa refeição do dia ainda não tem registro (regravar não duplica)
+      st.push(env.DB.prepare(`INSERT INTO food_log (user_id, id, date, raw_text, meal, kcal, protein, kcal_est, protein_est, confidence, source, created_at)
+        SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?6, ?7, 'estimativa', 'local', ?8 WHERE NOT EXISTS (SELECT 1 FROM food_log WHERE user_id = ?1 AND date = ?3 AND meal = ?5)`)
+        .bind(uid, `recap-${id()}`, d, text || "Não lembro (estimativa)", meal, kcal, prot, now));
+    });
+  }
+  if (texto) st.push(env.DB.prepare(`INSERT INTO checkout (user_id, date, note, source, updated_at) VALUES (?1, ?2, ?3, 'resumo', ?4)
+    ON CONFLICT(user_id, date) DO UPDATE SET note = CASE WHEN note IS NULL OR note = '' THEN ?3 WHEN instr(note, ?3) > 0 THEN note ELSE substr(note || ' · ' || ?3, 1, 1000) END, updated_at = ?4`)
+    .bind(uid, to, texto, now));
+  st.push(env.DB.prepare("UPDATE reminder_state SET absence_from = NULL, absence_to = NULL, updated_at = ?2 WHERE user_id = ?1").bind(uid, now));
+  await env.DB.batch(st);
+  return { ok: true, from, to, bebidaKcal: kcalDia };
+}
+
 // ---------- lembrete ----------
 interface ReminderRow { last_open: string | null; snoozed_on: string | null; absence_days: number; absence_from: string | null; absence_to: string | null }
-const reminderOut = (r: ReminderRow | null) => ({
-  lastOpen: r?.last_open ?? null, snoozedOn: r?.snoozed_on ?? null, absenceDays: r?.absence_days ?? 2,
-  absence: r?.absence_from && r.absence_to ? { from: r.absence_from, to: r.absence_to } : null,
-});
+const reminderOut = (r: ReminderRow | null) => {
+  const absence = r?.absence_from && r.absence_to ? { from: r.absence_from, to: r.absence_to } : null;
+  // #42: o período pendente é o recap (fds | semana | mês), um por vez
+  return { lastOpen: r?.last_open ?? null, snoozedOn: r?.snoozed_on ?? null, absenceDays: r?.absence_days ?? 2, absence, recap: mergeRecap(absence, null) };
+};
 const getReminder = (env: Env, uid: string) =>
   env.DB.prepare("SELECT last_open, snoozed_on, absence_days, absence_from, absence_to FROM reminder_state WHERE user_id = ?1").bind(uid).first<ReminderRow>();
 
-/** Abriu o app hoje: calcula os dias sem abrir (core) e, se passou de X, guarda o intervalo para o resumo único. */
-export async function openDiary(env: Env, uid: string, today: string) {
+/**
+ * Abriu o app (#42): o dia do diário vira às 07:00 (fuso America/Bahia) e vem do relógio do servidor. Se a janela do core
+ * (reviewWindow) pede recap (fds / semana / mês), junta com o pendente — um por vez — até concluir ou pular.
+ */
+export async function openDiary(env: Env, uid: string, agora = Date.now()) {
   const r = await getReminder(env, uid);
-  const gap = absenceGap(r?.last_open ?? null, today, r?.absence_days ?? 2);
-  let from = r?.absence_from ?? null, to = r?.absence_to ?? null;
-  if (gap.ask) {
-    const a = gap.missing[0], b = gap.missing[gap.missing.length - 1];
-    from = from && from < a ? from : a; to = to && to > b ? to : b;
-  }
+  const w = reviewWindow(r?.last_open ?? null, agora);
+  const pend = r?.absence_from && r.absence_to ? { from: r.absence_from, to: r.absence_to } : null;
+  const rec = w.from && w.to ? mergeRecap(pend, { from: w.from, to: w.to }) : pend;
   await env.DB.prepare(`INSERT INTO reminder_state (user_id, last_open, absence_from, absence_to, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
     ON CONFLICT(user_id) DO UPDATE SET last_open = CASE WHEN last_open IS NULL OR last_open < ?2 THEN ?2 ELSE last_open END, absence_from = ?3, absence_to = ?4, updated_at = ?5`)
-    .bind(uid, today, from, to, Date.now()).run();
-  return reminderOut(await getReminder(env, uid));
+    .bind(uid, w.hoje, rec?.from ?? null, rec?.to ?? null, Date.now()).run();
+  return { ...reminderOut(await getReminder(env, uid)), hoje: w.hoje };
 }
 
 /** "Mais tarde" (1× no dia), X dias sem abrir e dispensar o resumo pendente. */
@@ -136,14 +227,14 @@ export async function getDiary(env: Env, uid: string, from: string, to: string) 
   if (from > to || days(from, to) > 62) throw new HttpError(400, "intervalo de até 62 dias");
   await purgeExpiredExams(env, Date.now(), uid);
   const [ci, co, rem, ex] = await env.DB.batch([
-    env.DB.prepare("SELECT date, sleep_h, energy, soreness, stress, food, weight_kg FROM checkin WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date").bind(uid, from, to),
+    env.DB.prepare("SELECT date, sleep_h, energy, soreness, stress, food, weight_kg, note FROM checkin WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date").bind(uid, from, to),
     env.DB.prepare(`SELECT ${CO_COLS} FROM checkout WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date`).bind(uid, from, to),
     env.DB.prepare("SELECT last_open, snoozed_on, absence_days, absence_from, absence_to FROM reminder_state WHERE user_id = ?1").bind(uid),
     env.DB.prepare("SELECT id, label, created_at, expires_at, analyzed_at, status, summary_json, raw_text IS NOT NULL AS has_text FROM health_exam WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 30").bind(uid),
   ]);
   return {
-    checkins: (ci.results as { date: string; sleep_h: number; energy: number; soreness: number; stress: number; food: number; weight_kg: number | null }[])
-      .map((c) => ({ date: c.date, sleepH: c.sleep_h, energy: c.energy, soreness: c.soreness, stress: c.stress, food: c.food, weightKg: c.weight_kg })),
+    checkins: (ci.results as { date: string; sleep_h: number; energy: number; soreness: number; stress: number; food: number; weight_kg: number | null; note: string | null }[])
+      .map((c) => ({ date: c.date, sleepH: c.sleep_h, energy: c.energy, soreness: c.soreness, stress: c.stress, food: c.food, weightKg: c.weight_kg, note: c.note })),
     checkouts: (co.results as CheckoutRow[]).map(checkoutOut),
     reminder: reminderOut((rem.results[0] as ReminderRow | undefined) ?? null),
     exams: (ex.results as { id: string; label: string; created_at: number; expires_at: number; analyzed_at: number | null; status: string; summary_json: string | null; has_text: number }[])

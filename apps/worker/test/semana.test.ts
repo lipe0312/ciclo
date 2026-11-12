@@ -206,3 +206,45 @@ test("isolamento de leitura: dados da B (séries, cargas, frequência, semanas a
   await seedA(junto);
   assert.equal(await semanaA(junto), sozinha, "a semana da A mudou com os dados da B");
 });
+
+test("gerar outro treino (#44): ocupados/estilo/leve/adiantar viram versão, validam a entrada e desfazer volta; cardio planejado e futsal que abate", async () => {
+  const env = makeEnv();
+  const a = await conta(env, "ana");
+  const w0 = (await a("GET", `/api/week?date=${SEG}`)).data.week;
+  assert.equal(w0.days.filter((d: any) => d.cardio).length, 2, "cardio previsto pela dose do objetivo");
+  const antes = w0.days[0].plan;
+  const usados = [...new Set(antes.items.flatMap((i: any) => EXERCISE_BY_ID[i.exerciseId].eq))].filter((q) => q !== "halteres").slice(0, 3);
+
+  const r = await a("POST", `/api/week/day/${SEG}`, { action: "outro", today: SEG, opts: { ocupados: usados, leve: true } });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.data.week.version, 2);
+  const novo = r.data.week.days[0];
+  assert.equal(novo.plan.leve, true);
+  for (const it of novo.plan.items) for (const q of usados) assert.ok(!EXERCISE_BY_ID[it.exerciseId].eq.includes(q as string), `${it.nm} usa ${q}`);
+  assert.deepEqual(novo.opts.ocupados, usados);
+
+  for (const bad of [{ ocupados: ["nao_existe"] }, { ocupados: "x" }, { estilo: "robo" }, { adiantar: "orelha" }])
+    assert.equal((await a("POST", `/api/week/day/${SEG}`, { action: "outro", today: SEG, opts: bad })).status, 400, JSON.stringify(bad));
+
+  const volta = await a("PUT", "/api/week", { date: SEG, version: 1 });
+  assert.equal(volta.status, 200, volta.text);
+  assert.deepEqual(volta.data.week.days[0].plan.items.map((i: any) => i.exerciseId), antes.items.map((i: any) => i.exerciseId));
+  assert.equal(volta.data.week.days[0].plan.leve, undefined);
+
+  const f = await a("POST", "/api/cardio", { date: SEG, type: "Futsal", minutes: 60, intensity: "moderado" });
+  assert.equal(f.status, 201, f.text);
+  assert.equal((await a("GET", `/api/week?date=${TER}`)).data.week.days.filter((d: any) => d.cardio).length, 1, "o futsal abate uma das 2 sessões");
+});
+
+test("isolamento do cardio (#44): o cardio_log da B não abate nem muda o cardio planejado da A", async () => {
+  const env = makeEnv();
+  const a = await conta(env, "ana");
+  const b = await conta(env, "bia");
+  const dias = (r: any) => r.data.week.days.filter((d: any) => d.cardio).map((d: any) => d.date);
+  const antes = dias(await a("GET", `/api/week?date=${TER}`));
+  assert.equal(antes.length, 2);
+  // a B registra futsal e corrida na semana: se a query do cardio perder o user_id, a A teria a dose abatida
+  for (const t of ["Futsal", "Running_Treadmill"]) assert.equal((await b("POST", "/api/cardio", { date: SEG, type: t, minutes: 60, intensity: "moderado" })).status, 201);
+  assert.equal((await b("GET", `/api/week?date=${TER}`)).data.week.days.filter((d: any) => d.cardio).length, 0, "a B cumpriu a dose dela");
+  assert.deepEqual(dias(await a("GET", `/api/week?date=${TER}`)), antes, "o cardio da B abateu o da A");
+});

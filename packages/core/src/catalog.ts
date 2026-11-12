@@ -280,11 +280,14 @@ export const EXERCISE_BY_ID: Record<string, Exercise> = Object.fromEntries(EXERC
 // ---------- cardio ----------
 export type CardioUnit = "min" | "km" | "kcal";
 export type Intensity = "zona2" | "moderado" | "intervalado";
+/** Os ids ("zona2", "moderado", "intervalado") ficam como estão no banco (CHECK da tabela); o que aparece é leve · moderado · forte. */
 export const INTENSITIES: Record<Intensity, { nm: string; desc: string }> = {
-  zona2: { nm: "Zona 2", desc: "dá para conversar em frases; ~60–70% da FC máxima" },
+  zona2: { nm: "Leve", desc: "dá para conversar em frases (zona 2); ~60–70% da FC máxima" },
   moderado: { nm: "Moderado", desc: "fala entrecortada; ~70–80% da FC máxima" },
-  intervalado: { nm: "Intervalado", desc: "tiros fortes (20–60 s) com recuperação leve" },
+  intervalado: { nm: "Forte", desc: "respiração pesada, só frases curtas; tiros, jogo corrido ou intervalado" },
 };
+/** Como a modalidade aparece na lista: máquina da academia, rua, água, esporte (jogo) ou tiros. */
+export type CardioModo = "maquina" | "rua" | "agua" | "esporte" | "tiros";
 export interface Cardio {
   id: string; nm: string; type: "cardio"; eq: string[];
   /** unidade principal de registro; `units` = todas aceitas. kcal é sempre estimada (MET × kg × horas). */
@@ -292,6 +295,8 @@ export interface Cardio {
   met: Record<Intensity, number>;
   howTo?: string[]; tips?: string[]; mistakes?: string[];
   subMuscles?: SubMuscleId[]; secondary?: SubMuscleId[]; aliases?: string[];
+  /** modalidade do registro de cardio (#44): ícone, grupo e se é esporte. Só as de `CARDIO` entram na biblioteca de exercícios. */
+  modo?: CardioModo; icon?: string; fonte?: string;
   /** imagens do free-exercise-db (início e fim), geradas por scripts/catalogo-imagens.mjs */
   images: ImageIdx[];
   /** ID do free-exercise-db de onde vêm as imagens (padrão: o próprio id). */
@@ -300,19 +305,39 @@ export interface Cardio {
 const K = (id: string, nm: string, eq: string[], units: CardioUnit[], met: [number, number, number], extra: Partial<Cardio> = {}): Cardio =>
   ({ id, nm, type: "cardio", eq, metUnit: "min", units, met: { zona2: met[0], moderado: met[1], intervalado: met[2] }, images: [0, 1], ...extra });
 const CARDIO_RAW: Cardio[] = [
-  K("Running_Treadmill", "Esteira · corrida", [], ["min", "km", "kcal"], [8, 9.8, 11.5]),
-  K("Walking_Treadmill", "Esteira · caminhada inclinada", [], ["min", "km", "kcal"], [4.5, 6, 7]),
-  K("Bicycling_Stationary", "Bicicleta ergométrica", [], ["min", "km", "kcal"], [5.5, 7, 10]),
-  K("Recumbent_Bike", "Bicicleta horizontal", [], ["min", "km", "kcal"], [4.5, 6, 8]),
-  K("Elliptical_Trainer", "Elíptico (transport)", [], ["min", "kcal"], [5, 7, 9]),
-  K("Stairmaster", "Escada (simulador)", [], ["min", "kcal"], [6, 9, 11]),
-  K("Rowing_Stationary", "Remo ergômetro", [], ["min", "km", "kcal"], [6, 8.5, 11]),
-  K("Trail_Running_Walking", "Corrida / caminhada na rua", [], ["min", "km", "kcal"], [5, 9, 10.5]),
-  K("Rope_Jumping", "Pular corda", [], ["min", "kcal"], [8.8, 11, 12.3]),
-  K("HIIT", "HIIT (intervalado)", [], ["min", "kcal"], [6, 8, 10], { metUnit: "min", src: "Battling_Ropes" }),
+  K("Running_Treadmill", "Esteira · corrida", [], ["min", "km", "kcal"], [8, 9.8, 11.5], { modo: "maquina", icon: "run" }),
+  K("Walking_Treadmill", "Esteira · caminhada inclinada", [], ["min", "km", "kcal"], [4.5, 6, 7], { modo: "maquina", icon: "walk" }),
+  K("Bicycling_Stationary", "Bicicleta ergométrica", [], ["min", "km", "kcal"], [5.5, 7, 10], { modo: "maquina", icon: "bike" }),
+  K("Recumbent_Bike", "Bicicleta horizontal", [], ["min", "km", "kcal"], [4.5, 6, 8], { modo: "maquina", icon: "bike" }),
+  K("Elliptical_Trainer", "Elíptico (transport)", [], ["min", "kcal"], [5, 7, 9], { modo: "maquina", icon: "ellip" }),
+  K("Stairmaster", "Escada (simulador)", [], ["min", "kcal"], [6, 9, 11], { modo: "maquina", icon: "stairs" }),
+  K("Rowing_Stationary", "Remo ergômetro", [], ["min", "km", "kcal"], [6, 8.5, 11], { modo: "maquina", icon: "swim" }),
+  K("Trail_Running_Walking", "Corrida / caminhada na rua", [], ["min", "km", "kcal"], [5, 9, 10.5], { modo: "rua", icon: "run" }),
+  K("Rope_Jumping", "Pular corda", [], ["min", "kcal"], [8.8, 11, 12.3], { modo: "maquina", icon: "bolt" }),
+  K("HIIT", "HIIT (intervalado)", [], ["min", "kcal"], [6, 8, 10], { metUnit: "min", src: "Battling_Ropes", modo: "tiros", icon: "bolt" }),
 ];
 export const CARDIO: Cardio[] = CARDIO_RAW.map((c) => ({ ...c, ...CARDIO_INFO[c.id] }));
-export const CARDIO_BY_ID: Record<string, Cardio> = Object.fromEntries(CARDIO.map((c) => [c.id, c]));
+
+/** Modalidades só do registro de cardio (#44): sem imagem nem passo a passo, não entram na biblioteca de exercícios.
+ *  MET do Compendium of Physical Activities (Ainsworth 2011; atualização 2024), [leve, moderado, forte]; onde o Compendium
+ *  não separa o nível do meio, é o ponto entre os vizinhos. Ordem de grandeza, não medida. */
+const E = (id: string, nm: string, units: CardioUnit[], met: [number, number, number], modo: CardioModo, icon: string, fonte: string): Cardio =>
+  K(id, nm, [], units, met, { modo, icon, fonte, images: [] });
+const CARDIO_EXTRA: Cardio[] = [
+  E("Running_Outdoor", "Corrida (rua)", ["min", "km", "kcal"], [8.3, 9.8, 11.5], "rua", "run", "Compendium: corrida a 5, 6 e 7 mph"),
+  E("Walking_Outdoor", "Caminhada (rua)", ["min", "km", "kcal"], [3, 4.3, 5], "rua", "walk", "Compendium (2,8 · 3,5 e 4 mph)"),
+  E("Swimming", "Natação", ["min", "km", "kcal"], [5.8, 7, 9.8], "agua", "swim", "Compendium (nado livre leve e vigoroso)"),
+  E("Sprints", "Tiro / sprints", ["min", "kcal"], [8, 10, 12.3], "tiros", "bolt", "Compendium (corrida intervalada; estimativa)"),
+  E("Futsal", "Futsal", ["min", "kcal"], [7, 8.5, 10], "esporte", "ball", "Compendium (futebol casual e competitivo)"),
+  E("Futebol", "Futebol", ["min", "kcal"], [7, 8.5, 10], "esporte", "ball", "Compendium (futebol casual e competitivo)"),
+  E("Tenis", "Tênis", ["min", "kcal"], [6, 7.3, 8], "esporte", "ball", "Compendium (duplas, geral e simples)"),
+  E("Beach_Tennis", "Beach tennis", ["min", "kcal"], [5, 6, 8], "esporte", "ball", "Compendium (rebater, duplas); estimativa"),
+  E("Basquete", "Basquete", ["min", "kcal"], [4.5, 6.5, 8], "esporte", "ball", "Compendium (arremessos, geral e jogo)"),
+  E("Volei", "Vôlei", ["min", "kcal"], [3, 4, 6], "esporte", "ball", "Compendium (recreativo, geral e competitivo)"),
+  E("Luta", "Luta (judô, karatê, boxe, muay thai)", ["min", "kcal"], [5.3, 7.8, 10.3], "esporte", "ball", "Compendium (ritmo lento e moderado)"),
+  E("Outro_Esporte", "Outro esporte", ["min", "kcal"], [4, 6, 8], "esporte", "ball", "estimativa genérica"),
+];
+export const CARDIO_BY_ID: Record<string, Cardio> = Object.fromEntries([...CARDIO, ...CARDIO_EXTRA].map((c) => [c.id, c]));
 /** kcal estimada (MET × kg × horas). Ordem de grandeza, não medida. */
 export const cardioKcal = (c: Cardio, intensity: Intensity, kg: number, minutes: number) =>
   Math.round(c.met[intensity] * kg * (minutes / 60));

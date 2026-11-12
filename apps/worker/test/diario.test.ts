@@ -40,15 +40,8 @@ test("checkout em dia sem treino: grava, cardio do checkout soma no resumo da se
   assert.equal((await c("PUT", "/api/checkout/ontem", {})).status, 400);
 });
 
-test("3 dias sem abrir → faixa pede resumo único; o resumo grava os dias e aparece no calendário", async () => {
+test("resumo dos dias (formulário da #27) grava os dias, não apaga o que existia e libera a faixa", async () => {
   const env = makeEnv(), c = as(env, "ana");
-  assert.equal((await ok(c("POST", "/api/diario/abrir", { today: MON }))).data.absence, null, "1º uso não pergunta");
-  assert.equal((await ok(c("POST", "/api/diario/abrir", { today: MON }))).data.absence, null);
-  const r = (await ok(c("POST", "/api/diario/abrir", { today: FRI }))).data;
-  assert.deepEqual(r.absence, { from: TUE, to: THU });
-  assert.equal(r.lastOpen, FRI);
-  // recarregar no mesmo dia mantém o pedido até resumir ou dispensar
-  assert.deepEqual((await ok(c("POST", "/api/diario/abrir", { today: FRI }))).data.absence, { from: TUE, to: THU });
   await ok(c("PUT", `/api/checkout/${WED}`, { mood: 3, note: "já tinha" }));
   await ok(c("POST", "/api/diario/resumo", { dias: [
     { date: TUE, trained: true, alcohol: 0, sleptWell: true },
@@ -59,10 +52,9 @@ test("3 dias sem abrir → faixa pede resumo único; o resumo grava os dias e ap
   assert.deepEqual(d.checkouts.map((x: any) => x.date), [TUE, WED, THU], "registros no calendário");
   const wed = d.checkouts.find((x: any) => x.date === WED);
   assert.equal(wed.mood, 3, "não apaga o que já existia"); assert.equal(wed.alcohol, 3); assert.equal(wed.note, "aniversário");
-  assert.equal(d.reminder.absence, null, "resumo concluído some da faixa");
+  assert.equal(d.reminder.absence, null);
   const att = (await ok(c("GET", `/api/state?date=${FRI}`))).data.week.attendance;
   assert.deepEqual(att.map((a: any) => [a.date, a.status]), [[TUE, "fui"], [WED, "nao_fui"], [THU, "nao_fui"]]);
-  // "mais tarde" (1× no dia) e X configurável
   const s = (await ok(c("PUT", "/api/diario/lembrete", { snoozedOn: FRI, absenceDays: 4 }))).data;
   assert.equal(s.snoozedOn, FRI); assert.equal(s.absenceDays, 4);
   assert.equal((await c("POST", "/api/diario/resumo", { dias: [] })).status, 400);

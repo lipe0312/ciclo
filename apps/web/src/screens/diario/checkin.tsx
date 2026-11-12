@@ -1,6 +1,7 @@
-// Check-in da manhã (veio do Hoje): sono, energia, dor muscular, estresse, comida de ontem e peso opcional. ≤ 10 s.
+// Check-in da manhã (veio do Hoje): sono, energia, dor muscular, estresse, comida de ontem, peso opcional e texto livre (#42). ≤ 10 s.
 import { C, S, commit, today } from "../../lib/store/index.ts";
 import { Card, Icon, Seg, toast } from "../../lib/ui/index.tsx";
+import { Mic } from "../../lib/voz/index.tsx";
 import { longDate } from "../../lib/util.ts";
 import { D, checkinOf, saveCheckin } from "../../lib/diario/estado.ts";
 
@@ -11,7 +12,8 @@ export const CK: Record<string, { nm: string; opts: [number, string][] }> = {
   stress: { nm: "Estresse", opts: [[1, "baixo"], [2, "médio"], [3, "alto"]] },
   food: { nm: "Comida ontem", opts: [[-1, "menos"], [0, "normal"], [1, "mais"]] },
 };
-const draftOf = (d: string) => (S.ui.ckDraft?.date === d ? S.ui.ckDraft : { date: d, ...(checkinOf(d) ?? {}) });
+// a nota vem do Diário (o /api/state não traz)
+const draftOf = (d: string) => (S.ui.ckDraft?.date === d ? S.ui.ckDraft : { date: d, ...(checkinOf(d) ?? {}), note: D.checkins[d]?.note ?? null });
 
 export function Checkin() {
   const d = D.sel, saved = checkinOf(d), draft = draftOf(d);
@@ -32,7 +34,11 @@ export function Checkin() {
     <p class="small sub" style="margin-top:4px">{r ? r.advice : "É o dado mais importante da revisão de domingo. Toque e pronto."}</p>
     <div style="margin-top:12px">{Object.entries(CK).map(([k, c]) => <div class="ckrow" key={k}><span class="small">{c.nm}</span>
       <Seg opts={c.opts} value={draft[k]} label={c.nm} onPick={(v) => { S.ui.ckDraft = { ...draftOf(d), [k]: v }; commit(); }} /></div>)}
-      <div class="ckrow"><label class="small" for="ckWeight">Peso (opcional)</label><input class="input num" id="ckWeight" key={d} inputMode="decimal" placeholder="kg · em jejum" defaultValue={draft.weightKg ?? ""} style="max-width:140px" /></div></div>
+      <div class="ckrow"><label class="small" for="ckWeight">Peso (opcional)</label><input class="input num" id="ckWeight" key={d} inputMode="decimal" placeholder="kg · em jejum" defaultValue={draft.weightKg ?? ""} style="max-width:140px" /></div>
+      <div style="margin-top:10px"><label class="f" for="ckNote">Conta como foi (opcional)</label>
+        <div class="row start" style="gap:8px"><textarea class="input" id="ckNote" maxLength={500} placeholder="Dormiu mal? Acordou com dor? (texto ou voz)" value={draft.note ?? ""}
+          onInput={(e) => { S.ui.ckDraft = { ...draftOf(d), note: e.currentTarget.value || null }; commit(); }} />
+          <Mic value={draft.note ?? ""} onChange={(v) => { S.ui.ckDraft = { ...draftOf(d), note: v.slice(0, 500) || null }; commit(); }} label="Ditar como foi" /></div></div></div>
     <button type="button" class="btn pri full" style="margin-top:14px" onClick={save}><Icon id="check" />{saved ? "Atualizar check-in" : "Salvar check-in"}</button>
   </Card>;
 }

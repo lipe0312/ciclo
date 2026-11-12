@@ -41,3 +41,22 @@
 .ex-st.fora{color:var(--bad)} .ex-st.dentro{color:var(--ok)} .ex-st.sem_referencia{color:var(--sub)}
 .dia-humor{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%}
 .dia-humor button{min-width:0;min-height:44px;padding:0 4px;font-size:13px}
+
+/* Recap do período (#42): telas curtas, 390 px primeiro, toques ≥ 44 px; lacuna com ícone + texto (não só cor). */
+.rc-wrap{max-width:640px}
+.rc-linhas{list-style:none;margin:10px 0 0;padding:0;display:grid}
+.rc-linhas li{border-top:1px solid var(--borda);padding:4px 0}
+.rc-linhas li:first-child{border-top:0}
+.rc-linha{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:48px;padding:6px 0;border:0;background:transparent;color:var(--txt);text-align:left;font:inherit;font-size:14px;cursor:pointer}
+.rc-ajustar{display:inline-flex;align-items:center;gap:4px;flex:none}
+.rc-ajustar svg{width:14px;height:14px}
+.rc-lacuna{display:flex;align-items:center;gap:6px;margin:0 0 6px;padding:6px 10px;border-radius:8px;background:var(--sup-2);border-left:4px solid var(--warn)}
+.rc-lacuna svg{width:16px;height:16px;color:var(--warn);flex:none}
+.rc-dias{display:grid;gap:10px;margin-top:12px}
+.rc-dias>.ckrow+.ckrow{margin-top:0}
+.rc-ref{display:grid;gap:6px}
+.rc-ref .input{flex:1;min-width:0}
+.rc-ref .btn{justify-self:start}
+.rc-next{flex:1}
+.rc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+.rs-dia h3{display:flex;align-items:center;gap:8px;flex-wrap:wrap}

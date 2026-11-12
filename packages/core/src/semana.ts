@@ -3,8 +3,10 @@
 // Regras: 2× por músculo antes de volume; 48 h entre estímulos do mesmo músculo; nunca compensar dobrado;
 // compensatório só aparece quando a regra diz (e só vira treino a pedido). Funções puras e determinísticas.
 
-import { MUSCLES, MUSCLE_IDS } from "./catalog.ts";
+import { EQUIPMENT_BY_ID, INTENSITIES, MUSCLES, MUSCLE_IDS } from "./catalog.ts";
 import type { Group, MuscleId } from "./catalog.ts";
+import { cardioCounts, cardioDoseFor, placeCardio } from "./cardio.ts";
+import type { CardioDose, CardioEntry, CardioPlanned } from "./cardio.ts";
 import { planDay } from "./plan-day.ts";
 import type { DayInput, DayPlan, Mode, Pain } from "./plan-day.ts";
 import { weekDates } from "./checkin.ts";
@@ -17,7 +19,11 @@ export type Format = "tradicional" | "superserie" | "circuito";
 export interface DayOpts {
   split?: Split | null; focus?: MuscleId[] | null; mode?: Mode; minutes?: number;
   gymId?: string | null; format?: Format; crowded?: boolean; keep?: boolean;
+  /** "Gerar outro treino" (#44), só daquele dia: aparelhos ocupados, estilo, mais leve e o músculo a adiantar. */
+  ocupados?: string[]; estilo?: "livre" | "maquina"; leve?: boolean; adiantar?: MuscleId;
 }
+/** Pedido do "Gerar outro treino": tudo opcional. `livres` = os aparelhos que estão livres (o resto fica ocupado). */
+export interface Geracao { livres?: readonly string[] | null; estilo?: "livre" | "maquina" | null; leve?: boolean; adiantar?: MuscleId | null }
 export type DayKind = "treino" | "folga" | "extra";
 export interface DayOverride { kind: DayKind; opts?: DayOpts }
 export type Attendance = "fui" | "nao_fui" | "folga";
@@ -28,6 +34,8 @@ export interface WeekProfile {
   daysUsual: readonly string[]; daysTarget: number; minutes: number; priorities: MuscleId[];
   dayGym: Partial<Record<string, string>>; gyms: { id: string; equipment: string[] }[];
   prefs?: DayInput["prefs"]; pinned?: DayInput["pinned"]; avoid?: string[]; pains?: Pain[];
+  /** objetivo do perfil (id) e o ajuste de cardio que o dono fez: a dose do cardio vem daí (#44) */
+  goalId?: string | null; cardio?: Partial<CardioDose> | null;
 }
 /** O que já aconteceu na semana: séries registradas por dia e presença marcada. */
 export interface WeekCtx {
@@ -40,11 +48,14 @@ export interface WeekInput extends WeekCtx {
   targets: Record<MuscleId, number>;                                   // já com ajuste de volume / deload
   overrides?: Record<string, DayOverride>;                             // escolhas do usuário por data
   fixed?: Record<string, { plan: DayPlan; source: "claude" | "manual" }>; // treino salvo pelo Claude ou editado à mão
+  cardioLog?: CardioEntry[];                                           // cardio registrado na semana (esporte conta): abate o planejado
   prev?: WeekPlan | null;                                              // versão anterior: dias que já passaram mantêm o plano
 }
 export interface WeekDay {
   date: string; dow: Dow; kind: DayKind; plan: DayPlan | null; gymId: string | null;
   opts: DayOpts; source: "auto" | "voce" | "claude"; warn: string[];
+  /** cardio previsto para o dia pela dose do objetivo (só dias que ainda não passaram) */
+  cardio?: CardioPlanned | null;
 }
 export interface WeekPlan { weekStart: string; targets: Record<MuscleId, number>; days: WeekDay[] }
 
@@ -102,8 +113,9 @@ function dayInputFor(inp: WeekInput, d: WeekDay, run: { done: Sets; freq: Sets }
   return {
     targets: inp.targets, done: { ...run.done }, freq: { ...run.freq }, priorities: p.priorities, daysLeft: 1,
     minutes: d.opts.minutes ?? p.minutes, lastGroup: null, mode: d.opts.mode ?? "normal", focus: d.opts.focus?.length ? d.opts.focus : null,
-    equipment: p.gyms.find((g) => g.id === d.gymId)?.equipment ?? [], crowded: !!d.opts.crowded,
+    equipment: (p.gyms.find((g) => g.id === d.gymId)?.equipment ?? []).filter((q) => !d.opts.ocupados?.includes(q)), crowded: !!d.opts.crowded,
     prefs: p.prefs, pinned: p.pinned, avoid: p.avoid, pains: p.pains,
+    estilo: d.opts.estilo ?? null, leve: !!d.opts.leve, adiantar: d.opts.adiantar ?? null,
   };
 }
 
@@ -202,7 +214,26 @@ export function planWeek(inp: WeekInput): WeekPlan {
     const clash = prevMuscles(inp, days, i).filter((m) => n(plan.perMuscle[m]) > 0);
     if (clash.length) d.warn.push(`Menos de 48 h para ${nm(clash)}: treinou na véspera.`);
   });
+  planCardioWeek(inp, days);
   return { weekStart: inp.weekStart, targets: inp.targets, days };
+}
+
+/** Cardio da semana (#44): a dose vem do objetivo do perfil; o que já foi registrado (futsal conta) abate;
+ *  o resto cai em dia que ainda não passou, fora do dia de perna, de preferência na folga. */
+function planCardioWeek(inp: WeekInput, days: WeekDay[]) {
+  const dose = cardioDoseFor(inp.profile.goalId, inp.profile.cardio);
+  const dates = days.map((d) => d.date);
+  const feitas = (inp.cardioLog ?? []).filter((e) => dates.includes(e.date) && cardioCounts(e)).length;
+  const falta = Math.max(0, dose.sessions - feitas);
+  const cand = days.map((d, idx) => ({ d, idx })).filter(({ d }) => !isClosed(d.date, inp) && d.kind !== "extra" && !(d.kind === "treino" && d.plan?.groups.includes("inf")))
+    .map(({ d, idx }) => ({ date: d.date, idx, folga: d.kind === "folga" }));
+  const onde = new Set(placeCardio(cand, falta));
+  for (const d of days) {
+    d.cardio = onde.has(d.date) ? {
+      type: dose.type, minutes: dose.minutes, intensity: dose.intensity,
+      why: `Cardio ${dose.sessions}× por semana${feitas ? ` (${feitas} já feito${feitas > 1 ? "s" : ""})` : ""}, ${INTENSITIES[dose.intensity].nm.toLowerCase()}: ajuda a cintura sem pesar na recuperação do treino de força.`,
+    } : null;
+  }
 }
 
 /** "Ontem era Superior B. Não deu?" → resposta grava a presença e reorganiza o resto da semana. */
@@ -272,6 +303,7 @@ export function compensatoryOffer(inp: WeekInput, plan: WeekPlan): CompOffer | n
 /** Semana pronta para mostrar: status de cada dia, faltas sem resposta, projeção, compensatório e extra de hoje. */
 export function weekView(inp: WeekInput, plan: WeekPlan): WeekView {
   const days = plan.days.map((d) => ({ ...d, status: dayStatus(d, inp) }));
+  planCardioWeek(inp, days); // o cardio registrado depois de gerar a semana (futsal) abate sem precisar regerar
   const run = baseline(inp, plan.days);
   for (const d of plan.days) if (!isClosed(d.date, inp) && d.kind !== "folga" && d.plan)
     for (const m of musclesOf(d.plan.perMuscle)) { run.done[m] = n(run.done[m]) + n(d.plan.perMuscle[m]); run.freq[m] = n(run.freq[m]) + 1; }
@@ -293,6 +325,7 @@ export function weekView(inp: WeekInput, plan: WeekPlan): WeekView {
 // ---------- ações do usuário num dia (viram overrides) ----------
 export type DayAction =
   | { type: "gerar"; date: string; opts: DayOpts }
+  | { type: "outro"; date: string; geracao: { ocupados?: string[]; estilo?: "livre" | "maquina" | null; leve?: boolean; adiantar?: MuscleId | null } }
   | { type: "mover"; date: string; to: string }
   | { type: "trocar"; date: string; to: string }
   | { type: "folga" | "treino" | "extra" | "manter"; date: string };
@@ -307,6 +340,16 @@ export function applyDayAction(plan: WeekPlan, overrides: Record<string, DayOver
   const cur = (x: WeekDay): DayOverride => ({ kind: x.kind, opts: { ...x.opts } });
   switch (a.type) {
     case "gerar": o[d.date] = { kind: d.kind === "folga" ? "treino" : d.kind, opts: { ...a.opts } }; break;
+    case "outro": {
+      // mantém divisão, foco, duração e academia do dia; troca só as 4 escolhas do "gerar outro" (vazio = limpa)
+      const { ocupados: _o, estilo: _e, leve: _l, adiantar: _a, ...resto } = d.opts, g = a.geracao;
+      const opts: DayOpts = { ...resto };
+      if (g.ocupados?.length) opts.ocupados = [...g.ocupados];
+      if (g.estilo) opts.estilo = g.estilo;
+      if (g.leve) opts.leve = true;
+      if (g.adiantar) opts.adiantar = g.adiantar;
+      o[d.date] = { kind: d.kind === "folga" ? "treino" : d.kind, opts }; break;
+    }
     case "folga": o[d.date] = { kind: "folga" }; break;
     case "treino": o[d.date] = { kind: "treino", opts: {} }; break;
     case "extra":
@@ -345,4 +388,29 @@ export function diffWeeks(a: WeekPlan, b: WeekPlan): DayDiff[] {
     if (lines.length || before !== after) out.push({ date: db.date, before, after, lines });
   }
   return out;
+}
+
+// ---------- gerar outro treino (#44) ----------
+/** Gera de novo UM dia (aparelhos livres, estilo, mais leve, adiantar) e reorganiza o resto pelo orçamento de séries.
+ *  Devolve a semana nova e as escolhas (= a versão nova); desfazer é voltar às escolhas anteriores. */
+export function regenerarDia(plan: WeekPlan, inp: WeekInput, date: string, g: Geracao): { overrides: Record<string, DayOverride>; plan: WeekPlan } | { error: string } {
+  const d = plan.days.find((x) => x.date === date);
+  if (!d) return { error: "dia fora da semana" };
+  let ocupados: string[] = [];
+  if (g.livres) {
+    if (!g.livres.every((q) => EQUIPMENT_BY_ID[q])) return { error: "livres: aparelho desconhecido" };
+    ocupados = (inp.profile.gyms.find((x) => x.id === d.gymId)?.equipment ?? []).filter((q) => !g.livres!.includes(q));
+  }
+  const r = applyDayAction(plan, inp.overrides ?? {}, { type: "outro", date, geracao: { ocupados, estilo: g.estilo, leve: g.leve, adiantar: g.adiantar } }, inp);
+  if ("error" in r) return r;
+  return { overrides: r.overrides, plan: planWeek({ ...inp, overrides: r.overrides, prev: plan }) };
+}
+
+/** Músculo "mais atrás" na semana para adiantar hoje: dos que estão no treino de hoje, o de maior falta no orçamento
+ *  (depois do que a semana já planeja); empate → o das prioridades. Sem falta nenhuma → null. */
+export function sugerirAdiantar(view: Pick<WeekView, "targets" | "projected">, hoje: DayPlan, priorities: readonly MuscleId[]): MuscleId | null {
+  const falta = (m: MuscleId) => n(view.targets[m]) - n(view.projected.done[m]);
+  const doDia = MUSCLE_IDS.filter((m) => n(hoje.perMuscle[m]) > 0 && falta(m) > 0);
+  const rank = (m: MuscleId) => (priorities.includes(m) ? priorities.indexOf(m) : 99);
+  return doDia.sort((a, b) => falta(b) - falta(a) || rank(a) - rank(b))[0] ?? null;
 }
