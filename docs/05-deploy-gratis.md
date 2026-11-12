@@ -30,7 +30,7 @@ npx wrangler secret put ACCESS_AUD
 npx wrangler secret put ACCESS_TEAM_DOMAIN      # ex.: meutime.cloudflareaccess.com
 npx wrangler secret put ALLOWED_EMAILS          # seu e-mail
 ```
-**Transcrição (opcional):** descomente `"ai": { "binding": "AI" }` no `wrangler.jsonc` e rode `npm run deploy`.
+**Transcrição (opcional):** descomente `"ai": { "binding": "AI" }` no `wrangler.jsonc` e rode `npm run deploy`. O app informa na tela Comida qual motor de voz está em uso (Whisper, navegador ou nenhum). Em dev local o binding é remoto: exige `wrangler login`; sem ele, deixe comentado e o app usa o reconhecimento do navegador (só em https ou localhost; não existe no Firefox nem em alguns navegadores de privacidade).
 
 **Aviso do descanso com a tela bloqueada (Web Push, #25):** gere o par de chaves VAPID uma vez e guarde como secrets (a privada nunca vai para o git):
 ```bash

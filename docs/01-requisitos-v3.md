@@ -82,7 +82,7 @@ O cadastro virou **Perfil · Ponto de partida**: uma lista limpa de 9 seções, 
   - na nuvem: **Whisper large-v3-turbo do Workers AI**, grátis até ~200 min de áudio por dia (10 mil "neurons"). ✅ `/api/transcribe`
   - sem o binding: reconhecimento de voz do navegador (pt-BR). ✅
 - Estimativa rápida no aparelho (tabela caseira) para dar retorno na hora. O registro vai para a caixa com Haiku, que confere com a TACO. ✅
-- Só a proteína é meta rígida. As calorias são adaptativas pela tendência de peso. 📋
+- Só a proteína é meta rígida. As calorias são adaptativas pela tendência de peso (EMA α 0,1, ±150 kcal/semana, com o motivo na tela). ✅ `adaptiveTarget`
 
 ## 4. Mídia da sua academia
 - Fica no **R2** (privado, 10 GB grátis, sem custo de saída), e não no banco. O banco guarda só os metadados (exercício, aparelho, academia, nota de regulagem). ✅

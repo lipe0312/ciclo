@@ -318,12 +318,12 @@ export async function takeGeocodeSlot(env: Env, now = Date.now()): Promise<numbe
 
 // ---- direitos da conta (LGPD) ----
 /** Tabelas de dado pessoal (todas têm user_id). Ordem de apagar: filhas antes das mães. */
-export const USER_TABLES = ["set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym_weekday", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer", "checkout", "health_exam", "reminder_state"] as const;
+export const USER_TABLES = ["set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym_weekday", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state"] as const;
 
 /** Tudo da conta em JSON (mídia: só metadados; tokens: sem hash). */
 export async function exportAccount(env: Env, uid: string) {
   const q = (sql: string) => env.DB.prepare(sql).bind(uid);
-  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "gym_weekday", "mcp_token", "week_plan", "day_override", "cardio_log", "checkout", "health_exam", "reminder_state"] as const;
+  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "gym_weekday", "mcp_token", "week_plan", "day_override", "cardio_log", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state"] as const;
   const res = await env.DB.batch([
     q("SELECT id, email, created_at, last_seen_at, onboarding_done_at FROM user WHERE id = ?1"),
     q("SELECT data, updated_at FROM profile WHERE user_id = ?1"),
@@ -338,7 +338,7 @@ export async function exportAccount(env: Env, uid: string) {
     q("SELECT id, region, intensity, kind, context, created_at, resolved_at FROM pain WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT id, created_at, text, action, tier, status, response, change, answered_at FROM inbox WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT id, date, edit, issues, review, review_note, created_at FROM plan_edit WHERE user_id = ?1 ORDER BY created_at"),
-    q("SELECT id, date, raw_text, items, kcal, protein, confidence, created_at FROM food_log WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT id, date, raw_text, meal, items, kcal, protein, kcal_est, protein_est, manual, source, confidence, created_at FROM food_log WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT date, arm_cm, waist_cm, shoulder_cm, updated_at FROM measurement WHERE user_id = ?1 ORDER BY date"),
     q("SELECT id, kind, mime, bytes, equipment_id, exercise_id, gym_id, note, setup, created_at, deleted_at FROM media WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT gym_id, weekday FROM gym_weekday WHERE user_id = ?1 ORDER BY weekday"),
@@ -346,6 +346,8 @@ export async function exportAccount(env: Env, uid: string) {
     q("SELECT week_start, version, plan_json, source, created_at FROM week_plan WHERE user_id = ?1 ORDER BY week_start, version"),
     q("SELECT date, kind, opts, updated_at FROM day_override WHERE user_id = ?1 ORDER BY date"),
     q("SELECT id, date, type, minutes, intensity, distance_km, created_at FROM cardio_log WHERE user_id = ?1 ORDER BY date, created_at"),
+    q("SELECT id, name, meal, text, kcal, protein, created_at FROM meal_template WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT id, date, kcal_before, kcal_after, adjust, tdee, trend_kg_week, code, reason, created_at FROM diet_target_history WHERE user_id = ?1 ORDER BY date, created_at"),
     q("SELECT date, trained, cardio_json, water_ml, alcohol_units, smoke, smoke_qty, caffeine_late, mood, sleep_ok, note, source, updated_at FROM checkout WHERE user_id = ?1 ORDER BY date"),
     q("SELECT id, label, created_at, raw_text, expires_at, analyzed_at, summary_json, status FROM health_exam WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT last_open, snoozed_on, absence_days, absence_from, absence_to, updated_at FROM reminder_state WHERE user_id = ?1"),

@@ -8,6 +8,7 @@ import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, countGyms, del
 import { pushEnabled, validEndpoint } from "./push.ts";
 import { newMcpToken } from "./auth.ts";
 import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
+import { registerComida } from "./comida.ts";
 import { createExam, deleteExam, getDiary, openDiary, putCheckout, saveDaysSummary, setReminder } from "./diario.ts";
 
 type Handler = (req: Request, env: Env, p: Record<string, string>, u: AuthUser) => Promise<Response>;
@@ -19,7 +20,6 @@ const MODES = ["normal", "compensatorio", "expresso"] as const;
 const TIERS = ["haiku", "sonnet", "opus"] as const;
 const MEDIA_MIME: Record<string, "foto" | "video"> = { "image/jpeg": "foto", "image/png": "foto", "image/webp": "foto", "video/mp4": "video", "video/webm": "video", "video/quicktime": "video" };
 const MAX_MEDIA = MEDIA_MAX_BYTES;
-const MAX_AUDIO = 4 * 1024 * 1024;
 const MAX_TOKENS = 10;
 
 const account = (u: AuthUser) => ({ email: u.email, createdAt: u.createdAt, onboardingDoneAt: u.onboardingDoneAt });
@@ -463,28 +463,8 @@ on("POST", "/api/inbox/:id/status", async (req, env, p, u) => {
   return json({ ok: true });
 });
 
-on("POST", "/api/food", async (req, env, _p, u) => {
-  const b = await readJson<Record<string, unknown>>(req);
-  const fid = id(), text = str(b.text, "text", 2000)!, d = date(b.date);
-  await env.DB.batch([
-    env.DB.prepare("INSERT INTO food_log (user_id, id, date, raw_text, created_at) VALUES (?5, ?1, ?2, ?3, ?4)").bind(fid, d, text, Date.now(), u.id),
-    env.DB.prepare("INSERT INTO inbox (user_id, id, created_at, text, action, tier) VALUES (?4, ?1, ?2, ?3, 'registrar_comida', 'haiku')").bind(id(), Date.now(), `[comida ${d}] ${text}`, u.id),
-  ]);
-  return json({ id: fid }, 201);
-});
-
-// Transcrição (Workers AI Whisper). Sem binding AI → 501 e o app usa o reconhecimento de voz do navegador.
-on("POST", "/api/transcribe", async (req, env) => {
-  if (!env.AI) throw new HttpError(501, "transcrição no servidor desativada");
-  const len = Number(req.headers.get("Content-Length") ?? "0");
-  if (!len || len > MAX_AUDIO) throw new HttpError(413, "áudio de até ~2 min");
-  const buf = new Uint8Array(await req.arrayBuffer());
-  if (buf.byteLength > MAX_AUDIO) throw new HttpError(413, "áudio grande demais");
-  let bin = "";
-  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-  const out = (await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: btoa(bin), language: "pt", task: "transcribe" })) as { text?: string };
-  return json({ text: (out.text ?? "").trim() });
-});
+// Comida (registros, refeições salvas, metas adaptativas) e transcrição de voz: ver comida.ts
+registerComida(on);
 
 // Mídia do SEU aparelho → R2 privado, sob o prefixo da conta. Upload passa pelo Worker (simples, valida tipo e tamanho).
 // Mídia de aparelho (equipmentId) exige o lugar (gymId) e o lugar tem que ser desta conta.
@@ -556,12 +536,12 @@ export async function handleApi(req: Request, env: Env, u: AuthUser): Promise<Re
     if (!m) continue;
     try {
       if (isWrite(req.method)) {
-        const wait = await hitRateLimit(env, u.id, r.path === "/api/media" ? "upload" : "write");
+        const wait = await hitRateLimit(env, u.id, r.path === "/api/media" || r.path === "/api/transcribe" ? "upload" : "write");
         if (wait) return json({ error: "muitas requisições; tente de novo em instantes" }, 429, { "Retry-After": String(wait) });
       }
       return await r.h(req, env, (m.groups ?? {}) as Record<string, string>, u);
     } catch (e) {
-      if (e instanceof HttpError) return json({ error: e.message }, e.status);
+      if (e instanceof HttpError) return json(e.code ? { error: e.message, code: e.code } : { error: e.message }, e.status);
       console.error("api", r.path, e instanceof Error ? e.message : "erro");
       return json({ error: "erro interno" }, 500);
     }

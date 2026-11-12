@@ -33,7 +33,8 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   await ok(c("POST", "/api/push/subscribe", { endpoint, p256dh: "BPk_abc", auth: "xyz" }));
   const pain = (await ok(c("POST", "/api/pains", { region: "ombro_e", intensity: 2, context: `${tag} dor` }))).data.id;
   const inbox = (await ok(c("POST", "/api/inbox", { text: `${tag} pedido` }))).data.id;
-  await ok(c("POST", "/api/food", { date: D, text: `${tag} comida` }));
+  const food = (await ok(c("POST", "/api/food", { date: D, text: `${tag} comida`, meal: "cafe" }))).data.id;
+  const tpl = (await ok(c("POST", "/api/meal-templates", { name: `${tag} marmita`, text: `${tag} arroz` }))).data.id;
   const media = (await ok(call(env, "POST", `/api/media?note=${tag}`, { user, raw: PNG, ct: "image/png" }))).data.id;
   // #26: lugar só desta conta (nome, endereço e ponto no mapa com a marca) e mídia de aparelho dentro dele
   const lug = `lug_${user}`;
@@ -49,7 +50,7 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   const exam = (await ok(c("POST", "/api/exames", { label: `${tag} exame`, text: `${tag} laudo` }))).data.id;
   const tok = (await ok(c("POST", "/api/account/tokens", { label: `${tag} token` }))).data;
   const exp = (await c("GET", "/api/account/export")).data;
-  return { sid: SID, ex, cardio, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
+  return { sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
 }
 const snap = async (env: any, user: string) => {
   const e = (await call(env, "GET", "/api/account/export", { user })).data;
@@ -63,7 +64,7 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
   const A = await seed(env, "ana", "MARCA_A", SID_A, 10);
   const before = await snap(env, "bia");
   const r2Before = [...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length;
-  const secrets = ["MARCA_B", B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, String(MARK_KG), "bia@"];
+  const secrets = ["MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, String(MARK_KG), "bia@"];
   const subsB = () => env.DB.raw.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE endpoint = ?1").get(B.endpoint).n;
   const restB = () => JSON.stringify(env.DB.raw.prepare("SELECT fire_at, sent_at FROM rest_timer WHERE user_id = ?1").get(B.uid));
   const restBefore = restB();
@@ -121,7 +122,14 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["POST /api/pains/:id/resolve", () => a("POST", `/api/pains/${B.pain}/resolve`), 404],
     ["POST /api/inbox", () => a("POST", "/api/inbox", { text: "oi" })],
     ["POST /api/inbox/:id/status", () => a("POST", `/api/inbox/${B.inbox}/status`, { status: "descartado" }), 404],
-    ["POST /api/food", () => a("POST", "/api/food", { date: D, text: "arroz" })],
+    ["POST /api/food", () => a("POST", "/api/food", { date: D, text: "arroz" }), 201],
+    ["GET /api/food", () => a("GET", `/api/food?from=${D}&to=${D}`)],
+    ["PUT /api/food/:id", () => a("PUT", `/api/food/${B.food}`, { text: "hackeado", kcal: 1 }), 404],
+    ["DELETE /api/food/:id", () => a("DELETE", `/api/food/${B.food}`), 404],
+    ["POST /api/meal-templates", () => a("POST", "/api/meal-templates", { name: "A", text: "pão" }), 201],
+    ["DELETE /api/meal-templates/:id", () => a("DELETE", `/api/meal-templates/${B.tpl}`), 404],
+    ["GET /api/diet", () => a("GET", `/api/diet?date=${D}`)],
+    ["POST /api/diet/adapt", () => a("POST", "/api/diet/adapt", { date: D })],
     ["POST /api/transcribe", () => call(env, "POST", "/api/transcribe", { user: "ana", raw: PNG, ct: "audio/webm" })],
     ["POST /api/media", () => call(env, "POST", "/api/media", { user: "ana", raw: PNG, ct: "image/png" })],
     ["GET /api/media", () => a("GET", "/api/media")],
@@ -136,6 +144,7 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["ciclo_salvar_treino_do_dia", { date: D, itens: [{ id: "x_inexistente", sets: 2 }], motivo: "t" }],
     ["ciclo_responder_pedido", { id: B.inbox, resposta: "oi" }, true], ["ciclo_marcar_presenca", { date: D, status: "nao_fui" }],
     ["ciclo_registrar_dor", { region: "ombro_e", intensity: 1 }], ["ciclo_registrar_comida", { texto: "pão", date: D }],
+    ["ciclo_comida_dia", { date: D }], ["ciclo_comida_corrigir", { id: B.food, kcal: 1, proteina: 1, confianca: "alta" }, true],
     ["ciclo_salvar_perfil", { perfil: { minutes: 45 } }], ["ciclo_revisar_edicoes", {}], ["ciclo_concluir_revisao", { id: B.edit, review: "ok" }, true],
     ["ciclo_diario", { from: "2026-11-01", to: D }], ["ciclo_registrar_resumo_dias", { dias: [{ date: D, alcohol: 3, sleptWell: false }] }],
     ["ciclo_exame_pendente", {}], ["ciclo_exame_concluir", { id: B.exam, resumo: { marcadores: [{ nome: "TSH", valor: 1, status: "dentro" }] } }, true],
