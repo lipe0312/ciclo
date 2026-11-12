@@ -208,12 +208,12 @@ function opts(v: unknown, gymIds: string[]): DayOpts {
   if (o.gymId != null) { const g = str(o.gymId, "gymId", 40)!; if (!gymIds.includes(g)) throw new HttpError(400, "gymId inválido"); out.gymId = g; }
   if (o.format != null) out.format = oneOf(o.format, "format", FORMATS);
   if (o.crowded != null) out.crowded = o.crowded === true;
-  Object.assign(out, geracao(o, gymIds));
+  Object.assign(out, geracao(o));
   return out;
 }
 const ESTILOS = ["livre", "maquina"] as const;
 /** As 4 escolhas do "Gerar outro treino" (#44): aparelhos ocupados, estilo, mais leve e músculo a adiantar. Tudo opcional. */
-function geracao(o: Record<string, unknown>, _gymIds: string[]): Pick<DayOpts, "ocupados" | "estilo" | "leve" | "adiantar"> {
+function geracao(o: Record<string, unknown>): Pick<DayOpts, "ocupados" | "estilo" | "leve" | "adiantar"> {
   const out: Pick<DayOpts, "ocupados" | "estilo" | "leve" | "adiantar"> = {};
   if (o.ocupados != null) {
     if (!Array.isArray(o.ocupados) || o.ocupados.length > 60 || !o.ocupados.every((q) => typeof q === "string" && !!EQUIPMENT_BY_ID[q])) throw new HttpError(400, "ocupados: lista de aparelhos válidos");
@@ -241,7 +241,7 @@ export async function dayAction(env: Env, uid: string, d: string, b: Record<stri
     source = "falta";
   } else {
     const a = (action === "gerar" ? { type: action, date: day, opts: opts(b.opts, c.gymIds) }
-      : action === "outro" ? { type: action, date: day, geracao: geracao((typeof b.opts === "object" && b.opts && !Array.isArray(b.opts) ? b.opts : {}) as Record<string, unknown>, c.gymIds) }
+      : action === "outro" ? { type: action, date: day, geracao: geracao((typeof b.opts === "object" && b.opts && !Array.isArray(b.opts) ? b.opts : {}) as Record<string, unknown>) }
       : action === "mover" || action === "trocar" ? { type: action, date: day, to: date(b.to, "to") }
       : { type: action, date: day }) as DayAction;
     const r = applyDayAction(c.latest!.stored!.plan, c.overrides, a, c);

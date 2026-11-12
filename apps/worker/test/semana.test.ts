@@ -235,3 +235,16 @@ test("gerar outro treino (#44): ocupados/estilo/leve/adiantar viram versão, val
   assert.equal(f.status, 201, f.text);
   assert.equal((await a("GET", `/api/week?date=${TER}`)).data.week.days.filter((d: any) => d.cardio).length, 1, "o futsal abate uma das 2 sessões");
 });
+
+test("isolamento do cardio (#44): o cardio_log da B não abate nem muda o cardio planejado da A", async () => {
+  const env = makeEnv();
+  const a = await conta(env, "ana");
+  const b = await conta(env, "bia");
+  const dias = (r: any) => r.data.week.days.filter((d: any) => d.cardio).map((d: any) => d.date);
+  const antes = dias(await a("GET", `/api/week?date=${TER}`));
+  assert.equal(antes.length, 2);
+  // a B registra futsal e corrida na semana: se a query do cardio perder o user_id, a A teria a dose abatida
+  for (const t of ["Futsal", "Running_Treadmill"]) assert.equal((await b("POST", "/api/cardio", { date: SEG, type: t, minutes: 60, intensity: "moderado" })).status, 201);
+  assert.equal((await b("GET", `/api/week?date=${TER}`)).data.week.days.filter((d: any) => d.cardio).length, 0, "a B cumpriu a dose dela");
+  assert.deepEqual(dias(await a("GET", `/api/week?date=${TER}`)), antes, "o cardio da B abateu o da A");
+});
