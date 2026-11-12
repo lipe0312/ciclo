@@ -13,6 +13,7 @@ import { acaoDia, diaDe, garantirSemana, getSemana, getVazio } from "./estado.ts
 import type { Dia, Semana } from "./estado.ts";
 import { AvisoFalta } from "./aviso.tsx";
 import { abrirMover, abrirRegenerar, abrirTrocar, abrirVersoes, aberto, diaCurto } from "./folhas.tsx";
+import { abrirGerarOutro } from "../treino/gerar.tsx";
 import "./semana.css";
 
 export const STATUS: Record<C.DayStatus, string> = {
@@ -44,6 +45,7 @@ function DiaCard({ d }: { d: Dia }) {
         {d.source !== "auto" && <p class="tiny" style="margin-top:4px"><span class="badge">{d.source === "claude" ? "montado pelo Claude" : "escolha sua"}</span></p>}
         {d.warn.map((w, i) => <p key={i} class="tiny" style="margin-top:4px;color:var(--warn)">{w}</p>)}
       </> : d.status === "livre" ? <p class="small sub" style="margin-top:2px">Não planejado. Treinar hoje vira <b>extra</b>: só o que falta, sem passar do orçamento.</p> : null}
+      {d.cardio && <p class="tiny" style="margin-top:4px"><Icon id={C.MODALIDADES.find((m) => m.id === d.cardio!.type)?.icon ?? "bolt"} />{" "}Cardio {d.cardio.minutes} min · {C.INTENSITIES[d.cardio.intensity].nm.toLowerCase()}</p>}
       <div class="sem-acts uma">
         {p && <a class="btn" href={href("semana", ["dia", d.date])}>Ver</a>}
         {pode && d.kind !== "folga" && <button type="button" class="btn" onClick={() => abrirTrocar(d)}>Trocar</button>}
@@ -116,9 +118,11 @@ function Detalhe({ date }: { date: string }) {
       {p && p.items.length > 0 ? <Card><h2>Exercícios</h2><div class="sem-exs">{[...p.prehab, ...p.items].map((it, i) => <Exercicio key={i} it={it} />)}</div></Card>
         : <Card><p class="small">{p?.why[0] ?? "Dia de descanso. Recuperar também conta."}</p></Card>}
     </div><div class="stack">
+      {d.cardio && <Card><h2>Cardio previsto</h2><p class="small" style="margin-top:6px"><b>{C.CARDIO_BY_ID[d.cardio.type]?.nm} · {d.cardio.minutes} min · {C.INTENSITIES[d.cardio.intensity].nm.toLowerCase()}</b></p><p class="tiny sub">{d.cardio.why}</p></Card>}
       {p && <Card><h2>Por quê</h2><ul class="sem-motivos">{p.why.map((w, i) => <li key={i}>{w}</li>)}{d.warn.map((w, i) => <li key={`w${i}`} class="menos">{w}</li>)}</ul></Card>}
       {pode && <Card><h2>Mudar este dia</h2><div class="sem-acts uma">
-        {d.kind !== "folga" && <button type="button" class="btn pri" onClick={() => abrirTrocar(d)}><Icon id="swap" />Trocar geração</button>}
+        {d.kind !== "folga" && <button type="button" class="btn pri" onClick={() => abrirGerarOutro(d.date)}><Icon id="cycle" />Gerar outro treino</button>}
+        {d.kind !== "folga" && <button type="button" class="btn" onClick={() => abrirTrocar(d)}><Icon id="swap" />Trocar geração</button>}
         <button type="button" class="btn" onClick={() => abrirMover(d)}>{d.kind !== "folga" ? "Mover" : "Planejar treino"}</button>
         {d.status === "livre" && p?.items.length ? <button type="button" class="btn pri" onClick={() => acaoDia(date, { action: "extra" }, "Treino extra na semana")}>Treinar hoje (extra)</button> : null}
       </div>{d.date === today && <a class="btn ghost full" style="margin-top:8px" href="#hoje">Ver no Hoje<Icon id="arrow" /></a>}</Card>}

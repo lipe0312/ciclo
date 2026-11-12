@@ -30,21 +30,31 @@ export interface DayInput {
   groupDaysLeft?: Partial<Record<Group, number>>;
   exclude?: MuscleId[];
   maxPerMuscle?: Partial<Record<MuscleId, number>>;
+  /** "Gerar outro treino" (#44): estilo do dia (peso livre ou máquina), mais leve hoje e o músculo a adiantar. */
+  estilo?: "livre" | "maquina" | null;
+  leve?: boolean;
+  adiantar?: MuscleId | null;
 }
 
 export interface PlanItem {
   exerciseId: string; nm: string; muscle: MuscleId; kind: Kind;
   sets: number; reps: [number, number]; rest: number; alts: string[];
   prehab?: boolean; manual?: boolean;
+  /** repetições em reserva pedidas (só no "mais leve hoje": 3); sem o campo vale o padrão de sobrar 1–2 */
+  rir?: number;
 }
 export interface DayPlan {
   name: string; mode: Mode; groups: Group[]; items: PlanItem[]; prehab: PlanItem[];
   why: string[]; dropped: MuscleId[]; missing: { muscle: MuscleId; reason: "aparelho" | "dor" }[];
   cap: number; setsTotal: number; estMinutes: number; weekClosePct: number;
   suggestCompensatory: boolean; perMuscle: Partial<Record<MuscleId, number>>;
+  /** gerado como "mais leve hoje" */
+  leve?: boolean;
 }
 
 const MIN_PER_SET = 3;
+/** Repetições em reserva no "mais leve hoje" (o normal é sobrar 1–2). */
+export const LEVE_RIR = 3;
 /** Fortalecimento por região (ordem = preferência). Não é tratamento: dor persistente → profissional. */
 export const PREHAB: Partial<Record<Joint, string[]>> = {
   escapula: ["Face_Pull", "Band_Pull_Apart", "Scapular_Pull-Up", "Dumbbell_Scaption"],
@@ -67,7 +77,7 @@ export function painBlocks(ex: Exercise, pains: Pain[]): boolean {
   return false;
 }
 
-export function candidates(m: MuscleId, inp: Pick<DayInput, "equipment" | "crowded" | "prefs" | "pains" | "pinned" | "avoid">): { ex: Exercise; score: number; blockedByPain: boolean }[] {
+export function candidates(m: MuscleId, inp: Pick<DayInput, "equipment" | "crowded" | "prefs" | "pains" | "pinned" | "avoid" | "estilo">): { ex: Exercise; score: number; blockedByPain: boolean }[] {
   const eq = new Set(inp.equipment);
   const pref = inp.prefs?.[m];
   const out: { ex: Exercise; score: number; blockedByPain: boolean }[] = [];
@@ -79,6 +89,7 @@ export function candidates(m: MuscleId, inp: Pick<DayInput, "equipment" | "crowd
     let score = 10 - idx * 0.01; // ordem do catálogo desempata
     if (inp.pinned?.[m] === ex.id) score += 5;
     if (pref && pref !== "tanto_faz") score += ex.kind === pref ? 2 : -1;
+    if (inp.estilo) score += ex.kind === inp.estilo ? 3 : -2; // o pedido do dia vale mais que a preferência do perfil
     if (ex.stretch) score += 1;
     if (inp.crowded) score -= 1.5 * ex.eq.reduce((s, q) => s + (EQUIPMENT_BY_ID[q]?.busy ?? 0), 0);
     if (ex.prehab) score -= 1.5; // prehab não é a 1ª escolha para hipertrofia
@@ -120,9 +131,13 @@ export function planDay(inp: DayInput): DayPlan {
     if (focus?.includes(m)) sets = Math.max(sets, 4);
     if (lowFreq && target > 0) sets = Math.max(sets, 2);
     sets = Math.min(sets, isPrio(m) ? caps.p : caps.o);
+    // adiantar: +2 séries do que falta na semana (nunca passa do déficit, então nada dobra)
+    const adiant = inp.adiantar === m && deficit > sets;
+    if (adiant) sets = Math.min(deficit, sets + 2);
+
     const max = inp.maxPerMuscle?.[m];
     if (max != null) sets = Math.min(sets, Math.max(0, max));
-    if (sets > 0) alloc.push({ m, sets, deficit, lvl: focus?.includes(m) ? 2 : inp.priorities.includes(m) ? 1 : 0 });
+    if (sets > 0) alloc.push({ m, sets, deficit, lvl: focus?.includes(m) || adiant ? 2 : inp.priorities.includes(m) ? 1 : 0 });
   }
 
   // 3. prehab pelas dores (reserva ~2 min por série)
@@ -161,6 +176,9 @@ export function planDay(inp: DayInput): DayPlan {
     shrink.sets--;
   }
 
+  // mais leve: ~30% menos séries (depois do corte por tempo), sem tirar o músculo do dia: o 2× da semana continua valendo
+  if (inp.leve) for (const a of alloc) a.sets = Math.max(Math.min(a.sets, 2), Math.round(a.sets * 0.7));
+
   // 5. ordem: foco → prioridades (na ordem) → mais cansativo primeiro
   const prioRank = (m: MuscleId) => focus?.includes(m) ? -10 + focus.indexOf(m) : inp.priorities.includes(m) ? inp.priorities.indexOf(m) : 50;
   alloc.sort((a, b) => prioRank(a.m) - prioRank(b.m));
@@ -181,6 +199,7 @@ export function planDay(inp: DayInput): DayPlan {
       items.push(item(second, a.sets - s1, alts([first.id, second.id])));
     } else items.push(item(first, a.sets, alts([first.id])));
   }
+  if (inp.leve) for (const i of items) i.rir = LEVE_RIR;
   const nonPrehabItems = items.filter((i) => !i.prehab);
   nonPrehabItems.sort((a, b) => {
     const r = prioRank(a.muscle) - prioRank(b.muscle);
@@ -210,13 +229,16 @@ export function planDay(inp: DayInput): DayPlan {
   else if (focus) why.push(`Você escolheu focar em ${focus.map((m) => MUSCLES[m].nm.toLowerCase()).join(" e ")} hoje; o resto da semana se reorganiza.`);
   else why.push(daysLeft === 1 ? `Último dia da semana: segue o próximo treino (${name.toLowerCase()}).` : `Restam ${daysLeft} dias: hoje ${name.toLowerCase()}, o volume que falta é dividido entre os dias do mesmo grupo.`);
   if (inp.crowded) why.push("Academia cheia: preferi halteres e aparelhos que costumam estar livres.");
+  if (inp.estilo) why.push(inp.estilo === "livre" ? "Você pediu mais peso livre hoje." : "Você pediu mais máquina hoje.");
+  if (inp.leve) why.push(`Mais leve hoje: menos séries e sobrando ${LEVE_RIR} repetições; todo músculo continua no dia, então a semana não perde o 2×.`);
+  if (inp.adiantar && alloc.some((a) => a.m === inp.adiantar)) why.push(`Adiantando ${MUSCLES[inp.adiantar].nm.toLowerCase()}: séries que seriam de outro dia, sem passar do que falta na semana.`);
   if (dropped.length) why.push(`Não coube no tempo: ${dropped.map((m) => MUSCLES[m].nm).join(", ")}.`);
   if (missing.length) why.push(`Sem opção hoje: ${missing.map((x) => `${MUSCLES[x.muscle].nm} (${x.reason})`).join(", ")}.`);
   if (suggestCompensatory) why.push("Sobrou só hoje e o outro grupo ainda não teve 2×: dá para pedir um compensatório.");
 
   return {
     name, mode: inp.mode, groups, items: nonPrehabItems, prehab, why, dropped, missing, cap,
-    setsTotal, estMinutes: setsTotal * MIN_PER_SET + prehabMin,
+    setsTotal, estMinutes: setsTotal * MIN_PER_SET + prehabMin, ...(inp.leve ? { leve: true } : {}),
     weekClosePct: tgt ? Math.round((proj / tgt) * 100) : 0, suggestCompensatory, perMuscle,
   };
 }

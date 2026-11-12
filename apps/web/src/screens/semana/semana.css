@@ -53,3 +53,18 @@
 /* linhas de ação curtas: sempre numa linha só (rótulo curto, sem quebra) */
 .sem-acts.uma{flex-wrap:nowrap}
 .sem-acts.uma .btn{flex:1 1 auto;min-width:0;white-space:nowrap;padding:0 12px}
+/* Gerar outro treino (#44): cabe em 390 px sem a folha rolar além de uma tela */
+.ger-intro{margin:0 0 6px}
+.ger{gap:10px}
+.ger .f{display:block;margin-bottom:4px}
+.ger-eq{gap:6px 5px}
+.ger-eq .chip{padding:0 10px;font-size:12.5px}
+.ger .seg{display:flex}
+.ger .seg button{flex:1 1 0;padding:0 6px;font-size:13px}
+.ger-go{margin-top:8px}
+.cd-mods{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media (min-width:560px){.cd-mods{grid-template-columns:repeat(5,minmax(0,1fr))}}
+.cd-mod{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:64px;padding:8px 4px;border-radius:12px;border:1px solid var(--borda-ctrl);background:var(--sup);color:var(--txt);font:inherit;font-weight:600;font-size:13px;line-height:1.15;text-align:center;cursor:pointer}
+.cd-mod svg{width:24px;height:24px}
+.cd-mod[aria-pressed="true"]{background:var(--txt);color:var(--bg);border-color:var(--txt)}
+.cd-plan{display:flex;align-items:center;gap:10px}

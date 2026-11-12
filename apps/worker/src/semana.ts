@@ -1,9 +1,9 @@
 // Semana completa planejada (#24): monta a entrada do core a partir do D1, guarda versões (desfazer) e as escolhas
 // por dia. Todo SQL com bind e filtrado por user_id; o uid vem da autenticação.
 import {
-  MUSCLE_IDS, applyDayAction, diffWeeks, mondayOf, planWeek, weekDates, weekProgression, weekView, weeklyTargets,
+  EQUIPMENT_BY_ID, MUSCLE_IDS, applyDayAction, diffWeeks, mondayOf, planWeek, weekDates, weekProgression, weekView, weeklyTargets,
 } from "@ciclo/core";
-import type { DayAction, DayOpts, DayOverride, DayPlan, MuscleId, Progression, Sets, WeekInput, WeekPlan, WeekProfile } from "@ciclo/core";
+import type { CardioEntry, DayAction, DayOpts, DayOverride, DayPlan, Intensity, MuscleId, Progression, Sets, WeekInput, WeekPlan, WeekProfile } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { HttpError, date, int, oneOf, str } from "./http.ts";
 import { EMPTY_MSG, getProfile, listGyms, parse, weekState } from "./db.ts";
@@ -24,6 +24,7 @@ interface Ctx {
   latest: { version: number; stored: Stored | null; createdAt: number } | null;
   versions: { version: number; source: Source; createdAt: number }[];
   gymIds: string[];
+  cardioLog: CardioEntry[];
 }
 
 export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx | { empty: EmptyReason }> {
@@ -31,13 +32,14 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
   const [profile, gyms, week] = await Promise.all([getProfile(env, uid), listGyms(env, uid), weekState(env, uid, today)]);
   if (!profile) return { empty: "sem_perfil" };
   if (!gyms.length) return { empty: "sem_academia" };
-  const [sets, ovr, fixed, vers, latest] = await env.DB.batch([
+  const [sets, ovr, fixed, vers, latest, cardio] = await env.DB.batch([
     env.DB.prepare(`SELECT s.date AS date, l.muscle AS muscle, COUNT(*) AS n FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
       WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 GROUP BY s.date, l.muscle`).bind(uid, from, to),
     env.DB.prepare("SELECT date, kind, opts FROM day_override WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3").bind(uid, from, to),
     env.DB.prepare("SELECT date, plan, source FROM day_plan WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 AND source IN ('claude', 'manual')").bind(uid, from, to),
     env.DB.prepare("SELECT version, source, created_at FROM week_plan WHERE user_id = ?1 AND week_start = ?2 ORDER BY version DESC LIMIT ?3").bind(uid, weekStart, MAX_VERSIONS),
     env.DB.prepare("SELECT version, plan_json, created_at FROM week_plan WHERE user_id = ?1 AND week_start = ?2 ORDER BY version DESC LIMIT 1").bind(uid, weekStart),
+    env.DB.prepare("SELECT id, date, type, minutes, intensity, distance_km FROM cardio_log WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date, created_at").bind(uid, from, to),
   ]);
   const setsBy: Record<string, Sets> = {};
   for (const r of sets.results as { date: string; muscle: MuscleId; n: number }[]) if (MUSCLE_IDS.includes(r.muscle)) (setsBy[r.date] ??= {})[r.muscle] = r.n;
@@ -51,6 +53,7 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
       priorities: (p.priorities ?? []).filter((m) => MUSCLE_IDS.includes(m)), dayGym: (p.dayGym ?? {}) as Record<string, string>,
       gyms: gyms.map((g) => ({ id: g.id, equipment: g.equipment })), prefs: p.prefs, pinned: p.pinned, avoid: p.avoid,
       pains: week.pains.map((x) => ({ region: x.region, intensity: x.intensity })),
+      goalId: typeof (p.goal as { id?: unknown } | undefined)?.id === "string" ? (p.goal as { id: string }).id : null,
     },
     base: weeklyTargets(([0, 1, 2, 3].includes(p.level) ? p.level : 1) as 0 | 1 | 2 | 3, (p.priorities ?? []).filter((m) => MUSCLE_IDS.includes(m))),
     sets: setsBy,
@@ -63,6 +66,8 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
     latest: lr ? { version: lr.version, stored: parse<Stored | null>(lr.plan_json, null), createdAt: lr.created_at } : null,
     versions: (vers.results as { version: number; source: Source; created_at: number }[]).map((v) => ({ version: v.version, source: v.source, createdAt: v.created_at })),
     gymIds: gyms.map((g) => g.id),
+    cardioLog: (cardio.results as { id: string; date: string; type: string; minutes: number; intensity: Intensity; distance_km: number | null }[])
+      .map((r) => ({ id: r.id, date: r.date, type: r.type, minutes: r.minutes, intensity: r.intensity, distanceKm: r.distance_km })),
   };
 }
 
@@ -101,7 +106,7 @@ async function progression(env: Env, c: Ctx): Promise<Progression> {
 
 const input = (c: Ctx, s: { overrides: Record<string, DayOverride>; progression: Progression }, prev: WeekPlan | null): WeekInput => ({
   weekStart: c.weekStart, today: c.today, sets: c.sets, attendance: c.attendance, profile: c.profile,
-  targets: s.progression.targets, overrides: s.overrides, fixed: c.fixed, prev,
+  targets: s.progression.targets, overrides: s.overrides, fixed: c.fixed, cardioLog: c.cardioLog, prev,
 });
 
 async function generate(env: Env, c: Ctx, overrides: Record<string, DayOverride>, fresh: boolean): Promise<Stored> {
@@ -203,10 +208,24 @@ function opts(v: unknown, gymIds: string[]): DayOpts {
   if (o.gymId != null) { const g = str(o.gymId, "gymId", 40)!; if (!gymIds.includes(g)) throw new HttpError(400, "gymId inválido"); out.gymId = g; }
   if (o.format != null) out.format = oneOf(o.format, "format", FORMATS);
   if (o.crowded != null) out.crowded = o.crowded === true;
+  Object.assign(out, geracao(o, gymIds));
+  return out;
+}
+const ESTILOS = ["livre", "maquina"] as const;
+/** As 4 escolhas do "Gerar outro treino" (#44): aparelhos ocupados, estilo, mais leve e músculo a adiantar. Tudo opcional. */
+function geracao(o: Record<string, unknown>, _gymIds: string[]): Pick<DayOpts, "ocupados" | "estilo" | "leve" | "adiantar"> {
+  const out: Pick<DayOpts, "ocupados" | "estilo" | "leve" | "adiantar"> = {};
+  if (o.ocupados != null) {
+    if (!Array.isArray(o.ocupados) || o.ocupados.length > 60 || !o.ocupados.every((q) => typeof q === "string" && !!EQUIPMENT_BY_ID[q])) throw new HttpError(400, "ocupados: lista de aparelhos válidos");
+    if (o.ocupados.length) out.ocupados = [...new Set(o.ocupados as string[])];
+  }
+  if (o.estilo != null) out.estilo = oneOf(o.estilo, "estilo", ESTILOS);
+  if (o.leve != null) out.leve = o.leve === true || undefined;
+  if (o.adiantar != null) { if (!MUSCLE_IDS.includes(o.adiantar as MuscleId)) throw new HttpError(400, "adiantar: músculo inválido"); out.adiantar = o.adiantar as MuscleId; }
   return out;
 }
 
-const ACTIONS = ["gerar", "mover", "trocar", "folga", "treino", "extra", "manter", "falta"] as const;
+const ACTIONS = ["gerar", "outro", "mover", "trocar", "folga", "treino", "extra", "manter", "falta"] as const;
 /** Ações num dia: trocar a geração, mover, trocar com outro, folga/treino/extra, manter (sem compensatório) e responder falta. */
 export async function dayAction(env: Env, uid: string, d: string, b: Record<string, unknown>) {
   const day = date(d);
@@ -222,6 +241,7 @@ export async function dayAction(env: Env, uid: string, d: string, b: Record<stri
     source = "falta";
   } else {
     const a = (action === "gerar" ? { type: action, date: day, opts: opts(b.opts, c.gymIds) }
+      : action === "outro" ? { type: action, date: day, geracao: geracao((typeof b.opts === "object" && b.opts && !Array.isArray(b.opts) ? b.opts : {}) as Record<string, unknown>, c.gymIds) }
       : action === "mover" || action === "trocar" ? { type: action, date: day, to: date(b.to, "to") }
       : { type: action, date: day }) as DayAction;
     const r = applyDayAction(c.latest!.stored!.plan, c.overrides, a, c);
