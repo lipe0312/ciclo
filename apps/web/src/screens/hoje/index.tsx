@@ -7,6 +7,7 @@ import { SERVER, send } from "../../lib/api/index.ts";
 import { Card, Chip, Icon, Seg, toast } from "../../lib/ui/index.tsx";
 import { BarraSimples, BarraVolume } from "../../lib/grafico/index.tsx";
 import { DOW_NM, dowIdx, fmt, longDate } from "../../lib/util.ts";
+import { FaixaCheckup } from "../../lib/faixa-checkup/index.tsx";
 import { CaixaClaude } from "../claude/caixa.tsx";
 import { AvisoFalta } from "../semana/aviso.tsx";
 import { diaDe, garantirSemana, getSemana } from "../semana/estado.ts";
@@ -174,6 +175,7 @@ export default function Hoje() {
   const plan = computePlan();
   return <>
     <div class="row between wrapx" style="margin-bottom:14px"><div><p class="kicker">{longDate(today)}{SERVER ? "" : " · demonstração"}</p><h1>Hoje</h1></div></div>
+    <FaixaCheckup />
     <div class="grid dash"><div class="stack"><AvisoFalta /><Objetivo /><Checkin /><Semana plan={plan} /><Compensa plan={plan} /><TreinoCard plan={plan} /><Volume plan={plan} /></div>
       <div class="stack"><CaixaClaude /><Mini /></div></div>
   </>;
