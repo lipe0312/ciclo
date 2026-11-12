@@ -11,3 +11,4 @@ export * from "./cardio.ts";
 export * from "./semana.ts";
 export * from "./semana-volume.ts";
 export * from "./perfil.ts";
+export * from "./checkup.ts";

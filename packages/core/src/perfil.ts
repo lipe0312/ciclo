@@ -28,7 +28,7 @@ export const DEFAULT_PROFILE = {
   /** prioridades por subdivisão (mapa de músculos), em ordem; `priorities` sai daqui */
   subPriorities: ["ombro_lat", "biceps", "triceps_longa"] as SubMuscleId[],
   /** quem preencheu: o app mostra "preenchido pelo Claude — confira" até o usuário confirmar */
-  meta: { filledBy: "app" as "app" | "claude", confirmed: true },
+  meta: { filledBy: "app" as "app" | "claude", confirmed: true } as { filledBy: "app" | "claude"; confirmed: boolean; checkup?: "feito" | "pulado" },
 };
 export type ProfileData = typeof DEFAULT_PROFILE;
 
@@ -134,7 +134,7 @@ const SCHEMA: Record<string, Rule> = {
   diet: objectKeys({ mode: oneOf(DIET_MODES), typical: text(1000), restrictions: list(text(40), 10), supplements: list(text(40), 10), kcal: int(800, 8000), protein: int(20, 500) }),
   autonomy: oneOf(["so_sugere", "carga_sozinho", "tudo"]), tone: oneOf(["direto", "motivador", "tecnico"]), reviewTime: oneOf(["dom20", "seg7"]),
   tiers: record((v, p, err) => ((TIER_CATS as readonly string[]).includes(v as string) ? v : (err(`${p}: tipo de pedido inválido`), undefined)), oneOf(["haiku", "sonnet", "opus"]), 5),
-  meta: objectKeys({ filledBy: oneOf(["app", "claude"]), confirmed: bool }),
+  meta: objectKeys({ filledBy: oneOf(["app", "claude"]), confirmed: bool, checkup: oneOf(["feito", "pulado"]) }),
 };
 const PATCH_SHAPE = shape(SCHEMA);
 
