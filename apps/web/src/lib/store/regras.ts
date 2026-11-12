@@ -1,8 +1,8 @@
 // Ponte entre o estado e o core: o que o app pergunta ao core (plano do dia, sugestão de carga) e
 // gravações compartilhadas entre telas (perfil, academia, dor, comida).
-import { C, S, today } from "./index.ts";
-import { SERVER, send } from "../api/index.ts";
-import { DOW, dowIdx, uid } from "../util.ts";
+import { C, S, commit, today } from "./index.ts";
+import { SERVER, api, flush, send } from "../api/index.ts";
+import { DOW, TZ, addDays, dowIdx, lsGet, lsSet, uid } from "../util.ts";
 
 export const mName = (m: string) => (C.MUSCLES as Record<string, C.Muscle>)[m]?.nm ?? m;
 export const EXB = C.EXERCISE_BY_ID;
@@ -44,13 +44,13 @@ export function suggestFor(it: C.PlanItem): { kg: number | null; reps: number; n
 
 let profileTimer: ReturnType<typeof setTimeout> | undefined;
 /** Mudou o perfil: o treino já gerado NÃO se refaz sozinho; congela e fica "desatualizado" até o usuário regenerar. */
-export function profileChanged() {
+export function profileChanged(sync = true) {
   if (S.plan && !(S.session && !S.session.finishedAt)) {
     const act = C.planFreezeAction(S.ui.planFp, S.profile, { frozen: S.ui.locked, frozenByProfile: S.ui.planSource === "perfil" });
     if (act === "freeze") { S.ui.locked = true; S.ui.planSource = "perfil"; }
     else if (act === "unfreeze") { S.ui.locked = false; S.ui.planSource = undefined; }
   }
-  clearTimeout(profileTimer); profileTimer = setTimeout(() => send("PUT", "/api/profile", { data: S.profile }), 600);
+  if (sync) { clearTimeout(profileTimer); profileTimer = setTimeout(() => send("PUT", "/api/profile", { data: S.profile }), 600); }
 }
 /** Garante a base de comparação ANTES de qualquer mudança no perfil (demo, 1º acesso direto ao Perfil, recarregar). */
 export function ensureBaseline() { if (!S.plan || !S.ui.planFp) { if (!(S.session && !S.session.finishedAt)) computePlan(); } }
@@ -76,19 +76,116 @@ export function addPain(p: { region: string; intensity: number; kind?: string; c
   S.ui.locked = false;
 }
 
-// comida: estimativa rápida offline (porções caseiras, ~TACO). O Claude refina.
-const FOOD_TABLE: [RegExp, number, number][] = [
-  [/ovo/, 70, 6], [/pão|pao/, 140, 4.5], [/arroz/, 200, 4], [/feij/, 140, 9], [/frango/, 250, 45], [/carne|bife|patinho/, 300, 40], [/whey/, 120, 24],
-  [/banana/, 90, 1], [/leite/, 120, 6], [/iogurte/, 100, 8], [/queijo/, 100, 7], [/macarr/, 300, 10], [/batata/, 150, 3], [/aveia/, 110, 4], [/peixe|tilápia|atum/, 180, 30], [/salada|alface|tomate/, 25, 1],
-];
-export function estimateFood(text: string) {
-  let kcal = 0, prot = 0;
-  for (const part of String(text).toLowerCase().split(/[,;\n+]| e /)) {
-    const row = FOOD_TABLE.find(([re]) => re.test(part)); if (!row) continue;
-    const k = Math.min(Number(part.match(/(\d+)/)?.[1] ?? 1), 6);
-    kcal += row[1] * k; prot += row[2] * k;
-  }
-  return { kcal, prot };
+// ---------- comida (#28) ----------
+// A estimativa local é a do core (a mesma do servidor); o Claude confere com a TACO depois (fonte "claude").
+export const estimateFood = C.estimateFood;
+export interface FoodRow { id: string; date: string; text: string; kcal: number | null; prot: number | null; meal: C.Meal | null; source: "local" | "claude"; confidence: string | null }
+export interface Template { id: string; name: string; meal: C.Meal | null; text: string; kcal: number | null; prot: number | null }
+export interface DietHist { date: string; before: number; after: number; adjust: number; tdee: number | null; trendKgWeek: number | null; code: string; reason: string }
+/** Estado da tela Comida que não é do perfil: refeições salvas, histórico das metas e pesos (tendência). */
+export const DIET = { templates: [] as Template[], history: [] as DietHist[], weights: [] as C.WeightPoint[], loaded: false, /** por que a meta não mudou (sem dados, revisão recente) */ note: "" };
+
+export const foodRows = (): FoodRow[] => S.food as FoodRow[];
+export const foodTotals = (d: string) => foodRows().filter((f) => f.date === d).reduce((a, f) => ({ kcal: a.kcal + (f.kcal ?? 0), prot: a.prot + (f.prot ?? 0) }), { kcal: 0, prot: 0 });
+const entries = (): C.FoodEntry[] => foodRows().map((f) => ({ date: f.date, meal: f.meal, kcal: f.kcal, prot: f.prot, text: f.text }));
+/** Painel: média dos últimos 7 dias contra a meta, e a semana anterior para a tendência. */
+export function foodPanel() {
+  const d = S.profile.diet, targets = { kcal: d.kcal, protein: d.protein };
+  const cur = C.foodAverages(entries(), today, targets), prev = C.foodAverages(entries(), addDays(today, -7), targets);
+  const week = foodRows().filter((f) => f.date >= cur.from && f.date <= today);
+  return { cur, prev, top: C.topProteinFoods(week as unknown as C.FoodEntry[]), targets };
 }
-export const foodTotals = (d: string) => S.food.filter((f) => f.date === d).reduce((a, f) => ({ kcal: a.kcal + f.kcal, prot: a.prot + f.prot }), { kcal: 0, prot: 0 });
-export function addFood(text: string) { const e = estimateFood(text); S.food.push({ id: uid(), date: today, text, ...e }); send("POST", "/api/food", { date: today, text }).catch(() => {}); }
+export const hourNow = () => Number(new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", hourCycle: "h23" }).format(new Date()));
+
+const fromServer = (e: any): FoodRow => ({ id: e.id, date: e.date, text: e.text, kcal: e.kcal, prot: e.prot, meal: e.meal, source: e.source, confidence: e.confidence });
+export async function loadFood() {
+  if (!SERVER) return seedDemoComida();
+  try { await flush(); const r = await api<{ entries: any[] }>("GET", `/api/food?from=${addDays(today, -13)}&to=${today}`); S.food = r.entries.map(fromServer); commit(); } catch { /* offline: fica o que há */ }
+}
+let adaptTried = false;
+export async function loadDiet() {
+  if (!SERVER) return demoDiet();
+  try {
+    const r = await api<{ templates: any[]; history: DietHist[]; weights: C.WeightPoint[] }>("GET", `/api/diet?date=${today}`);
+    DIET.templates = r.templates; DIET.history = r.history; DIET.weights = r.weights; DIET.loaded = true;
+    if (!adaptTried) { // o servidor só revisa 1× a cada 7 dias; abrir a tela várias vezes não muda nada
+      adaptTried = true;
+      const a = await api<{ changed: boolean; kcal: number; code: string; reason: string }>("POST", "/api/diet/adapt", { date: today });
+      DIET.note = a.code === "sem_dados" || a.code === "sem_perfil" ? a.reason : "";
+      if (a.changed) { S.profile.diet.kcal = a.kcal; const h = await api<{ history: DietHist[] }>("GET", `/api/diet?date=${today}`); DIET.history = h.history; }
+    }
+  } catch { /* offline */ }
+  commit();
+}
+
+/** `meal` omitido = pela palavra do texto ou pela hora. Outras telas (caixa do Claude) chamam só com o texto. */
+export function addFood(text: string, meal?: C.Meal | null, over?: { kcal: number | null; prot: number | null }, date = today) {
+  if (meal === undefined) meal = C.guessMeal(text, hourNow());
+  const e = C.estimateFood(text), kcal = over ? over.kcal : e.kcal || null, prot = over ? over.prot : e.prot || null;
+  const row: FoodRow = { id: uid(), date, text, kcal, prot, meal, source: "local", confidence: null };
+  S.food.push(row);
+  send<{ id: string }>("POST", "/api/food", { date, text, meal, ...(over ? { kcal: over.kcal, protein: over.prot } : {}) }).then((r) => { if (r?.id) row.id = r.id; commit(); }).catch(() => {});
+  return row;
+}
+export function editFood(id: string, patch: { text?: string; meal?: C.Meal | null; kcal?: number | null; prot?: number | null }) {
+  const row = foodRows().find((f) => f.id === id); if (!row) return;
+  const body: Record<string, unknown> = {};
+  if (patch.text !== undefined && patch.text !== row.text) {
+    row.text = patch.text; const e = C.estimateFood(patch.text); row.kcal = e.kcal || null; row.prot = e.prot || null; row.source = "local"; row.confidence = null; body.text = patch.text;
+  }
+  if (patch.meal !== undefined) { row.meal = patch.meal; body.meal = patch.meal; }
+  if ((patch.kcal !== undefined && patch.kcal !== row.kcal) || (patch.prot !== undefined && patch.prot !== row.prot)) {
+    if (patch.kcal != null) { row.kcal = patch.kcal; body.kcal = patch.kcal; }
+    if (patch.prot != null) { row.prot = patch.prot; body.protein = patch.prot; }
+    row.source = "local"; row.confidence = null;
+  }
+  if (Object.keys(body).length) send("PUT", `/api/food/${encodeURIComponent(id)}`, body).catch(() => {});
+}
+export function deleteFood(id: string) {
+  S.food = foodRows().filter((f) => f.id !== id);
+  send("DELETE", `/api/food/${encodeURIComponent(id)}`).catch(() => {});
+}
+export function saveTemplate(name: string, text: string, meal: C.Meal | null) {
+  const e = C.estimateFood(text), t: Template = { id: uid(), name, meal, text, kcal: e.kcal || null, prot: e.prot || null };
+  DIET.templates.push(t);
+  send<{ id: string }>("POST", "/api/meal-templates", { name, text, meal }).then((r) => { if (r?.id) t.id = r.id; commit(); }).catch(() => { DIET.templates = DIET.templates.filter((x) => x !== t); commit(); });
+}
+export function deleteTemplate(id: string) {
+  DIET.templates = DIET.templates.filter((t) => t.id !== id);
+  send("DELETE", `/api/meal-templates/${encodeURIComponent(id)}`).catch(() => {});
+}
+
+// ---------- demonstração (?demo): 3 semanas fictícias, só no aparelho ----------
+const DEMO_HIST = "ciclo:v1:demo:dietHist";
+const DEMO_DAYS: [string, number, number][][] = [
+  [["café: 3 ovos, 2 pães e 1 whey", 610, 51], ["almoço: arroz, feijão e frango", 590, 58], ["jantar: macarrão e carne", 600, 50]],
+  [["café: iogurte, aveia e banana", 300, 14], ["almoço: arroz, feijão e peixe", 520, 43], ["lanche: 2 whey e pão", 440, 52], ["jantar: batata e frango", 400, 48]],
+  [["café: 2 ovos e pão", 280, 17], ["almoço: arroz, feijão e carne", 640, 53], ["jantar: arroz e frango", 450, 49]],
+];
+function seedDemoComida() {
+  if (S.food.length) return;
+  const rows: FoodRow[] = [];
+  for (let i = 0; i < 21; i++) {
+    const date = addDays(today, -20 + i), skip = i % 9 === 4 && i < 20; // alguns dias sem registro: tudo bem faltar
+    if (skip) continue;
+    for (const [text, kcal, prot] of DEMO_DAYS[i % 3]) {
+      const m = /^(café|almoço|lanche|jantar)/.exec(text)?.[1];
+      rows.push({ id: `demo-${i}-${rows.length}`, date, text, kcal: Math.round(kcal * 1.45) + (i % 4) * 25, prot, meal: m === "café" ? "cafe" : m === "almoço" ? "almoco" : m === "lanche" ? "lanche" : m === "jantar" ? "jantar" : null, source: i % 2 ? "claude" : "local", confidence: i % 2 ? "media" : null });
+    }
+  }
+  S.food = rows; commit();
+}
+function demoDiet() {
+  DIET.note = "";
+  DIET.weights = Array.from({ length: 21 }, (_, i) => ({ date: addDays(today, -20 + i), kg: Math.round((71.8 + i * 0.035 + (i % 3 === 0 ? 0.3 : -0.1)) * 10) / 10 }));
+  if (!DIET.templates.length) DIET.templates = [{ id: "t1", name: "Marmita", meal: "almoco", text: "arroz, feijão e frango", kcal: 590, prot: 58 }, { id: "t2", name: "Café padrão", meal: "cafe", text: "3 ovos, 2 pães e 1 whey", kcal: 610, prot: 51 }];
+  DIET.history = lsGet<DietHist[]>(DEMO_HIST, []);
+  if (!DIET.history.length) {
+    const r = C.adaptiveTarget({ weights: DIET.weights, intake: C.foodAverages(entries(), addDays(today, -1), { kcal: 1, protein: 1 }, 21).days.filter((d) => d.logged), currentKcal: S.profile.diet.kcal, pace: S.profile.diet.pace, end: addDays(today, -1) });
+    if (r.code !== "sem_dados") {
+      DIET.history = [{ date: today, before: S.profile.diet.kcal, after: r.kcal, adjust: r.adjust, tdee: r.tdee, trendKgWeek: r.trendKgWeek, code: r.code, reason: r.reason }];
+      S.profile.diet.kcal = r.kcal; lsSet(DEMO_HIST, DIET.history);
+    }
+  }
+  DIET.loaded = true; commit();
+}

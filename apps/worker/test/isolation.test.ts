@@ -33,26 +33,38 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   await ok(c("POST", "/api/push/subscribe", { endpoint, p256dh: "BPk_abc", auth: "xyz" }));
   const pain = (await ok(c("POST", "/api/pains", { region: "ombro_e", intensity: 2, context: `${tag} dor` }))).data.id;
   const inbox = (await ok(c("POST", "/api/inbox", { text: `${tag} pedido` }))).data.id;
-  await ok(c("POST", "/api/food", { date: D, text: `${tag} comida` }));
+  const food = (await ok(c("POST", "/api/food", { date: D, text: `${tag} comida`, meal: "cafe" }))).data.id;
+  const tpl = (await ok(c("POST", "/api/meal-templates", { name: `${tag} marmita`, text: `${tag} arroz` }))).data.id;
   const media = (await ok(call(env, "POST", `/api/media?note=${tag}`, { user, raw: PNG, ct: "image/png" }))).data.id;
+  // #26: lugar só desta conta (nome, endereço e ponto no mapa com a marca) e mídia de aparelho dentro dele
+  const lug = `lug_${user}`;
+  await ok(c("PUT", `/api/gyms/${lug}`, { name: `${tag} lugar`, kind: "hotel", address: `${tag} rua`, lat: tag === "MARCA_B" ? -10.123 : -30.5, lng: tag === "MARCA_B" ? -20.456 : -50.5, equipment: ["halteres"], weekdays: ["sab"] }));
+  const mediaLug = (await ok(call(env, "POST", `/api/media?gymId=${lug}&equipmentId=halteres&note=${tag}`, { user, raw: PNG, ct: "image/png" }))).data.id;
   await ok(c("GET", `/api/week?date=${D}`));
   await ok(c("POST", "/api/week/day/2026-11-07", { action: "gerar", today: D, opts: { focus: ["ombro"] } }));
+  // #27 diário: checkout, lembrete, resumo dos dias e exame (texto bruto marcado)
+  await ok(c("PUT", `/api/checkout/${D}`, { trained: false, alcohol: 2, smoke: true, note: `${tag} checkout`, cardio: { type: "Rope_Jumping", minutes: 10 } }));
+  await ok(c("POST", "/api/diario/abrir", { today: D }));
+  await ok(c("PUT", "/api/diario/lembrete", { snoozedOn: D }));
+  await ok(c("POST", "/api/diario/resumo", { dias: [{ date: "2026-11-04", alcohol: 1, note: `${tag} resumo` }] }));
+  const exam = (await ok(c("POST", "/api/exames", { label: `${tag} exame`, text: `${tag} laudo` }))).data.id;
   const tok = (await ok(c("POST", "/api/account/tokens", { label: `${tag} token` }))).data;
   const exp = (await c("GET", "/api/account/export")).data;
-  return { sid: SID, ex, cardio, endpoint, pain, inbox, media, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
+  return { sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
 }
 const snap = async (env: any, user: string) => {
   const e = (await call(env, "GET", "/api/account/export", { user })).data;
   delete e.exportadoEm; delete e.user.last_seen_at; return JSON.stringify(e);
 };
 
-test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas)", async () => {
+test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas)", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response("[]", { status: 200 })); // Nominatim (busca de endereço) não sai da máquina
   const env = makeEnv();
   const B = await seed(env, "bia", "MARCA_B", SID_B, MARK_KG);
   const A = await seed(env, "ana", "MARCA_A", SID_A, 10);
   const before = await snap(env, "bia");
   const r2Before = [...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length;
-  const secrets = ["MARCA_B", B.uid, B.pain, B.inbox, B.media, B.tokenId, B.edit, B.cardio, String(MARK_KG), "bia@"];
+  const secrets = ["MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, String(MARK_KG), "bia@"];
   const subsB = () => env.DB.raw.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE endpoint = ?1").get(B.endpoint).n;
   const restB = () => JSON.stringify(env.DB.raw.prepare("SELECT fire_at, sent_at FROM rest_timer WHERE user_id = ?1").get(B.uid));
   const restBefore = restB();
@@ -69,9 +81,19 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["DELETE /api/account/tokens/:id", () => a("DELETE", `/api/account/tokens/${B.tokenId}`), 404],
     ["PUT /api/measurements/:date", () => a("PUT", `/api/measurements/${D}`, { armCm: 40 })],
     ["PUT /api/profile", () => a("PUT", "/api/profile", profile("A2"))],
+    ["GET /api/gyms", () => a("GET", "/api/gyms")],
     ["PUT /api/gyms/:id", () => a("PUT", "/api/gyms/acad1", { name: "A2", equipment: ["halteres"] })],
+    ["DELETE /api/gyms/:id", () => a("DELETE", `/api/gyms/${B.lug}`), 404],
+    ["GET /api/geocode", () => a("GET", "/api/geocode?q=Avenida%20Paulista")],
     ["PUT /api/checkin/:date", () => a("PUT", `/api/checkin/${D}`, { sleepH: 5, energy: 1, soreness: 0, stress: 1, food: 1 })],
     ["PUT /api/attendance/:date", () => a("PUT", `/api/attendance/${D}`, { status: "fui" })],
+    ["GET /api/diario", () => a("GET", `/api/diario?from=2026-10-20&to=${D}`)],
+    ["PUT /api/checkout/:date", () => a("PUT", `/api/checkout/${D}`, { alcohol: 0, cardio: { type: "HIIT", minutes: 5 } })],
+    ["POST /api/diario/abrir", () => a("POST", "/api/diario/abrir", { today: "2026-11-09" })],
+    ["PUT /api/diario/lembrete", () => a("PUT", "/api/diario/lembrete", { absenceDays: 3, dismissAbsence: true })],
+    ["POST /api/diario/resumo", () => a("POST", "/api/diario/resumo", { dias: [{ date: "2026-11-04", trained: true, note: "A" }, { date: D, alcohol: 5 }] })],
+    ["POST /api/exames", () => a("POST", "/api/exames", { text: "A laudo 2" }), 201],
+    ["DELETE /api/exames/:id", () => a("DELETE", `/api/exames/${B.exam}`), 404],
     ["POST /api/plan-day", () => a("POST", "/api/plan-day", { date: D, daysLeft: 2, gymId: "acad1" })],
     ["PUT /api/day-plan/:date", () => a("PUT", `/api/day-plan/${D}`, { plan: { items: [] } })],
     ["POST /api/plan-edits", () => a("POST", "/api/plan-edits", { date: D, edit: { index: 0, sets: 3 } }), 422],
@@ -100,20 +122,34 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["POST /api/pains/:id/resolve", () => a("POST", `/api/pains/${B.pain}/resolve`), 404],
     ["POST /api/inbox", () => a("POST", "/api/inbox", { text: "oi" })],
     ["POST /api/inbox/:id/status", () => a("POST", `/api/inbox/${B.inbox}/status`, { status: "descartado" }), 404],
-    ["POST /api/food", () => a("POST", "/api/food", { date: D, text: "arroz" })],
+    ["POST /api/food", () => a("POST", "/api/food", { date: D, text: "arroz" }), 201],
+    ["GET /api/food", () => a("GET", `/api/food?from=${D}&to=${D}`)],
+    ["PUT /api/food/:id", () => a("PUT", `/api/food/${B.food}`, { text: "hackeado", kcal: 1 }), 404],
+    ["DELETE /api/food/:id", () => a("DELETE", `/api/food/${B.food}`), 404],
+    ["POST /api/meal-templates", () => a("POST", "/api/meal-templates", { name: "A", text: "pão" }), 201],
+    ["DELETE /api/meal-templates/:id", () => a("DELETE", `/api/meal-templates/${B.tpl}`), 404],
+    ["GET /api/diet", () => a("GET", `/api/diet?date=${D}`)],
+    ["POST /api/diet/adapt", () => a("POST", "/api/diet/adapt", { date: D })],
     ["POST /api/transcribe", () => call(env, "POST", "/api/transcribe", { user: "ana", raw: PNG, ct: "audio/webm" })],
     ["POST /api/media", () => call(env, "POST", "/api/media", { user: "ana", raw: PNG, ct: "image/png" })],
     ["GET /api/media", () => a("GET", "/api/media")],
+    ["GET /api/media (lugar da B)", () => a("GET", `/api/media?gymId=${B.lug}&equipmentId=halteres`)],
+    ["POST /api/media (lugar da B)", () => call(env, "POST", `/api/media?gymId=${B.lug}&equipmentId=halteres`, { user: "ana", raw: PNG, ct: "image/png" }), 404],
+    ["POST /api/media (tipo errado)", () => call(env, "POST", "/api/media?gymId=acad1&equipmentId=halteres", { user: "ana", raw: PNG, ct: "text/html" }), 415],
     ["GET /api/media/:id", () => a("GET", `/api/media/${B.media}`), 404],
+    ["GET /api/media/:id (mídia do lugar da B)", () => a("GET", `/api/media/${B.mediaLug}`), 404],
   ];
   const tools: [string, Record<string, unknown>, boolean?][] = [
     ["ciclo_estado", { date: D }], ["ciclo_catalogo", { muscle: "ombro", gymId: "acad1" }], ["ciclo_planejar_dia", { date: D, daysLeft: 2 }],
     ["ciclo_salvar_treino_do_dia", { date: D, itens: [{ id: "x_inexistente", sets: 2 }], motivo: "t" }],
     ["ciclo_responder_pedido", { id: B.inbox, resposta: "oi" }, true], ["ciclo_marcar_presenca", { date: D, status: "nao_fui" }],
     ["ciclo_registrar_dor", { region: "ombro_e", intensity: 1 }], ["ciclo_registrar_comida", { texto: "pão", date: D }],
+    ["ciclo_comida_dia", { date: D }], ["ciclo_comida_corrigir", { id: B.food, kcal: 1, proteina: 1, confianca: "alta" }, true],
     ["ciclo_salvar_perfil", { perfil: { minutes: 45 } }], ["ciclo_revisar_edicoes", {}], ["ciclo_concluir_revisao", { id: B.edit, review: "ok" }, true],
+    ["ciclo_diario", { from: "2026-11-01", to: D }], ["ciclo_registrar_resumo_dias", { dias: [{ date: D, alcohol: 3, sleptWell: false }] }],
+    ["ciclo_exame_pendente", {}], ["ciclo_exame_concluir", { id: B.exam, resumo: { marcadores: [{ nome: "TSH", valor: 1, status: "dentro" }] } }, true],
   ];
-  assert.deepEqual(cases.map((c) => c[0]).concat("DELETE /api/account").sort(), routeSignatures().sort(), "toda rota precisa de caso de isolamento");
+  assert.deepEqual([...new Set(cases.map((c) => c[0].replace(/ \(.*\)$/, "")))].concat("DELETE /api/account").sort(), routeSignatures().sort(), "toda rota precisa de caso de isolamento");
   assert.deepEqual(tools.map((t) => t[0]).sort(), [...toolNames].sort(), "toda ferramenta MCP precisa de caso");
 
   for (const [sig, run, status] of cases) {

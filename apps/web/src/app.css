@@ -411,3 +411,25 @@ a.sec{color:inherit;text-decoration:none}
 .link44{display:inline-flex;align-items:center;min-height:44px;padding:0 2px}
 .note-checkup{align-items:center;flex-wrap:wrap;margin-bottom:14px}
 .note-checkup-t{flex:1;min-width:200px}
+
+/* voz (#28): botão grande com estado e motor escritos */
+.micwrap.lg{align-items:center;gap:6px;max-width:120px;text-align:center}
+.mic.lg{width:72px;height:72px}
+.mic.lg svg{width:30px;height:30px}
+.mic.busy{opacity:.7;animation:pulse 1.2s infinite}
+.voz-erro{color:var(--bad);font-weight:600}
+.dias{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;align-items:end}
+.dia-col{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px}
+.dia-col .lbl{color:var(--sub);font-weight:700}
+.dia-bar{position:relative;width:100%;max-width:34px;height:88px;background:var(--sup-3);border-radius:8px;overflow:hidden}
+.dia-bar i{position:absolute;left:0;right:0;bottom:0;background:var(--txt);border-radius:0 0 8px 8px}
+.dia-bar i.hit{background:var(--acc-bg)}
+.dia-bar .mk{position:absolute;left:0;right:0;height:2px;background:var(--sub)}
+.food-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:center;padding:10px 0;border-top:1px solid var(--borda)}
+.food-row:first-child{border-top:0}
+.food-row .tx{grid-column:1/-1;overflow-wrap:anywhere;font-size:14px}
+.food-row .acts{display:flex;gap:8px}
+.food-row .acts .btn{padding:0 10px}
+.est-line{min-height:20px}
+.tpl-chip.manage{border-color:var(--bad);color:var(--bad)}
+.stepper span{white-space:nowrap}

@@ -1,0 +1,57 @@
+/* Academias e lugares (#26). Só tokens de app.css; celular primeiro (390 px), toques de 44 px ou mais. */
+.lug-lista{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.lug-card{display:flex;align-items:center;gap:6px;border:1px solid var(--borda);border-radius:var(--r);background:var(--sup);padding:4px 8px 4px 4px}
+.lug-card-main{flex:1;min-width:0;display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:12px;align-items:center;min-height:64px;padding:6px 6px 6px 8px;color:inherit;text-decoration:none;border-radius:10px}
+.lug-card-main .n{width:44px;height:44px;border-radius:10px;background:var(--sup-2);display:grid;place-items:center}
+.lug-card-t{display:flex;flex-direction:column;min-width:0;line-height:1.3}
+.lug-card-t b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lug-card-t .tiny{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:560px){.lug-card{flex-wrap:wrap}.lug-card-main{flex:1 1 100%}.lug-card>.btn{margin:0 0 4px 60px}}
+
+/* mapa: contexto de empilhamento próprio, senão os painéis do Leaflet (z-index 400+) cobrem a barra e a folha */
+.lug-map{position:relative;z-index:0;isolation:isolate;height:300px;border:1px solid var(--borda);border-radius:var(--r);overflow:hidden;background:var(--sup-3)}
+@media (min-width:720px){.lug-map{height:380px}}
+/* mais específico que `.leaflet-touch .leaflet-bar a` (o CSS do Leaflet carrega depois): zoom com 44 px */
+.lug-map.leaflet-container .leaflet-bar a,.lug-map.leaflet-touch .leaflet-bar a{width:44px;height:44px;line-height:44px;font-size:22px}
+.lug-map .leaflet-control-attribution a{display:inline-block;min-height:20px}
+.lug-pin{background:none;border:0}
+.lug-pin i{display:block;width:28px;height:28px;margin:6px 2px 0;background:var(--acc-bg);border:3px solid #0B0B0C;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 5px rgba(0,0,0,.45)}
+.lug-busca{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+.lug-achados{list-style:none;margin:8px 0 0;padding:0;border:1px solid var(--borda);border-radius:var(--r);background:var(--sup);overflow:hidden}
+.lug-achados li+li{border-top:1px solid var(--borda)}
+.lug-achados button{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:8px 12px;border:0;background:none;text-align:left;cursor:pointer;font-size:14px;line-height:1.3}
+.lug-achados button:hover{background:var(--sup-2)}
+.lug-achados button span{min-width:0;overflow-wrap:anywhere}
+
+/* página do lugar */
+.lug-aps{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.lug-ap{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:12px;align-items:center;min-height:56px;padding:4px 12px 4px 4px;border:1px solid var(--borda);border-radius:12px;background:var(--sup);color:inherit;text-decoration:none}
+.lug-ap img{width:64px;height:48px;object-fit:cover;border-radius:8px;background:var(--sup-3)}
+.lug-ap:hover{border-color:var(--borda-ctrl)}
+.lug-usa{list-style:none;margin:6px 0 0;padding:0}
+.lug-usa .alt:first-child{border-top:0}
+.lug-usa .alt{grid-template-columns:56px minmax(0,1fr) auto}
+.lug-midias{list-style:none;margin:0;padding:0;display:grid;gap:14px}
+.lug-midia video,.lug-midia img{display:block;width:100%;max-height:340px;object-fit:contain;border-radius:10px;background:var(--sup-3)}
+.lug-midia .mbox{width:100%;height:120px;border-radius:10px;background:var(--sup-3);display:grid;place-items:center}
+.lug-midia p{margin-top:6px}
+.btn.off{opacity:.5;pointer-events:none}
+
+/* apagar */
+.lug-dest{border:0;margin:0;padding:0;display:grid;gap:6px}
+.lug-dest legend{padding:0;margin-bottom:6px}
+.lug-radio{display:flex;align-items:center;gap:12px;min-height:48px;padding:6px 12px;border:1px solid var(--borda-ctrl);border-radius:10px;cursor:pointer}
+.lug-radio input{width:20px;height:20px;accent-color:var(--acc)}
+.lug-radio:has(input:checked){border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.lug-pp .pp-body{min-height:0}
+/* a barra inferior (celular) cobre o botão fixo do cadastro: sobe o botão acima dela */
+@media (max-width:959px){.lug-pp .pp-cta{bottom:calc(60px + env(safe-area-inset-bottom))}}
+
+/* passo do mapa: respiro entre o aviso e o botão fixo; o campo de endereço fica logo abaixo dos botões, sempre à vista */
+.lug-pp .pp-body{padding-bottom:28px}
+.lug-end{margin:12px 0}
+.lug-status{margin:8px 0 0}
+/* aparelho sem imagem: ícone de reserva no lugar do bloco vazio */
+.eq .eq-ph,.lug-ap .eq-ph{display:grid;place-items:center;width:100%;aspect-ratio:4/3;background:var(--sup-3);color:var(--sub)}
+.eq .eq-ph svg{width:36px;height:36px}
+.lug-ap .eq-ph{width:64px;height:48px;aspect-ratio:auto;border-radius:8px}

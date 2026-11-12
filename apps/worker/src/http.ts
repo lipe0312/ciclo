@@ -10,8 +10,9 @@ export const SECURITY_HEADERS: Record<string, string> = {
 };
 
 export class HttpError extends Error {
-  status: number;
-  constructor(status: number, msg: string) { super(msg); this.status = status; }
+  status: number; code?: string;
+  /** `code` (opcional) é um motivo curto e estável que o app usa para escolher a mensagem (ex.: transcrição). */
+  constructor(status: number, msg: string, code?: string) { super(msg); this.status = status; this.code = code; }
 }
 
 export function json(data: unknown, status = 200, extra: Record<string, string> = {}): Response {

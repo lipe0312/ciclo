@@ -9,6 +9,7 @@ import type { Route } from "./lib/roteador/index.ts";
 import { Folha, closeSheet, setSheetRerender } from "./lib/folha/index.tsx";
 import { Faixa, hideFaixa, setFaixaRerender, showFaixa } from "./lib/faixa/index.tsx";
 import { MiniBarra } from "./lib/mini-barra/index.tsx";
+import { LembreteDiario } from "./lib/lembrete-diario/index.tsx";
 import { Icon, Toast, toast } from "./lib/ui/index.tsx";
 import { lsGet, lsSet } from "./lib/util.ts";
 import { MAIS, PRINCIPAL } from "./nav.ts";
@@ -82,6 +83,7 @@ export function App() {
             <a class="iconbtn only-mobile" href="#mais" aria-label="Mais opções" aria-current={cur("mais")}><Icon id="more" /></a></div>
         </div>
         <Faixa />
+        <LembreteDiario hidden={screen === "primeiros-passos"} />
         <section class="view on" aria-label={screen}><Tela route={route2} /></section>
       </div>
     </main>

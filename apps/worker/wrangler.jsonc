@@ -17,6 +17,8 @@
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "ciclo-media" }],
   // Transcrição de voz (Whisper, 10 mil "neurons"/dia grátis ≈ 200 min de áudio). Descomente depois do `wrangler login`:
   // "ai": { "binding": "AI" },
+  // Dev local: o Workers AI não roda offline; com o binding ligado o `wrangler dev` usa o serviço REMOTO e exige `wrangler login`
+  // (o app usa o reconhecimento de voz do navegador enquanto isso). Em produção basta descomentar a linha acima e fazer o deploy.
   // 1 min: Web Push do fim do descanso (#25). O fechamento de treinos esquecidos roda a cada 30 min dentro do mesmo cron.
   "triggers": { "crons": ["* * * * *"] },
   "vars": { "APP_VERSION": "0.1.0" },

@@ -34,7 +34,7 @@ export function Detalhe({ id }: { id: string }) {
       {it.type === "cardio" && <Card><h2>Intensidade</h2>{(Object.keys(C.INTENSITIES) as C.Intensity[]).map((k) => <div key={k} class="row between small" style="padding:6px 0"><span><b>{C.INTENSITIES[k].nm}</b> · {C.INTENSITIES[k].desc}</span><span class="num sub">~{C.cardioKcal(it, k, S.profile.weightKg, 30)} kcal/30 min</span></div>)}</Card>}
     </div><div class="stack">
       {primary.length > 0 && <Card><h2>Músculos</h2><MapaMusculos primary={primary} secondary={it.secondary} size="sm" /></Card>}
-      {it.type === "forca" && <Card><h2>Seu aparelho</h2><MediaBox exId={it.id} /></Card>}
+      {it.type === "forca" && <Card><h2>Seu aparelho</h2><MediaBox exId={it.id} grande /></Card>}
       {alts.length > 0 && <Card><h2>Alternativas</h2>{alts.map((a) => <a key={a.id} class="alt altlink" href={href("treino", ["exercicio", a.id])}>
         {a.images.length ? <img src={img(C.imageSrc(a))} alt="" loading="lazy" width={56} height={56} /> : <span class="mbox"><Icon id="dumb" /></span>}<div><h3>{a.nm}</h3>{a.type === "forca" && <p class="tiny sub">{a.r.join("–")} reps · {a.kind}</p>}</div><Icon id="arrow" /></a>)}</Card>}
     </div></div></>;

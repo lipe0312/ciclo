@@ -22,7 +22,7 @@ export const DEFAULT_PROFILE = {
   prefs: {} as Record<string, any>, pinned: {} as Record<string, string>, avoid: [] as string[], dynamics: "tradicional", crowdedStrategy: "halteres",
   mobility: { squat: true, overhead: true },
   dayGym: { seg: "acad1", ter: "acad1", qua: "acad2", qui: "acad1", sex: "acad2", sab: "casa", dom: "casa" } as Record<string, string>,
-  diet: { mode: "leve", typical: "", restrictions: [] as string[], supplements: ["whey"] as string[], kcal: 2650, protein: 139 },
+  diet: { mode: "leve", typical: "", restrictions: [] as string[], supplements: ["whey"] as string[], kcal: 2650, protein: 139, pace: "moderado" as "lento" | "moderado" | "rapido", waterMl: 2500 },
   autonomy: "carga_sozinho", tone: "direto", reviewTime: "dom20",
   tiers: { Hoje: "haiku", Treino: "sonnet", Corpo: "opus", Comida: "haiku", Plano: "opus" } as Record<string, string>,
   /** prioridades por subdivisão (mapa de músculos), em ordem; `priorities` sai daqui */
@@ -131,7 +131,7 @@ const SCHEMA: Record<string, Rule> = {
   dynamics: oneOf(["tradicional", "superserie", "circuito"]), crowdedStrategy: oneOf(["halteres", "reordenar", "esperar"]),
   mobility: objectKeys({ squat: bool, overhead: bool }),
   dayGym: record(dowKey, slug, 7),
-  diet: objectKeys({ mode: oneOf(DIET_MODES), typical: text(1000), restrictions: list(text(40), 10), supplements: list(text(40), 10), kcal: int(800, 8000), protein: int(20, 500) }),
+  diet: objectKeys({ mode: oneOf(DIET_MODES), typical: text(1000), restrictions: list(text(40), 10), supplements: list(text(40), 10), kcal: int(800, 8000), protein: int(20, 500), pace: oneOf(["lento", "moderado", "rapido"]), waterMl: int(500, 8000) }),
   autonomy: oneOf(["so_sugere", "carga_sozinho", "tudo"]), tone: oneOf(["direto", "motivador", "tecnico"]), reviewTime: oneOf(["dom20", "seg7"]),
   tiers: record((v, p, err) => ((TIER_CATS as readonly string[]).includes(v as string) ? v : (err(`${p}: tipo de pedido inválido`), undefined)), oneOf(["haiku", "sonnet", "opus"]), 5),
   meta: objectKeys({ filledBy: oneOf(["app", "claude"]), confirmed: bool, checkup: oneOf(["feito", "pulado"]) }),
