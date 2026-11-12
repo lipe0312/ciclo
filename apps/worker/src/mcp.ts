@@ -55,13 +55,13 @@ const TOOLS: Tool[] = [
   },
   {
     name: "ciclo_catalogo", readOnly: true,
-    description: "Exercícios disponíveis (ID, nome, tipo) para um músculo na academia indicada. Use antes de propor trocas.",
+    description: "Exercícios disponíveis (ID, nome, tipo, aparelhos) para um músculo na academia indicada. Use antes de propor trocas.",
     inputSchema: obj({ muscle: { type: "string", enum: MUSCLE_IDS }, gymId: { type: "string" } }, ["muscle"]),
     run: async (a, env, uid) => {
       const m = oneOf(a.muscle, "muscle", MUSCLE_IDS);
       const gyms = await listGyms(env, uid);
       const eq = new Set((gyms.find((g) => g.id === a.gymId) ?? gyms[0])?.equipment ?? []);
-      return EXERCISES.filter((e) => e.m === m).map((e) => ({ id: e.id, nm: e.nm, tipo: e.kind, ok: e.eq.every((q) => eq.has(q)), alongado: !!e.stretch }));
+      return EXERCISES.filter((e) => e.m === m).map((e) => ({ id: e.id, nm: e.nm, tipo: e.kind, ok: e.eq.every((q) => eq.has(q)), aparelhos: e.eq, alongado: !!e.stretch }));
     },
   },
   {

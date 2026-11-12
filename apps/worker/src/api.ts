@@ -4,7 +4,7 @@ import { CARDIO_BY_ID, EQUIPMENT_BY_ID, EXERCISE_BY_ID, INTENSITIES, MAX_PLACES,
 import type { DayPlan, Intensity, ManualEdit, Mode, MuscleId, Tier } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, id, int, json, num, oneOf, readJson, str } from "./http.ts";
-import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, countGyms, deleteAccount, exerciseHistory, exportAccount, getGymRow, getProfile, gymDays, gymView, hitRateLimit, listGyms, mediaPrefix, parse, planProfileFingerprint, saveProfile, setGymWeekdays, summarizeSession, trashGym, upsertPain, weekState } from "./db.ts";
+import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, countGyms, deleteAccount, exerciseHistory, exportAccount, getGymRow, getProfile, gymDays, gymView, hitRateLimit, listGyms, mediaPrefix, parse, planProfileFingerprint, saveProfile, setGymWeekdays, summarizeSession, takeGeocodeSlot, trashGym, upsertPain, weekState } from "./db.ts";
 import { pushEnabled, validEndpoint } from "./push.ts";
 import { newMcpToken } from "./auth.ts";
 import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
@@ -168,6 +168,8 @@ on("GET", "/api/geocode", async (req, env, _p, u) => {
   if (q.length < 3) throw new HttpError(400, "digite ao menos 3 letras");
   const wait = await hitRateLimit(env, u.id, "geocode");
   if (wait) return json({ error: "muitas buscas; espere um instante" }, 429, { "Retry-After": String(wait) });
+  const global = await takeGeocodeSlot(env); // 1 req/s do app inteiro (política do Nominatim)
+  if (global) return json({ error: "o serviço de endereços está ocupado; tente de novo em instantes" }, 429, { "Retry-After": String(global) });
   let rows: unknown;
   try {
     const r = await fetch("https://nominatim.openstreetmap.org/search?" + new URLSearchParams({ q, format: "jsonv2", limit: "5", "accept-language": "pt-BR" }),

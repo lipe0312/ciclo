@@ -21,6 +21,7 @@ O repositório é **público** e os dados são **pessoais** (peso, dor, comida e
 | XSS | Tudo o que vem de dados passa por `esc()` antes de virar HTML | `app.js` |
 | Erros | Mensagem genérica ao cliente; log sem dados pessoais (só a rota e a mensagem) | `api.ts`, `mcp.ts` |
 | Segredos | tokens do Claude só como hash no D1; `.dev.vars` no `.gitignore`; CI com **gitleaks**; *secret scanning* e *push protection* do GitHub | `.github/` |
+| Mapa (#26) | Leaflet + tiles do OpenStreetMap: **o navegador pede os tiles ao OSM, então o OSM vê a região (zona do mapa e zoom) dos lugares que você abre, inclusive a casa**; o app manda só a origem como Referer. Quem não quer isso não marca o ponto (o mapa é opcional). Busca de endereço pelo Worker (User-Agent genérico, sem dado pessoal; só o texto digitado sai), limite global de 1 req/s (`geocode_gate`) e por conta | `apps/web/src/screens/academias`, `api.ts`, ADR-0010 |
 | Dependências | **Zero em runtime**. Dev: wrangler, esbuild, typescript e @types/node, com versões fixadas com ≥ 2 semanas de lançamento; Dependabot semanal | `package.json` |
 
 ## O que o Claude pode e não pode

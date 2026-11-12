@@ -225,3 +225,48 @@ test("exportar a conta inclui lugares (com lixeira) e dias", async () => {
   await ok(call(env, "DELETE", "/api/account", { user: "ana", body: { confirm: "APAGAR" } }));
   assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM gym_weekday").get().n, 0);
 });
+
+test("busca de endereço: o limite de 1 req/s é do app inteiro (contas diferentes dividem a mesma vaga)", async (t) => {
+  const env = makeEnv();
+  let n = 0;
+  t.mock.method(globalThis, "fetch", async () => { n++; return new Response("[]", { status: 200 }); });
+  let agora = 1_800_000_000_000;
+  t.mock.method(Date, "now", () => agora);
+  await ok(call(env, "GET", "/api/geocode?q=Rua%20Augusta", { user: "ana" }));
+  const outra = await call(env, "GET", "/api/geocode?q=Rua%20Oscar%20Freire", { user: "bia" });
+  assert.equal(outra.status, 429, "a conta B não tem limite próprio esgotado, mas o app inteiro sim");
+  assert.ok(Number(outra.headers.get("Retry-After")) >= 1);
+  assert.equal(n, 1, "só uma consulta saiu para o Nominatim");
+  agora += 1001;
+  await ok(call(env, "GET", "/api/geocode?q=Rua%20Oscar%20Freire", { user: "bia" }));
+  assert.equal(n, 2);
+});
+
+test("apagar lugar é atômico: se a lixeira falhar, perfil, histórico, dias e lugar ficam como estavam; e roda em um batch só", async () => {
+  const env = makeEnv(); const uid = await uidOf(env, "ana");
+  await ok(call(env, "PUT", "/api/profile", { user: "ana", body: profile }));
+  await ok(put(env, "ana", "a", { name: "A", weekdays: ["seg", "qua"] }));
+  await ok(put(env, "ana", "b", { name: "B" }));
+  await ok(upload(env, "ana", "gymId=a&equipmentId=halteres"), 201);
+  const estado = () => JSON.stringify([
+    env.DB.raw.prepare("SELECT data FROM profile WHERE user_id = ?1").get(uid), env.DB.raw.prepare("SELECT COUNT(*) AS n FROM profile_history WHERE user_id = ?1").get(uid),
+    mirror(env, uid), env.DB.raw.prepare("SELECT id, deleted_at FROM gym WHERE user_id = ?1 ORDER BY id").all(uid), env.DB.raw.prepare("SELECT deleted_at FROM media WHERE user_id = ?1").all(uid)]);
+  const antes = estado();
+
+  const prepare = env.DB.prepare, batch = env.DB.batch; let batches = 0, falhar = true;
+  env.DB.batch = async (st: any[]) => { batches++; return batch(st); };
+  env.DB.prepare = (sql: string) => {
+    const s = prepare(sql);
+    if (!falhar || !sql.startsWith("UPDATE media SET deleted_at")) return s;
+    return { bind: () => ({ allSync: () => { throw new Error("falha simulada"); } }) } as any; // o último comando do batch quebra
+  };
+  const r = await call(env, "DELETE", "/api/gyms/a", { user: "ana", body: { reassignTo: "b" } });
+  assert.equal(r.status, 500);
+  assert.equal(estado(), antes, "nada mudou: nem o perfil, nem o histórico, nem o espelho, nem o lugar");
+
+  falhar = false; batches = 0;
+  await ok(call(env, "DELETE", "/api/gyms/a", { user: "ana", body: { reassignTo: "b" } }));
+  assert.equal(batches, 1, "perfil + espelho + lugar + mídia num batch só");
+  assert.deepEqual(mirror(env, uid), { seg: "b", qua: "b" });
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM profile_history WHERE user_id = ?1").get(uid).n, JSON.parse(antes)[1].n + 1);
+});

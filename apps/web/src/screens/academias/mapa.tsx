@@ -90,11 +90,11 @@ export function SeletorDeLocal({ ponto, endereco, onChange }: { ponto: Ponto | n
     {achados && <ul class="lug-achados" aria-label="Resultados da busca">
       {achados.length ? achados.map((r, i) => <li key={i}><button type="button" onClick={() => { ir({ lat: r.lat, lng: r.lng }, r.label.slice(0, 160)); setAchados(null); }}><Icon id="gym" /><span>{r.label}</span></button></li>)
         : <li class="small sub" style="padding:10px 4px">Nada encontrado. Tente com a cidade ou toque no mapa.</li>}</ul>}
-    <div class="row wrapx" style="gap:8px;margin:10px 0"><button type="button" class="btn" disabled={ocupado} onClick={minhaLocalizacao}><Icon id="target" />Usar minha localização</button>
+    <div class="row wrapx" style="gap:8px;margin:10px 0 0"><button type="button" class="btn" disabled={ocupado} onClick={minhaLocalizacao}><Icon id="target" />Usar minha localização</button>
       {ponto && <button type="button" class="btn ghost" onClick={() => onChange(null, endereco)}>Tirar o ponto</button>}</div>
-    <Mapa ponto={ponto} onPick={(p) => onChange(p, endereco)} foco={foco} rotulo="Mapa: toque para marcar onde fica o lugar" />
-    <p class="small sub" style="margin-top:8px" aria-live="polite">{ponto ? `Ponto marcado (${ponto.lat.toFixed(4)}, ${ponto.lng.toFixed(4)}). Toque em outro lugar do mapa para mover.` : "Toque no mapa para marcar o ponto."}</p>
-    <div style="margin-top:12px"><label class="f" for="lug-end">Endereço (opcional)</label>
+    <div class="lug-end"><label class="f" for="lug-end">Endereço (opcional)</label>
       <input id="lug-end" class="input" value={endereco} maxLength={160} placeholder="Como aparece na lista" onInput={(e) => onChange(ponto, e.currentTarget.value)} /></div>
+    <Mapa ponto={ponto} onPick={(p) => onChange(p, endereco)} foco={foco} rotulo="Mapa: toque para marcar onde fica o lugar" />
+    <p class="small sub lug-status" aria-live="polite">{ponto ? `Ponto marcado (${ponto.lat.toFixed(4)}, ${ponto.lng.toFixed(4)}). Toque em outro lugar do mapa para mover.` : "Toque no mapa para marcar o ponto."}</p>
   </div>;
 }

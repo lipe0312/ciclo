@@ -7,7 +7,8 @@ import { Icon, toast } from "../../lib/ui/index.tsx";
 import { go, href } from "../../lib/roteador/index.ts";
 import type { Route } from "../../lib/roteador/index.ts";
 import { closeSheet, openSheet, SheetHead } from "../../lib/folha/index.tsx";
-import { DOW_NM } from "../../lib/util.ts";
+import { DOW_NM, img } from "../../lib/util.ts";
+import { FotoAparelho } from "../../lib/grade-aparelhos/index.tsx";
 import { apagarLugar, diasDoLugar, kindNm, midiaDoAparelho } from "../../lib/lugares/index.ts";
 import { PassoAPasso } from "./passos.tsx";
 import { Mapa, linkMapa } from "./mapa.tsx";
@@ -84,7 +85,7 @@ function Lugar({ g }: { g: Gym }) {
       <div class="card"><h2>Aparelhos <span class="badge num">{eqs.length}</span></h2>
         <p class="small sub" style="margin:4px 0 10px">Toque em um aparelho para ver os exercícios e guardar a mídia da sua regulagem.</p>
         {eqs.length ? <ul class="lug-aps">{eqs.map((e) => { const n = midiaDoAparelho(g.id, e.id).length; return <li key={e.id}>
-          <a class="lug-ap" href={href("academias", [g.id, "aparelho", e.id])}><img src={`/img/ex/${encodeURIComponent(e.img)}.webp`} alt="" loading="lazy" width={64} height={48} />
+          <a class="lug-ap" href={href("academias", [g.id, "aparelho", e.id])}><FotoAparelho src={img(e.img)} w={64} h={48} />
             <span><b>{e.nm}</b>{n > 0 && <span class="tiny sub"> · {n} mídia(s)</span>}</span><Icon id="arrow" /></a></li>; })}</ul>
           : <p class="small sub">Nenhum aparelho marcado. <a class="link44" href={href("academias", [g.id, "editar"])}>Marcar aparelhos</a></p>}</div>
     </div></div></>;

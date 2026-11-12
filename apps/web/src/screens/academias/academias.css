@@ -11,7 +11,8 @@
 /* mapa: contexto de empilhamento próprio, senão os painéis do Leaflet (z-index 400+) cobrem a barra e a folha */
 .lug-map{position:relative;z-index:0;isolation:isolate;height:300px;border:1px solid var(--borda);border-radius:var(--r);overflow:hidden;background:var(--sup-3)}
 @media (min-width:720px){.lug-map{height:380px}}
-.lug-map .leaflet-bar a{width:44px;height:44px;line-height:44px;font-size:20px}
+/* mais específico que `.leaflet-touch .leaflet-bar a` (o CSS do Leaflet carrega depois): zoom com 44 px */
+.lug-map.leaflet-container .leaflet-bar a,.lug-map.leaflet-touch .leaflet-bar a{width:44px;height:44px;line-height:44px;font-size:22px}
 .lug-map .leaflet-control-attribution a{display:inline-block;min-height:20px}
 .lug-pin{background:none;border:0}
 .lug-pin i{display:block;width:28px;height:28px;margin:6px 2px 0;background:var(--acc-bg);border:3px solid #0B0B0C;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 5px rgba(0,0,0,.45)}
@@ -45,3 +46,12 @@
 .lug-pp .pp-body{min-height:0}
 /* a barra inferior (celular) cobre o botão fixo do cadastro: sobe o botão acima dela */
 @media (max-width:959px){.lug-pp .pp-cta{bottom:calc(60px + env(safe-area-inset-bottom))}}
+
+/* passo do mapa: respiro entre o aviso e o botão fixo; o campo de endereço fica logo abaixo dos botões, sempre à vista */
+.lug-pp .pp-body{padding-bottom:28px}
+.lug-end{margin:12px 0}
+.lug-status{margin:8px 0 0}
+/* aparelho sem imagem: ícone de reserva no lugar do bloco vazio */
+.eq .eq-ph,.lug-ap .eq-ph{display:grid;place-items:center;width:100%;aspect-ratio:4/3;background:var(--sup-3);color:var(--sub)}
+.eq .eq-ph svg{width:36px;height:36px}
+.lug-ap .eq-ph{width:64px;height:48px;aspect-ratio:auto;border-radius:8px}

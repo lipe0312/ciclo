@@ -21,3 +21,11 @@ CREATE INDEX gym_weekday_gym ON gym_weekday(user_id, gym_id);
 ALTER TABLE media ADD COLUMN deleted_at INTEGER;
 CREATE INDEX media_user_gym ON media(user_id, gym_id, equipment_id) WHERE deleted_at IS NULL;
 CREATE INDEX media_trash ON media(deleted_at) WHERE deleted_at IS NOT NULL;
+
+-- Ciclo · #26 (ajuste): a política do Nominatim é 1 requisição/s para o app inteiro, não por conta.
+-- Linha única com o instante da última consulta. Não é dado pessoal (sem user_id, sem texto da busca).
+CREATE TABLE geocode_gate (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  last_at INTEGER NOT NULL
+);
+INSERT INTO geocode_gate (id, last_at) VALUES (1, 0);

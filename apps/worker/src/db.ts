@@ -19,12 +19,18 @@ export async function getProfile(env: Env, uid: string): Promise<Profile | null>
   const r = await env.DB.prepare("SELECT data FROM profile WHERE user_id = ?1").bind(uid).first<{ data: string }>();
   return r ? { ...DEFAULTS, ...(normalizeProfile(parse<unknown>(r.data, {})) as Partial<Profile>) } : null;
 }
-/** Grava o perfil e a versão no histórico; devolve o número da versão (contado no mesmo batch, atômico). */
-export async function putProfile(env: Env, uid: string, data: unknown): Promise<number> {
-  const s = JSON.stringify(data), now = Date.now();
-  const r = await env.DB.batch([
+/** Comandos que gravam o perfil e a versão no histórico (para rodar sozinhos ou dentro de um batch maior). */
+function profileStmts(env: Env, uid: string, data: unknown, now = Date.now()) {
+  const s = JSON.stringify(data);
+  return [
     env.DB.prepare("INSERT INTO profile (user_id, data, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(user_id) DO UPDATE SET data = ?2, updated_at = ?3").bind(uid, s, now),
     env.DB.prepare("INSERT INTO profile_history (user_id, data, created_at) VALUES (?1, ?2, ?3)").bind(uid, s, now),
+  ];
+}
+/** Grava o perfil e a versão no histórico; devolve o número da versão (contado no mesmo batch, atômico). */
+export async function putProfile(env: Env, uid: string, data: unknown): Promise<number> {
+  const r = await env.DB.batch([
+    ...profileStmts(env, uid, data),
     env.DB.prepare("SELECT COUNT(*) AS n FROM profile_history WHERE user_id = ?1").bind(uid),
   ]);
   return (r[2].results as { n: number }[])[0]?.n ?? 1;
@@ -82,13 +88,16 @@ export async function countGyms(env: Env, uid: string): Promise<number> {
   return (await env.DB.prepare("SELECT COUNT(*) AS n FROM gym WHERE user_id = ?1 AND deleted_at IS NULL").bind(uid).first<{ n: number }>())?.n ?? 0;
 }
 
-/** Espelho de profile.dayGym em gym_weekday (1 lugar por dia). Refeito inteiro a cada gravação do perfil. */
-export async function syncGymWeekdays(env: Env, uid: string, dayGym: Record<string, string>) {
-  const days = DOWS.filter((d) => typeof dayGym[d] === "string");
-  await env.DB.batch([
+/** Comandos que refazem o espelho de profile.dayGym em gym_weekday (1 lugar por dia). */
+function weekdayStmts(env: Env, uid: string, dayGym: Record<string, string | undefined>) {
+  return [
     env.DB.prepare("DELETE FROM gym_weekday WHERE user_id = ?1").bind(uid),
-    ...days.map((d) => env.DB.prepare("INSERT INTO gym_weekday (user_id, gym_id, weekday) VALUES (?1, ?2, ?3)").bind(uid, dayGym[d], d)),
-  ]);
+    ...DOWS.filter((d) => typeof dayGym[d] === "string").map((d) => env.DB.prepare("INSERT INTO gym_weekday (user_id, gym_id, weekday) VALUES (?1, ?2, ?3)").bind(uid, dayGym[d], d)),
+  ];
+}
+/** Espelho de profile.dayGym em gym_weekday. Refeito inteiro a cada gravação do perfil. */
+export async function syncGymWeekdays(env: Env, uid: string, dayGym: Record<string, string>) {
+  await env.DB.batch(weekdayStmts(env, uid, dayGym));
 }
 /** Padrão por dia da conta: o do perfil (o que o planejador lê) por cima do espelho. */
 async function currentDayGym(env: Env, uid: string): Promise<{ dayGym: Record<string, string>; hasProfile: boolean }> {
@@ -115,14 +124,24 @@ export async function gymDays(env: Env, uid: string, gid: string): Promise<strin
   const { dayGym } = await currentDayGym(env, uid);
   return DOWS.filter((d) => dayGym[d] === gid);
 }
-/** Apagar o lugar: dias vão para `to` (ou ficam sem padrão); lugar e mídia vão para a lixeira (30 dias). */
+/** Apagar o lugar: dias vão para `to` (ou ficam sem padrão); lugar e mídia vão para a lixeira (30 dias).
+ *  Tudo num batch só (perfil + histórico + espelho dos dias + lugar + mídia): ou muda tudo, ou nada. */
 export async function trashGym(env: Env, uid: string, gid: string, to: string | null, now = Date.now()) {
   const { dayGym, hasProfile } = await currentDayGym(env, uid);
-  await applyDaysChange(env, uid, reassignDays(dayGym, gid, to), hasProfile);
-  await env.DB.batch([
+  const ch = reassignDays(dayGym, gid, to);
+  const trash = [
     env.DB.prepare("UPDATE gym SET deleted_at = ?3 WHERE user_id = ?1 AND id = ?2 AND deleted_at IS NULL").bind(uid, gid, now),
     env.DB.prepare("UPDATE media SET deleted_at = ?3 WHERE user_id = ?1 AND gym_id = ?2 AND deleted_at IS NULL").bind(uid, gid, now),
-  ]);
+  ];
+  let days: D1PreparedStatement[] = [];
+  if (Object.keys(ch.patch).length) {
+    if (hasProfile) {
+      const r = applyProfilePatch({ ...DEFAULT_PROFILE, ...((await rawProfile(env, uid)) ?? {}) }, { dayGym: ch.patch });
+      if (!r.ok) throw new HttpError(400, r.errors.join("; "));
+      days = [...profileStmts(env, uid, r.profile, now), ...weekdayStmts(env, uid, (r.profile as { dayGym?: Record<string, string> }).dayGym ?? {})];
+    } else days = weekdayStmts(env, uid, ch.dayGym);
+  }
+  await env.DB.batch([...days, ...trash]);
 }
 
 export const TRASH_MS = 30 * 864e5;
@@ -285,6 +304,16 @@ export async function hitRateLimit(env: Env, uid: string, bucket: RateBucket, no
     ON CONFLICT(user_id, bucket) DO UPDATE SET count = CASE WHEN window_start = ?3 THEN count + 1 ELSE 1 END, window_start = ?3
     RETURNING count`).bind(uid, bucket, w).first<{ count: number }>();
   return (r?.count ?? 0) > max ? Math.ceil((w + windowMs - now) / 1000) : 0;
+}
+
+export const GEOCODE_GAP_MS = 1000;
+/** Limite GLOBAL do Nominatim (todas as contas juntas): 1 consulta por segundo. Atômico: só uma requisição ganha a vaga.
+ *  Devolve 0 se pode consultar, ou os segundos a esperar. */
+export async function takeGeocodeSlot(env: Env, now = Date.now()): Promise<number> {
+  const r = await env.DB.prepare("UPDATE geocode_gate SET last_at = ?1 WHERE id = 1 AND last_at <= ?2").bind(now, now - GEOCODE_GAP_MS).run();
+  if (r.meta.changes) return 0;
+  const row = await env.DB.prepare("SELECT last_at FROM geocode_gate WHERE id = 1").first<{ last_at: number }>();
+  return Math.max(1, Math.ceil(((row?.last_at ?? now) + GEOCODE_GAP_MS - now) / 1000));
 }
 
 // ---- direitos da conta (LGPD) ----
