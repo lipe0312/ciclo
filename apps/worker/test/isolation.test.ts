@@ -143,7 +143,7 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["GET /api/media/:id (mídia do lugar da B)", () => a("GET", `/api/media/${B.mediaLug}`), 404],
   ];
   const tools: [string, Record<string, unknown>, boolean?][] = [
-    ["ciclo_estado", { date: D }], ["ciclo_catalogo", { muscle: "ombro", gymId: "acad1" }], ["ciclo_planejar_dia", { date: D, daysLeft: 2 }],
+    ["ciclo_estado", { date: D }], ["ciclo_contexto", { pedido: "revisao", date: D }], ["ciclo_catalogo", { muscle: "ombro", gymId: "acad1" }], ["ciclo_planejar_dia", { date: D, daysLeft: 2 }],
     ["ciclo_salvar_treino_do_dia", { date: D, itens: [{ id: "x_inexistente", sets: 2 }], motivo: "t" }],
     ["ciclo_responder_pedido", { id: B.inbox, resposta: "oi" }, true], ["ciclo_marcar_presenca", { date: D, status: "nao_fui" }],
     ["ciclo_registrar_dor", { region: "ombro_e", intensity: 1 }], ["ciclo_registrar_comida", { texto: "pão", date: D }],
