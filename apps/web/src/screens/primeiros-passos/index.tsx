@@ -147,7 +147,7 @@ async function concluir(setBusy: (b: boolean) => void) {
 async function pular(setBusy: (b: boolean) => void) {
   setBusy(true);
   try {
-    S.profile.meta = { ...S.profile.meta, filledBy: "app", confirmed: true, checkup: "pulado" };
+    S.profile.meta = { ...S.profile.meta, checkup: "pulado" };
     if (SERVER) { await api("PUT", "/api/profile", { data: S.profile }); await api("PATCH", "/api/account", { onboarding: "concluido" }); }
     S.onboarding = "concluido"; commit(); toast("Sem problema: dá para fazer o checkup depois"); go("#hoje");
   } catch (e: any) { toast(e?.message ?? "Não deu para salvar agora. Tente de novo."); setBusy(false); }

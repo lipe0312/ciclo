@@ -409,3 +409,5 @@ a.sec{color:inherit;text-decoration:none}
 .sec .badge{margin-left:4px;vertical-align:1px}
 .musmap .hit rect{fill:transparent;stroke:none;cursor:pointer}
 .link44{display:inline-flex;align-items:center;min-height:44px;padding:0 2px}
+.note-checkup{align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.note-checkup-t{flex:1;min-width:200px}

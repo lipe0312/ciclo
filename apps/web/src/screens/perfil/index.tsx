@@ -139,5 +139,6 @@ export default function Perfil({ route }: { route: Route }) {
     <nav aria-label="Atalhos" class="stack"><a class="sec" href={`#perfil/${FORA.id}`}><span class="n"><Icon id={FORA.icon} /></span><span><b>{FORA.nm}</b><br /><span class="small sub">{FORA.why}</span><br /><span class="small">{FORA.resumo()}</span></span><Icon id="arrow" /></a>
       <a class="sec" href="#academias"><span class="n"><Icon id="gym" /></span><span><b>Academias</b><br /><span class="small sub">{S.gyms.map((g) => g.name).join(" · ")}</span></span><Icon id="arrow" /></a>
       <a class="sec" href="#corpo"><span class="n"><Icon id="body" /></span><span><b>Corpo e dores</b><br /><span class="small sub">{S.pains.length} dor(es) ativa(s)</span></span><Icon id="arrow" /></a></nav>
-    <hr /><a class="btn full" href="#primeiros-passos/0"><Icon id="spark" />Refazer checkup</a></>;
+    <hr /><a class="btn full" href="#primeiros-passos/0"><Icon id="spark" />Refazer checkup</a>
+    <p class="small sub" style="text-align:center;margin-top:6px">Suas respostas atuais já vêm preenchidas.</p></>;
 }
