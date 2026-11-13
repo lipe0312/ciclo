@@ -1,0 +1,29 @@
+/* Mapa do corpo por grupo. Cores só por tokens (docs/DESIGN.md); a cor nunca é o único sinal (número + lista). */
+.mc-topo{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.mc-cont{font-size:15px;margin:0}
+.mc-cont.cheio{color:var(--warn)}
+.mc-corpo{display:grid;gap:14px}
+.mc-figs{display:flex;justify-content:center;gap:12px}
+.mc-fig{width:min(100%,300px);height:auto;display:block;touch-action:manipulation}
+.mc-figs.ver-frente .v-costas,.mc-figs.ver-costas .v-frente{display:none}
+.mc-fig .sil{fill:var(--sup-3);stroke:var(--borda-ctrl);stroke-width:1}
+.mc-fig .lbl{font-size:11px;fill:var(--sub);font-weight:700;text-anchor:middle}
+.mc-zona{cursor:pointer;outline:none;-webkit-tap-highlight-color:transparent}
+.mc-zona .mc-m{pointer-events:none}
+.mc-zona .mc-m path{fill:var(--sup-2);stroke:var(--borda-ctrl);stroke-width:.8}
+.mc-zona .mc-hit{fill:transparent;stroke:none}
+.mc-zona:hover .mc-m path{stroke:var(--txt);stroke-width:1.4}
+.mc-zona.on .mc-m path{fill:var(--acc-bg);stroke:var(--acc-txt)}
+.mc-zona:focus-visible .mc-hit{stroke:var(--acc);stroke-width:3;fill:rgba(198,244,50,.12)}
+.mc-badge circle{fill:var(--bg);stroke:var(--acc-bg);stroke-width:2}
+.mc-badge text{fill:var(--txt);font-size:12px;font-weight:800;text-anchor:middle;font-variant-numeric:tabular-nums;pointer-events:none}
+.mc-lista{display:flex;flex-wrap:wrap;gap:8px}
+.mc-op{gap:6px}
+.mc-n{width:22px;height:22px;border-radius:50%;background:var(--acc-bg);color:var(--acc-txt);display:grid;place-items:center;font-size:12px}
+.mc-lado .prio-list{margin-top:14px}
+@media (min-width:720px){
+  .mc-seg{display:none}
+  .mc-corpo{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);align-items:start}
+  .mc-figs.ver-frente .v-costas,.mc-figs.ver-costas .v-frente{display:block}
+  .mc-fig{width:min(100%,250px)}
+}

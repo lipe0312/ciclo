@@ -6,11 +6,11 @@ import {
 } from "../src/index.ts";
 
 // ---- prioridades por subdivisão (mapa de músculos) ----
-test("prioridades: no máximo 3 subdivisões, IDs válidos, sem repetir", () => {
+test("prioridades: no máximo 5 grupos, IDs válidos, sem repetir", () => {
   assert.equal(validatePriorities(["ombro_lat", "biceps", "triceps_longa"]).ok, true);
   assert.equal(validatePriorities([]).ok, true);
-  const four = validatePriorities(["ombro_lat", "biceps", "triceps_longa", "peito_sup"]);
-  assert.equal(four.ok, false); assert.match(four.errors[0], /até 3/);
+  const seis = validatePriorities(["ombro_lat", "biceps", "triceps_longa", "peito_sup", "dorsal", "quad"]);
+  assert.equal(seis.ok, false); assert.match(seis.errors[0], /até 5/);
   const bad = validatePriorities(["ombro_lat", "ombro_inventado"]);
   assert.equal(bad.ok, false); assert.match(bad.errors.join(), /ombro_inventado/);
   assert.equal(validatePriorities(["biceps", "biceps"]).ok, false);
@@ -24,8 +24,8 @@ test("prioridades: o músculo sai da subdivisão, na ordem e sem repetir", () =>
   assert.deepEqual(prioritiesFromSubs([]), []);
 });
 
-test("objetivo sugere subdivisões válidas (até 3)", () => {
-  for (const id of ["bracos_ombros", "massa_geral", "definir", "recompor", "forca", "constancia"]) {
+test("objetivo sugere subdivisões válidas (até 5 grupos)", () => {
+  for (const id of ["bracos_ombros", "massa_geral", "definir", "recompor", "forca", "constancia", "shape_v", "perder_barriga", "saude", "retorno"]) {
     const subs = goalPreset(id);
     assert.ok(validatePriorities(subs).ok, id);
     assert.ok(subs.every((s) => SUB_MUSCLE_IDS.includes(s)));
@@ -50,8 +50,8 @@ test("perfil: recusa fora de faixa, tipo errado, campo desconhecido e ID inventa
   const bad: [Record<string, unknown>, RegExp][] = [
     [{ age: 5 }, /age/], [{ age: "30" }, /age/], [{ heightCm: 400 }, /heightCm/], [{ weightKg: 10 }, /weightKg/],
     [{ level: 4 }, /level/], [{ daysTarget: 0 }, /daysTarget/], [{ minutes: 500 }, /minutes/], [{ sex: "x" }, /sex/],
-    [{ priorities: ["ombro", "biceps", "triceps", "peito"] }, /priorities/], [{ priorities: ["inventado"] }, /priorities/],
-    [{ subPriorities: ["a", "b", "c", "d"] }, /subPriorities/], [{ avoid: ["Exercicio_Que_Nao_Existe"] }, /avoid/],
+    [{ priorities: ["ombro", "biceps", "triceps", "peito", "costas", "quad"] }, /priorities/], [{ priorities: ["inventado"] }, /priorities/],
+    [{ subPriorities: ["a", "b", "c", "d"] }, /subPriorities/], [{ subPriorities: ["ombro_lat", "biceps", "triceps_longa", "peito_sup", "dorsal", "quad"] }, /subPriorities/], [{ avoid: ["Exercicio_Que_Nao_Existe"] }, /avoid/],
     [{ pinned: { ombro: "Exercicio_Que_Nao_Existe" } }, /pinned/], [{ prefs: { ombro: "foguete" } }, /prefs/],
     [{ diet: { mode: "xxx" } }, /diet\.mode/], [{ diet: { kcal: 99999 } }, /diet\.kcal/], [{ goal: { horizonWeeks: 7 } }, /horizonWeeks/],
     [{ remembered: [{ exerciseId: "Barbell_Curl", kg: 20, reps: 10, confidence: "talvez" }] }, /remembered/],
@@ -207,8 +207,8 @@ test("perfil antigo: prioridades sem subdivisão e chaves fora do schema viram u
 test("perfil antigo: subdivisões incoerentes ou excesso de prioridades são consertados; sem nada, não inventa", () => {
   const a = normalizeProfile({ priorities: ["ombro", "biceps"], subPriorities: ["ombro_lat", "peito_sup", "ombro_inventado"] });
   assert.deepEqual(a.subPriorities, ["ombro_lat", "biceps"]); assert.deepEqual(a.priorities, ["ombro", "biceps"]);
-  const b = normalizeProfile({ priorities: ["ombro", "biceps", "triceps", "peito", "ficticio"] });
-  assert.equal(b.priorities.length, 3);
+  const b = normalizeProfile({ priorities: ["ombro", "biceps", "triceps", "peito", "costas", "quad", "ficticio"] });
+  assert.equal(b.priorities.length, 5);
   const c = normalizeProfile({ subPriorities: ["triceps_longa"] });
   assert.deepEqual(c.priorities, ["triceps"]);
   assert.deepEqual(normalizeProfile({ priorities: [], subPriorities: [] }).priorities, []);

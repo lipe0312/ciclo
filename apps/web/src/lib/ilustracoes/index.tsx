@@ -14,6 +14,14 @@ const G: Record<string, JSX.Element> = {
   forca: <><path d="M14 14v20M34 14v20M7 19v10M41 19v10M14 24h20" /></>,
   // calendário com visto
   constancia: <><rect x="8" y="10" width="32" height="30" rx="4" /><path d="M8 19h32M16 6v8M32 6v8M17 29l5 5 9-10" /></>,
+  // tronco em V: ombro largo, cintura fina
+  shape_v: <><circle cx="24" cy="7" r="4.5" /><path d="M5 15h38l-9 15-4 14h-12l-4-14z" /><path d="M19 30h10" /></>,
+  // fita métrica em volta da cintura
+  perder_barriga: <><path d="M12 14c0 4 24 4 24 0M12 14v8c0 4 24 4 24 0v-8" /><path d="M12 30c0 4 24 4 24 0v6c0 4-24 4-24 0z" /><path d="M20 34v3M24 34.5v2M28 34v3" /></>,
+  // coração com batimento
+  saude: <><path d="M24 40C10 30 7 22 7 16a8.5 8.5 0 0 1 17-2 8.5 8.5 0 0 1 17 2c0 6-3 14-17 24z" /><path d="M13 24h6l3-6 4 11 3-5h6" /></>,
+  // seta circular: recomeço
+  retorno: <><path d="M38 24a14 14 0 1 1-4.5-10.3" /><path d="M36 6v8h-8" /><path d="M20 18l10 6-10 6z" /></>,
 };
 export const IlustObjetivo = ({ id }: { id: string }) =>
   <svg class="ilu" viewBox="0 0 48 48" aria-hidden="true">{G[id] ?? G.constancia}</svg>;

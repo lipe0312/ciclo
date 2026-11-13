@@ -1,14 +1,8 @@
 // Textos e opções compartilhados entre Primeiros passos e Perfil (uma fonte só).
+import { GOAL_IDS, GOAL_INFO } from "@ciclo/core";
 import type { GoalId } from "./perfil-tipos.ts";
 
-export const GOALS: { id: GoalId; nm: string; desc: string; statement: string }[] = [
-  { id: "bracos_ombros", nm: "Braços e ombros maiores", desc: "mantendo a cintura", statement: "Braços e ombros maiores mantendo a cintura" },
-  { id: "massa_geral", nm: "Ganhar massa no geral", desc: "corpo todo, sem foco", statement: "Ganhar massa no corpo todo" },
-  { id: "definir", nm: "Perder gordura", desc: "mantendo o músculo", statement: "Perder gordura mantendo o músculo" },
-  { id: "recompor", nm: "Recompor", desc: "trocar gordura por músculo", statement: "Recompor: menos cintura, mais braço e ombro" },
-  { id: "forca", nm: "Ficar mais forte", desc: "cargas maiores nos básicos", statement: "Ficar mais forte nos básicos" },
-  { id: "constancia", nm: "Constância", desc: "treinar 2×/músculo sem falhar", statement: "Treinar toda semana com 2× por músculo" },
-];
+export const GOALS: { id: GoalId; nm: string; desc: string; statement: string; muda: string }[] = GOAL_IDS.map((id) => ({ id, ...GOAL_INFO[id] }));
 export const BODY: [string, string, string][] = [
   ["muito_magro", "Muito magro", "difícil ganhar peso"], ["magro", "Magro", "pouca gordura e pouca massa"], ["falso_magro", "Magro com barriga", "braço fino, gordura na cintura"],
   ["normal", "Normal", "nem magro nem acima"], ["atletico", "Atlético", "massa visível, pouca gordura"], ["forte_gordura", "Forte com gordura", "massa boa, cintura alta"],

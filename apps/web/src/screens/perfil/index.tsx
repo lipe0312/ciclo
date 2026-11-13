@@ -5,7 +5,8 @@ import { EXB, ensureBaseline, mName, profileChanged } from "../../lib/store/regr
 import { SERVER } from "../../lib/api/index.ts";
 import type { Route } from "../../lib/roteador/index.ts";
 import { Card, Chip, Icon, Seg, Stepper, toast } from "../../lib/ui/index.tsx";
-import { SeletorPrioridades, setSubPriorities } from "../../lib/prioridades/index.tsx";
+import { SeletorPrioridades, escolherObjetivo } from "../../lib/prioridades/index.tsx";
+import { SeletorGrupos } from "../../lib/mapa-corpo/index.tsx";
 import { IlustCorpo, IlustObjetivo } from "../../lib/ilustracoes/index.tsx";
 import { ANCHORS, ANCHOR_DEFAULT, BODY, DAYS_LONG, GOALS, LIM } from "../../lib/perfil-dados.ts";
 import { Mic } from "../../lib/voz/index.tsx";
@@ -25,7 +26,7 @@ interface Bloco { id: string; nm: string; icon: string; why: string; resumo: () 
 const LV = ["nunca treinou", "menos de 1 ano", "1–3 anos", "3+ anos"];
 const BLOCOS: Bloco[] = [
   { id: "objetivo", nm: "Objetivo e foco", icon: "target", key: "objetivo", why: "Guia o volume, as prioridades e as metas de tudo no app.", resumo: () => pr().goal.statement },
-  { id: "prioridades", nm: "Músculos prioritários", icon: "dumb", key: "prioridades", why: "Esses músculos são protegidos primeiro quando falta tempo ou dia.", resumo: () => (pr().subPriorities ?? []).map((s) => C.SUB_MUSCLES[s].nm).join(" › ") || pr().priorities.map(mName).join(" › ") || "nenhum escolhido" },
+  { id: "prioridades", nm: "Músculos prioritários", icon: "dumb", key: "prioridades", why: "Esses músculos são protegidos primeiro quando falta tempo ou dia.", resumo: () => C.groupsOfSubs(pr().subPriorities ?? []).map((g) => C.priorityGroups[g].nm).join(" › ") || pr().priorities.map(mName).join(" › ") || "nenhum escolhido" },
   { id: "voce", nm: "Você", icon: "user", key: "voce", why: "Calibra o ritmo de ganho e o alerta de cintura.", resumo: () => `${pr().age} anos · ${pr().heightCm} cm · ${pr().weightKg} kg · ${BODY.find((b) => b[0] === pr().bodyType)?.[1] ?? ""}` },
   { id: "experiencia", nm: "Experiência e cargas", icon: "clock", key: "experiencia", why: "Muda quantas séries você faz e a carga do 1º treino.", resumo: () => `${LV[pr().level]} · ${pr().remembered.length ? `${pr().remembered.length} carga(s) lembrada(s)` : "calibra no 1º treino"}` },
   { id: "rotina", nm: "Rotina da semana", icon: "cal", key: "rotina", why: "Muda como as séries se distribuem nos dias em que você realmente vai.", resumo: () => `${pr().daysTarget} dias · ${pr().minutes} min · semana começa ${DAYS_LONG.find((d) => d[0] === pr().weekStart)?.[1].toLowerCase() ?? ""}` },
@@ -47,8 +48,9 @@ function Objetivo() {
   const p = pr(), g = p.goal, mt = g.metrics;
   return <><p class="goal">{g.statement}</p>
     <p class="small sub" style="margin-top:6px">Em {g.horizonWeeks} semanas: braço +{fmt(mt.bracoCm, 1)} cm · cintura {mt.cinturaCm ? (mt.cinturaCm > 0 ? "+" : "") + fmt(mt.cinturaCm, 1) + " cm" : "igual"} · peso {mt.pesoKg >= 0 ? "+" : ""}{fmt(mt.pesoKg, 1)} kg · 2×/músculo em {mt.aderenciaPct}% das semanas.</p>
-    <div style="margin-top:16px"><span class="f">Um objetivo principal (sugere as prioridades; você ajusta no mapa)</span><div class="opts two">{GOALS.map((o) => <Opt key={o.id} on={g.id === o.id} title={o.nm} desc={o.desc} onClick={() => {
-      Object.assign(g, { id: o.id, statement: o.statement }); if (C.goalPreset(o.id).length) setSubPriorities(C.goalPreset(o.id), profileChanged); profileChanged(); commit(); }}><IlustObjetivo id={o.id} /></Opt>)}</div></div>
+    <div style="margin-top:16px"><span class="f">Um objetivo principal (sugere as prioridades e as metas; você ajusta depois)</span>
+      {C.GOAL_INFO[g.id as C.GoalId] && <div class="note goal-muda" style="margin:8px 0 12px" role="status"><Icon id="target" /><span><b>O que muda no seu treino:</b> {C.GOAL_INFO[g.id as C.GoalId].muda}</span></div>}
+      <div class="opts two">{GOALS.map((o) => <Opt key={o.id} on={g.id === o.id} title={o.nm} desc={o.desc} onClick={() => { escolherObjetivo(o.id, profileChanged); commit(); }}><IlustObjetivo id={o.id} /></Opt>)}</div></div>
     <div class="pp-steppers" style="margin-top:16px"><div><span class="f">Horizonte</span><PSeg k="goal.horizonWeeks" label="Horizonte" opts={[[8, "8 sem"], [12, "12 sem"], [16, "16 sem"]]} /></div>
       <div><span class="f">Braço</span><Stepper value={mt.bracoCm} step={0.5} unit=" cm" onStep={(d) => step("goal.metrics.bracoCm", d)} /></div><div><span class="f">Cintura</span><Stepper value={mt.cinturaCm} step={0.5} unit=" cm" onStep={(d) => step("goal.metrics.cinturaCm", d)} /></div><div><span class="f">Peso</span><Stepper value={mt.pesoKg} step={0.5} unit=" kg" onStep={(d) => step("goal.metrics.pesoKg", d)} /></div></div></>;
 }
@@ -67,7 +69,11 @@ function Experiencia() {
 
 function Rotina() {
   const p = pr();
-  return <><span class="f">Dias que normalmente dá para ir</span><div class="chips">{DOW.map((d, i) => <button type="button" key={d} class="chip tall" aria-pressed={p.daysUsual.includes(d)} onClick={() => ptoggle("daysUsual", d)}>{DOW_NM[i]}</button>)}</div>
+  return <><span class="f">Onde você treina (pode marcar os dois)</span>
+    <div class="chips">{([["academia", "Academia"], ["casa", "Casa"]] as [C.PlaceChoice, string][]).map(([k, nm]) => <button type="button" key={k} class="chip tall" aria-pressed={(p.places ?? []).includes(k)}
+      onClick={() => { const a = (p.places ?? []).includes(k) ? p.places.filter((x) => x !== k) : [...(p.places ?? []), k]; if (!a.length) return toast("Escolha ao menos uma opção"); pset("places", C.PLACES.filter((x) => a.includes(x))); }}>{nm}</button>)}</div>
+    <p class="tiny sub" style="margin:6px 0 16px">Os aparelhos de cada lugar ficam em <a class="link44" href="#academias">Academias</a>.</p>
+    <span class="f">Dias que normalmente dá para ir</span><div class="chips">{DOW.map((d, i) => <button type="button" key={d} class="chip tall" aria-pressed={p.daysUsual.includes(d)} onClick={() => ptoggle("daysUsual", d)}>{DOW_NM[i]}</button>)}</div>
     <div class="row wrapx" style="gap:16px;margin-top:16px"><div><span class="f">Meta por semana</span><PSeg k="daysTarget" label="Meta por semana" opts={[[2, "2"], [3, "3"], [4, "4"], [5, "5"]]} /></div><div><span class="f">Duração típica</span><PSeg k="minutes" label="Duração" opts={[[45, "45 min"], [60, "60 min"], [75, "75 min"], [90, "90 min"]]} /></div></div>
     <div class="row wrapx" style="gap:16px;margin-top:16px"><div><span class="f">Semana</span><PSeg k="flexWeek" label="Tipo de semana" opts={[[true, "flexível (orçamento)"], [false, "dias fixos"]]} /></div>
       <div><label class="f" for="weekStart">A semana começa em</label><select id="weekStart" aria-label="A semana começa em" class="input" style="min-width:160px" value={p.weekStart} onChange={(e) => pset("weekStart", e.currentTarget.value)}>{DAYS_LONG.map(([v, nm]) => <option key={v} value={v}>{nm}</option>)}</select></div>
@@ -105,7 +111,15 @@ function Comida() {
     <div style="margin-top:16px"><span class="f">Suplementos</span><div class="chips">{["whey", "creatina", "cafeína"].map((v) => <Chip key={v} on={d.supplements.includes(v)} onClick={() => ptoggle("diet.supplements", v)}>{v}</Chip>)}</div></div></>;
 }
 
-const CORPO_BLOCO: Record<string, () => any> = { objetivo: Objetivo, prioridades: () => <SeletorPrioridades onChange={() => { profileChanged(); commit(); }} />, voce: Corpo, experiencia: Experiencia, rotina: Rotina, preferencias: Preferencias, mobilidade: Mobilidade, claude: Claude, comida: Comida };
+function Prioridades() {
+  const onChange = () => { profileChanged(); commit(); };
+  return <><SeletorGrupos onChange={onChange} />
+    <details class="prio-lista"><summary>Modo avançado: escolher por subparte</summary>
+      <p class="small sub" style="margin:8px 0">Aqui dá para separar, por exemplo, ombro lateral de ombro posterior. Vale o mesmo limite de 5 músculos.</p>
+      <SeletorPrioridades onChange={onChange} /></details></>;
+}
+
+const CORPO_BLOCO: Record<string, () => any> = { objetivo: Objetivo, prioridades: Prioridades, voce: Corpo, experiencia: Experiencia, rotina: Rotina, preferencias: Preferencias, mobilidade: Mobilidade, claude: Claude, comida: Comida };
 
 const Selo = ({ ok }: { ok: boolean }) => <span class={`badge ${ok ? "ok" : "warn"}`}>{ok ? <><Icon id="check" />completo</> : "dá para melhorar"}</span>;
 
@@ -126,7 +140,7 @@ export default function Perfil({ route }: { route: Route }) {
   const nx = cp.next ? BLOCOS.find((b) => b.id === cp.next!.block) : null;
   return <><p class="kicker">Perfil de treino · edite quando quiser</p><h1>O que o treino sabe sobre você</h1>
     {porClaude && <div class="note" style="margin-top:14px"><Icon id="chat" /><span style="flex:1">Preenchido pelo Claude. Confira os blocos abaixo.</span>
-      <button type="button" class="btn sm" onClick={() => { S.profile.meta = { filledBy: "claude", confirmed: true }; profileChanged(); commit(); toast("Perfil confirmado"); }}>Está certo</button></div>}
+      <button type="button" class="btn sm" onClick={() => { S.profile.meta = { ...S.profile.meta, filledBy: "claude", confirmed: true }; profileChanged(); commit(); toast("Perfil confirmado"); }}>Está certo</button></div>}
     <div class="card dark" style="margin:14px 0"><div class="row between wrapx"><p class="kicker" style="color:#A1A1AA">Objetivo</p><Selo ok={cp.badge === "completo"} /></div>
       <p class="goal" style="margin-top:4px">{S.profile.goal.statement}</p>
       <p class="small sub" style="margin-top:6px">{C.planSentence(S.profile)}</p>
