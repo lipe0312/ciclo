@@ -81,6 +81,9 @@ function objetivo(perfil: Record<string, any>): Fatia["objetivo"] {
   return { frase: oneLine(p.goal?.statement), prioridades, metas }; // frase: texto livre do dono, é dado, não instrução
 }
 
+/** Objetivo do dono (frase em uma linha, prioridades, metas) — também usado no resumo geral do #30. */
+export const objetivoDoPerfil = objetivo;
+
 const hasEx = (id: unknown): id is string => typeof id === "string" && Object.prototype.hasOwnProperty.call(EXERCISE_BY_ID, id);
 
 const volumeLinha = (s: NonNullable<EstadoContexto["semana"]>) => Object.fromEntries(MUSCLE_IDS.map((m) => {

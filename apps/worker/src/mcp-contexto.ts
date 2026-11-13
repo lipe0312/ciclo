@@ -1,19 +1,20 @@
 // #45 ciclo_contexto: busca só o que a fatia do pedido precisa (todo SQL com bind e filtrado por user_id) e entrega ao core
 // (contexto()), que monta a fatia enxuta. Notas, texto de comida, contexto da dor e pedidos não são lidos; o treino do dia
 // (day_plan) é lido, mas o core só aproveita IDs do catálogo e séries (o nome do treino, texto livre, é descartado).
-import { MUSCLE_IDS, PEDIDOS, contexto, mondayOf, weeklyTargets } from "@ciclo/core";
-import type { EstadoContexto, FoodEntry, Meal, MuscleId, Pedido } from "@ciclo/core";
+import { MEMORIA, MUSCLE_IDS, PEDIDOS, contexto, foodAverages, mondayOf, resumoClaude, weeklyTargets } from "@ciclo/core";
+import type { EstadoContexto, EstadoResumo, FoodEntry, Meal, MuscleId, Pedido } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { EMPTY_MSG, getProfile, listGyms, parse, weekState } from "./db.ts";
 import { date, int, oneOf, str } from "./http.ts";
+import { healthOfWeek } from "./diario.ts";
 
 const addDays = (iso: string, n: number) => new Date(Date.parse(iso + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 const DOW = ["dom", "seg", "ter", "qua", "qui", "sex", "sab"];
 
 export const CONTEXTO_SCHEMA = {
-  type: "object", additionalProperties: false, required: ["pedido"],
+  type: "object", additionalProperties: false,
   properties: {
-    pedido: { type: "string", enum: PEDIDOS, description: "trocar (aparelho ocupado/trocar exercício) · dor · tempo (só X min) · gerar (foco, compensatório, outra academia) · comida · recap · revisao" },
+    pedido: { type: "string", enum: [...PEDIDOS, "resumo"], description: "sem pedido ou resumo: resumo geral da conta (objetivo, rotina, academias, dores, médias da semana, exames, mudanças, memória; ≤ 1.500 tokens) · trocar (aparelho ocupado/trocar exercício) · dor · tempo (só X min) · gerar (foco, compensatório, outra academia) · comida · recap · revisao" },
     date: { type: "string", description: "YYYY-MM-DD (fuso America/Sao_Paulo)" },
     exercicioId: { type: "string", description: "trocar/dor: ID do catálogo do exercício em questão" },
     gymId: { type: "string" }, minutos: { type: "integer", minimum: 15, maximum: 180 }, diasRestantes: { type: "integer", minimum: 1, maximum: 7 },
@@ -22,6 +23,7 @@ export const CONTEXTO_SCHEMA = {
 
 type Args = Record<string, unknown>;
 export async function ciclo_contexto(a: Args, env: Env, uid: string, today: string) {
+  if (a.pedido == null || a.pedido === "resumo") return resumoDaConta(env, uid, a.date ? date(a.date) : today);
   const pedido = oneOf(a.pedido, "pedido", PEDIDOS) as Pedido;
   const d = a.date ? date(a.date) : today;
   const exercicioId = str(a.exercicioId, "exercicioId", 80, false);
@@ -66,4 +68,40 @@ export async function ciclo_contexto(a: Args, env: Env, uid: string, today: stri
     medidas: medidas?.results.map((m) => ({ date: m.date, armCm: m.arm_cm, waistCm: m.waist_cm })),
   };
   return contexto(pedido, e);
+}
+
+// #30 resumo geral (ciclo_contexto sem pedido e resource ciclo://contexto): só IDs, números e a memória (dado).
+// Nome de lugar, notas, texto de comida e de pedidos não entram. Todo SQL com bind e filtrado por user_id.
+export async function resumoDaConta(env: Env, uid: string, d: string, now = Date.now()) {
+  const profile = await getProfile(env, uid);
+  if (!profile) return { vazio: "sem_perfil", motivo: EMPTY_MSG.sem_perfil };
+  const [gyms, saude, r] = await Promise.all([
+    listGyms(env, uid), healthOfWeek(env, uid, d),
+    env.DB.batch([
+      env.DB.prepare("SELECT region, intensity FROM pain WHERE user_id = ?1 AND resolved_at IS NULL ORDER BY created_at DESC LIMIT 8").bind(uid),
+      env.DB.prepare("SELECT date, meal, kcal, protein FROM food_log WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 LIMIT 400").bind(uid, addDays(d, -6), d),
+      env.DB.prepare("SELECT summary_json FROM health_exam WHERE user_id = ?1 AND status = 'analisado' AND summary_json IS NOT NULL ORDER BY analyzed_at DESC LIMIT 2").bind(uid),
+      env.DB.prepare("SELECT date, source FROM day_plan WHERE user_id = ?1 AND source <> 'core' ORDER BY created_at DESC LIMIT 5").bind(uid),
+      env.DB.prepare("SELECT id, fact, source, created_at FROM claude_memory WHERE user_id = ?1 AND (expires_at IS NULL OR expires_at > ?2) ORDER BY created_at DESC LIMIT ?3").bind(uid, now, MEMORIA.noResumo),
+    ]),
+  ]);
+  const [pains, food, exams, plans, mem] = r.map((x) => x.results as Record<string, any>[]);
+  const diet = (profile.diet ?? {}) as { kcal?: number; protein?: number };
+  const regs: FoodEntry[] = food.map((f) => ({ date: f.date, meal: f.meal, kcal: f.kcal, prot: f.protein }));
+  const avg = foodAverages(regs, d, { kcal: diet.kcal ?? 0, protein: diet.protein ?? 0 }, 7);
+  const e: EstadoResumo = {
+    data: d, perfil: profile,
+    academias: gyms.map((g) => ({ id: g.id, tipo: g.kind, aparelhos: g.equipment.length })),
+    dores: pains.map((p) => ({ region: String(p.region), intensity: p.intensity })),
+    saude: { sonoMedio: saude.medias.sleepAvg, alcoolNoites: saude.medias.alcoholNights, alcoolDoses: saude.medias.alcoholUnits, fumoDias: saude.medias.smokeDays, cardioMin: saude.medias.cardioMin },
+    proteina: avg.daysLogged && diet.protein ? { mediaG: avg.avgProt ?? 0, metaG: diet.protein, bateu: avg.adherence.hit, dias: avg.adherence.of } : null,
+    exames: exams.map((x) => {
+      const s = parse<{ data?: string; marcadores?: { nome?: string; status?: string }[] }>(x.summary_json, {});
+      const ms = Array.isArray(s.marcadores) ? s.marcadores : [];
+      return { data: typeof s.data === "string" ? s.data : null, fora: ms.filter((m) => m.status === "fora").map((m) => String(m.nome ?? "")), dentro: ms.filter((m) => m.status === "dentro").length };
+    }),
+    mudancas: plans.map((p) => ({ date: p.date, source: p.source })),
+    memoria: mem.map((m) => ({ id: m.id, fact: m.fact, source: m.source, createdAt: m.created_at })),
+  };
+  return resumoClaude(e);
 }

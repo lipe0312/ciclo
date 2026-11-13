@@ -53,8 +53,13 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   await ok(c("POST", "/api/diario/recap", { from: "2026-10-30", to: "2026-11-01", dias: [{ date: "2026-10-31", alcool: { cerveja: 2 }, sleptWell: true }], refeicoes: [{ date: "2026-10-31", meal: "almoco", text: `${tag} almoço` }], texto: `${tag} recap` }));
   const exam = (await ok(c("POST", "/api/exames", { label: `${tag} exame`, text: `${tag} laudo` }))).data.id;
   const tok = (await ok(c("POST", "/api/account/tokens", { label: `${tag} token` }))).data;
+  // #30 memória do Claude (pelo app e pelo connector) e uma nota com "joelho" para a busca
+  const mem = (await ok(c("POST", "/api/claude/memoria", { fato: `${tag} prefere halteres` }))).data.id;
+  await ok(mcp(env, tok.token, "ciclo_memoria_salvar", { fato: `${tag} joelho dói no agachamento` }));
+  await ok(c("PUT", "/api/checkin/2026-09-10", { sleepH: 7, energy: 2, soreness: 1, stress: 2, food: 0, note: `${tag} joelho estalou` }));
+  await ok(mcp(env, tok.token, "ciclo_chat_pendentes", { origem: "vigia" }));
   const exp = (await c("GET", "/api/account/export")).data;
-  return { sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
+  return { mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
 }
 const snap = async (env: any, user: string) => {
   const e = (await call(env, "GET", "/api/account/export", { user })).data;
@@ -68,7 +73,7 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
   const A = await seed(env, "ana", "MARCA_A", SID_A, 10);
   const before = await snap(env, "bia");
   const r2Before = [...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length;
-  const secrets = ["MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, String(MARK_KG), "bia@"];
+  const secrets = [B.mem, "MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, String(MARK_KG), "bia@"];
   const subsB = () => env.DB.raw.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE endpoint = ?1").get(B.endpoint).n;
   const restB = () => JSON.stringify(env.DB.raw.prepare("SELECT fire_at, sent_at FROM rest_timer WHERE user_id = ?1").get(B.uid));
   const restBefore = restB();
@@ -148,6 +153,10 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["POST /api/media (tipo errado)", () => call(env, "POST", "/api/media?gymId=acad1&equipmentId=halteres", { user: "ana", raw: PNG, ct: "text/html" }), 415],
     ["GET /api/media/:id", () => a("GET", `/api/media/${B.media}`), 404],
     ["GET /api/media/:id (mídia do lugar da B)", () => a("GET", `/api/media/${B.mediaLug}`), 404],
+    ["GET /api/claude", () => a("GET", "/api/claude")],
+    ["POST /api/claude/memoria", () => a("POST", "/api/claude/memoria", { fato: "A outro fato" }), 201],
+    ["PUT /api/claude/memoria/:id", () => a("PUT", `/api/claude/memoria/${B.mem}`, { fato: "hackeado" }), 404],
+    ["DELETE /api/claude/memoria/:id", () => a("DELETE", `/api/claude/memoria/${B.mem}`), 404],
   ];
   const tools: [string, Record<string, unknown>, boolean?][] = [
     ["ciclo_estado", { date: D }], ["ciclo_contexto", { pedido: "revisao", date: D }], ["ciclo_catalogo", { muscle: "ombro", gymId: "acad1" }], ["ciclo_planejar_dia", { date: D, daysLeft: 2 }],
@@ -157,6 +166,8 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["ciclo_comida_dia", { date: D }], ["ciclo_comida_corrigir", { id: B.food, kcal: 1, proteina: 1, confianca: "alta" }, true],
     ["ciclo_salvar_perfil", { perfil: { minutes: 45 } }], ["ciclo_revisar_edicoes", {}], ["ciclo_concluir_revisao", { id: B.edit, review: "ok" }, true],
     ["ciclo_diario", { from: "2026-11-01", to: D }], ["ciclo_registrar_resumo_dias", { dias: [{ date: D, alcohol: 3, sleptWell: false }] }],
+    ["ciclo_chat_pendentes", { origem: "rotina" }], ["ciclo_buscar", { query: "joelho", de: "2026-01-01", ate: D }],
+    ["ciclo_memoria_salvar", { fato: "A fato" }], ["ciclo_memoria_listar", {}],
     ["ciclo_exame_pendente", {}], ["ciclo_exame_concluir", { id: B.exam, resumo: { marcadores: [{ nome: "TSH", valor: 1, status: "dentro" }] } }, true],
   ];
   assert.deepEqual([...new Set(cases.map((c) => c[0].replace(/ \(.*\)$/, "")))].concat("DELETE /api/account").sort(), routeSignatures().sort(), "toda rota precisa de caso de isolamento");
@@ -172,6 +183,13 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     assert.equal(r.status, 200); assert.equal(!!r.data.result.isError, !!isErr, `${name}: ${r.text}`);
     noLeak(name, r.text);
   }
+  // #30: resumo geral e resource ciclo://contexto da A não trazem nada da B (memória, nota, dor, objetivo)
+  const res = await call(env, "POST", "/mcp", { bearer: A.token, body: { jsonrpc: "2.0", id: 2, method: "resources/read", params: { uri: "ciclo://contexto" } } });
+  assert.equal(res.status, 200); assert.ok(res.data.result.contents[0].text.includes("MARCA_A")); noLeak("resources/read", res.text);
+  const resumo = await mcp(env, A.token, "ciclo_contexto", {});
+  assert.ok(resumo.text.includes("MARCA_A")); noLeak("ciclo_contexto resumo", resumo.text);
+  const achou = await mcp(env, A.token, "ciclo_buscar", { query: "joelho", de: "2026-01-01", ate: D });
+  assert.ok(achou.text.includes("MARCA_A"), "a busca da A acha a nota da A"); noLeak("ciclo_buscar", achou.text);
   const up = await call(env, "POST", "/mcp/media", { bearer: A.token, raw: PNG, ct: "image/png" });
   assert.equal(up.status, 201);
   noLeak("export A", (await a("GET", "/api/account/export")).text);
