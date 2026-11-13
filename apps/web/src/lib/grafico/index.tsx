@@ -19,3 +19,15 @@ export function Linha({ values, label, unit = "" }: { values: number[]; label: s
     {pts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="3" fill={i === pts.length - 1 ? "var(--acc)" : "currentColor"} />)}
   </svg>;
 }
+
+/** Colunas por semana (#29): a última coluna é a semana atual (verde, ainda em andamento); `meta` desenha a marca tracejada.
+ *  O valor sempre vem escrito fora do gráfico; o aria-label lista todos os valores. */
+export function Colunas({ values, label, unit = "", meta, max }: { values: number[]; label: string; unit?: string; meta?: number; max?: number }) {
+  const w = 240, h = 56, n = values.length, top = Math.max(max ?? 0, meta ?? 0, ...values, 1);
+  const bw = n ? (w - 8) / n : 0, y = (v: number) => h - 4 - (v / top) * (h - 10);
+  return <svg class="spark colunas" viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`${label}: ${values.join(", ")}${unit}`} preserveAspectRatio="none">
+    <line x1="0" y1={h - 3.5} x2={w} y2={h - 3.5} stroke="var(--borda-ctrl)" stroke-width="1" vector-effect="non-scaling-stroke" />
+    {values.map((v, i) => <rect key={i} x={4 + i * bw + bw * 0.14} width={bw * 0.72} y={v > 0 ? y(v) : h - 4.5} height={v > 0 ? h - 4 - y(v) : 1} rx="2" fill={i === n - 1 ? "var(--acc)" : "var(--txt)"} opacity={i === n - 1 ? 1 : 0.85} />)}
+    {meta != null && <line x1="0" x2={w} y1={y(meta)} y2={y(meta)} stroke="var(--sub)" stroke-width="1.5" stroke-dasharray="4 3" vector-effect="non-scaling-stroke" />}
+  </svg>;
+}

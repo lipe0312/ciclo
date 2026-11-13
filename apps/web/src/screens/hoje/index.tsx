@@ -1,139 +1,68 @@
-// Hoje: objetivo, semana flexível, compensatório, treino do dia, volume, Claude e mini-cartões.
-// A semana planejada (screens/semana) dá o treino de hoje e os dias que restam; faltas perguntam aqui, inline.
-// O check-in mudou para o Diário (#27); o lembrete é a faixa fina do topo (lib/lembrete-diario).
-import { useEffect } from "preact/hooks";
-import { C, S, commit, dates, today } from "../../lib/store/index.ts";
-import { FOCUS, computePlan, defaultGymFor, foodTotals, gymById, mName } from "../../lib/store/regras.ts";
-import { SERVER, send } from "../../lib/api/index.ts";
-import { Card, Chip, Icon, Seg, toast } from "../../lib/ui/index.tsx";
-import { BarraSimples, BarraVolume } from "../../lib/grafico/index.tsx";
-import { DOW_NM, fmt, longDate } from "../../lib/util.ts";
+// Home "Hoje" de evolução (#29): responde em 5 s "estou indo bem no objetivo? o que não registro? o que faço hoje?".
+// Ordem: avisos → semana (carrossel) → objetivo → o que falta registrar → comida → painéis → Claude. Nada de formulário aberto aqui:
+// cada card tem um CTA para alterar e outro para ver o detalhe. O lembrete do Diário (check-in/checkout) é a faixa fina do shell.
+import type { ComponentChildren } from "preact";
+import { useEffect, useState } from "preact/hooks";
+import { today } from "../../lib/store/index.ts";
+import { mName } from "../../lib/store/regras.ts";
+import { SERVER } from "../../lib/api/index.ts";
+import { Card, Icon } from "../../lib/ui/index.tsx";
+import { longDate } from "../../lib/util.ts";
 import { FaixaCheckup } from "../../lib/faixa-checkup/index.tsx";
-import { CaixaClaude } from "../claude/caixa.tsx";
 import { AvisoFalta } from "../semana/aviso.tsx";
-import { diaDe, garantirSemana, getSemana } from "../semana/estado.ts";
+import { garantirSemana, getSemana } from "../semana/estado.ts";
+import { SemanaCarrossel } from "./carrossel-semana.tsx";
+import { ClaudeCard, ComidaPainel } from "./comida-claude.tsx";
+import { H, carregarHome } from "./estado.ts";
+import { Lacunas } from "./lacunas.tsx";
+import { BracoCintura, CardioPainel, ForcaPainel, Objetivo, PesoPainel, PresencaPainel, Volume } from "./paineis.tsx";
+import "./hoje.css";
 
-function markDay(d: string) {
-  if (d >= today) return toast(d === today ? "Hoje: começar o treino já marca “fui”" : "Futuro: planeje na Semana");
-  const cyc: Record<string, string> = { fui: "nao_fui", nao_fui: "folga", folga: "fui" };
-  S.week.attendance[d] = cyc[S.week.attendance[d] ?? "folga"] ?? "fui"; commit();
-  send("PUT", `/api/attendance/${d}`, { status: S.week.attendance[d] }).catch(() => {});
-}
-const setUi = (k: "minutes" | "gymId" | "format", v: any) => { (S.ui as any)[k] = v; S.ui.locked = false; commit(); };
-
-function Semana({ plan }: { plan: C.DayPlan }) {
-  const proj: string[] = [];
-  let g = plan.groups.length === 2 ? "full" : plan.groups[0];
-  for (let i = 1; i < S.ui.daysLeft; i++) { g = g === "sup" ? "inf" : "sup"; proj.push(g); }
-  let fut = 0;
-  const fid = FOCUS.find(([, , ms]) => ms.join() === S.ui.focus.join())?.[0] ?? "auto";
-  return <Card>
-    <div class="row between wrapx"><h2>Semana flexível</h2><span class="small sub num">fecha em {getSemana()?.closePct ?? plan.weekClosePct}% · {Object.values(S.week.attendance).filter((x) => x === "fui").length} feitos</span></div>
-    <p class="small sub" style="margin:4px 0 12px">Dias passados: toque para marcar fui / faltou / folga. Iniciar o treino já conta como “fui”.</p>
-    <div class="week">{dates.map((d, i) => {
-      const att = S.week.attendance[d], ses = S.week.sessions.find((s: any) => s.date === d);
-      let cls: string, lbl: string, st: any = null;
-      if (d < today) {
-        cls = att === "fui" || ses ? "fui" : att === "nao_fui" ? "nao" : "livre";
-        lbl = cls === "fui" ? (ses?.name ?? "treino").replace("Superior", "Sup.").replace("Inferior", "Inf.") : cls === "nao" ? "faltou" : att === "folga" ? "folga" : "marcar";
-        st = cls === "fui" ? <Icon id="check" /> : cls === "nao" ? <Icon id="x" /> : null;
-      } else if (d === today) {
-        cls = "hoje" + (att === "fui" || S.session ? " fui" : "");
-        lbl = plan.mode === "compensatorio" ? "Corpo todo" : plan.groups[0] === "sup" ? "Sup." : "Inf.";
-        st = att === "fui" || S.session ? <Icon id="check" /> : null;
-      } else if (getSemana()) {
-        const wd = diaDe(d), g = wd?.plan?.groups ?? [];
-        cls = wd && wd.kind !== "folga" ? "prev" : "livre";
-        lbl = cls === "prev" ? (wd!.kind === "extra" ? "Extra" : g.length === 2 ? "Corpo" : g[0] === "inf" ? "Inf." : "Sup.") : "folga";
-      } else { const p = proj[fut++]; cls = p ? "prev" : "livre"; lbl = p ? (p === "sup" ? "Sup." : "Inf.") : "folga"; }
-      const gy = gymById(d === today ? S.ui.gymId : defaultGymFor(d))?.name.replace("Academia ", "A") ?? "";
-      return <button type="button" key={d} class={`day ${cls}`} onClick={() => markDay(d)} aria-label={`${DOW_NM[i]}: ${lbl}`}><b>{DOW_NM[i]}</b><span class="st">{st}</span><span class="lbl">{lbl}</span><span class="gy">{d >= today && lbl !== "folga" ? gy : ""}</span></button>;
-    })}</div><hr />
-    <div class="ctl"><div><h3>Semana planejada</h3><p class="small sub">todos os treinos já montados · faltou, o app pergunta</p></div>
-      <a class="btn" href="#semana"><Icon id="cal" />Ver a semana</a></div>
-    <div class="ctl"><div><h3>Tempo hoje</h3><p class="small sub">≈ 1 série a cada 3 min</p></div>
-      <Seg opts={[30, 45, 60, 75, 90].map((n) => [n, String(n)] as [number, string])} value={S.ui.minutes} onPick={(v) => setUi("minutes", v)} label="Minutos" /></div>
-    <div class="ctl"><div><h3>Academia hoje</h3><p class="small sub">só entram aparelhos de lá</p></div>
-      <Seg opts={S.gyms.map((gm) => [gm.id, gm.name.replace("Academia ", "Acad ")] as [string, string])} value={S.ui.gymId} onPick={(v) => setUi("gymId", v)} label="Academia" /></div>
-    <div style="margin-top:12px"><h3>Foco de hoje</h3><div class="chips" style="margin-top:8px">
-      {FOCUS.map(([id, nm, ms]) => <Chip key={id} on={fid === id} onClick={() => { S.ui.focus = ms; if (ms.length) S.ui.mode = "normal"; S.ui.locked = false; commit(); }}>{nm}</Chip>)}
-      <Chip on={S.ui.crowded} onClick={() => { S.ui.crowded = !S.ui.crowded; S.ui.locked = false; commit(); }}><Icon id="warn" />Academia cheia</Chip></div></div>
-    <div class="ctl" style="margin-top:12px"><div><h3>Formato</h3><p class="small sub">mesmo volume, outra dinâmica</p></div>
-      <Seg opts={[["tradicional", "Normal"], ["superserie", "Superséries"], ["circuito", "Circuito"]]} value={S.ui.format} onPick={(v) => setUi("format", v)} label="Formato" /></div>
-  </Card>;
-}
-
-function TreinoCard({ plan }: { plan: C.DayPlan }) {
-  const running = S.session && !S.session.finishedAt;
-  return <div class="card dark">
-    <div class="row between wrapx start"><div><p class="kicker" style="color:#A1A1AA">Treino de hoje · {gymById(S.ui.gymId)?.name}</p>
-      <h2 style="font-size:22px;margin-top:4px">{plan.name}</h2>
-      <p class="small sub num" style="margin-top:4px">{plan.items.length} exercícios · {plan.setsTotal} séries · ~{plan.estMinutes} min{S.ui.format !== "tradicional" ? ` · ${S.ui.format === "superserie" ? "superséries" : "circuito"}` : ""}</p></div>
-      {running ? <a class="btn pri" href="#treino">Continuar <Icon id="arrow" /></a> : <a class="btn pri" href="#treino">Começar <Icon id="arrow" /></a>}</div>
-    <ul class="small" style="margin:12px 0 0;padding-left:18px;color:#D4D4D8;display:grid;gap:4px">{plan.why.map((w, i) => <li key={i}>{w}</li>)}</ul>
-    <div class="chips" style="margin-top:12px">{Object.entries(plan.perMuscle).map(([m, n]) => <span key={m} class="badge" style="background:#26262B;color:#F4F4F5">{mName(m)} <b class="num">{n}</b></span>)}
-      {plan.prehab.length > 0 && <span class="badge" style="background:#26262B;color:#C6F432">+ fortalecimento</span>}</div>
-    {S.ui.locked && <p class="tiny" style="margin-top:10px;color:#A1A1AA">{S.ui.planSource === "claude" ? "Montado pelo Claude" : S.ui.planSource === "semana" ? "Da sua semana planejada" : S.ui.planSource === "perfil" ? "Feito antes de você mudar o perfil" : "Editado por você · o Claude revisa"} · mudar os controles <button type="button" class="btn sm ghost" style="color:#C6F432" onClick={() => { S.ui.planSource = undefined; S.ui.locked = false; computePlan(true); commit(); }}>refaz o treino</button></p>}
-  </div>;
-}
-
-function Compensa({ plan }: { plan: C.DayPlan }) {
-  const setMode = (v: C.Mode) => { S.ui.mode = v; S.ui.locked = false; commit(); toast(v === "normal" ? "Voltou ao normal" : "Gerado a seu pedido"); };
-  if (plan.mode !== "normal") return <Card><div class="row between wrapx"><div><p class="kicker">Modo {plan.mode === "compensatorio" ? "compensatório" : "expresso"}</p><p class="small sub">Gerado a seu pedido.</p></div><button type="button" class="btn sm" onClick={() => setMode("normal")}>Voltar ao normal</button></div></Card>;
+/** Sobrou só hoje? Quem decide é a regra da semana (core). A oferta é um aviso com CTA, não um formulário. */
+function Compensa() {
   const sw = getSemana();
-  if (sw) { // com a semana planejada, quem decide é a regra da semana (só sobra 1 treino e músculo sem 2×)
+  if (sw) {
     const o = sw.offer; if (!o || o.date !== today) return null;
     return <Card cls="hl"><div class="row start"><Icon id="info" style="color:var(--acc);margin-top:2px" /><div style="flex:1">
       <h3>Só sobrou hoje?</h3><p class="small sub" style="margin-top:4px">{o.muscles.map(mName).slice(0, 4).join(", ")} ficam sem o 2º estímulo. Sem compensatório, {o.outWithout} séries ficam de fora; com ele, {o.outWith}.</p>
       <a class="btn pri" style="margin-top:10px" href="#semana">Ver as opções</a></div></div></Card>;
   }
-  if (!plan.suggestCompensatory) return null;
-  const other = plan.groups[0] === "sup" ? "inf" : "sup";
-  const lacking = C.MUSCLE_IDS.filter((m) => C.MUSCLES[m].group === other && (S.week.freq[m] ?? 0) < 2).map(mName);
-  return <Card cls="hl"><div class="row start"><Icon id="info" style="color:var(--acc);margin-top:2px" /><div style="flex:1">
-    <h3>Só sobrou hoje?</h3><p class="small sub" style="margin-top:4px">{lacking.slice(0, 4).join(", ")} ainda não tiveram 2× nesta semana. O compensatório junta os dois grupos numa sessão — só se você quiser.</p>
-    <div class="row wrapx" style="margin-top:10px;gap:8px"><button type="button" class="btn pri sm" onClick={() => setMode("compensatorio")}>Gerar compensatório</button><button type="button" class="btn sm" onClick={() => setMode("expresso")}>Expresso (só prioridades)</button></div></div></div></Card>;
+  return null;
 }
 
-function Volume({ plan }: { plan: C.DayPlan }) {
-  const t = C.weeklyTargets(S.profile.level, S.profile.priorities);
-  const max = Math.max(16, ...Object.values(t));
-  return <Card><div class="row between wrapx"><h2>Volume da semana</h2><span class="badge num">fecha em {plan.weekClosePct}%</span></div>
-    <div class="legend" style="margin:8px 0 14px"><span><i class="sw" style="background:var(--txt)" />feito</span><span><i class="sw sw-sec" />hoje</span><span><i class="sw" style="background:var(--sub);width:2px;height:12px" />meta</span></div>
-    {C.MUSCLE_IDS.map((m) => <BarraVolume key={m} label={`${mName(m)} · ${S.week.freq[m] ?? 0}×`} done={S.week.done[m] ?? 0} today={plan.perMuscle[m] ?? 0} target={t[m]} max={max} prio={S.profile.priorities.includes(m)} />)}
-    <p class="tiny sub" style="margin-top:12px">Meta = séries/semana · “2×” = músculo treinado em 2 sessões. Prioridades marcadas com ●.</p></Card>;
+/** Conta sem dados: didática, leva aos Primeiros passos. */
+function Vazia() {
+  const passos: [string, string][] = [["target", "Diga seu objetivo e seus dias: o plano da semana nasce daí."], ["dumb", "Faça o 1º treino: cada série vira gráfico aqui."], ["body", "Meça braço e cintura a cada 15 dias."], ["food", "Registre o que come: proteína e calorias entram na média."]];
+  return <Card cls="hm-vazia"><p class="kicker">Bem-vindo</p><h2 style="margin-top:4px">Sua Home ainda está vazia</h2>
+    <p class="small sub" style="margin-top:6px">Ela mostra a sua evolução e o que falta registrar. Em poucos minutos você já vê o primeiro gráfico.</p>
+    <ul class="hm-passos">{passos.map(([i, t]) => <li key={t}><Icon id={i} /><span class="small">{t}</span></li>)}</ul>
+    <a class="btn pri full" href="#primeiros-passos">Começar pelos Primeiros passos<Icon id="arrow" /></a></Card>;
 }
 
-function Objetivo() {
-  const g = S.profile.goal, ms = S.measures, first = ms[0], last = ms[ms.length - 1];
-  const wk = Math.max(1, Math.round((Date.parse(today) - Date.parse(first?.date ?? today)) / 6048e5) + 1);
-  const arm = first && last ? last.braco - first.braco : 0, waist = first && last ? last.cintura - first.cintura : 0;
-  return <Card><div class="row start"><Icon id="target" style="color:var(--acc);margin-top:3px" /><div style="flex:1;min-width:0">
-    <p class="kicker">Objetivo · semana {Math.min(wk, g.horizonWeeks)} de {g.horizonWeeks}</p><p style="font-weight:700;margin-top:2px">{g.statement}</p>
-    <div class="grid g3" style="margin-top:10px;gap:8px">
-      <div><p class="tiny sub">Braço</p><p class="num"><b>{arm >= 0 ? "+" : ""}{fmt(arm, 1)}</b> / +{fmt(g.metrics.bracoCm, 1)} cm</p><div style="margin-top:4px"><BarraSimples pct={(arm / (g.metrics.bracoCm || 1)) * 100} color="var(--acc)" /></div></div>
-      <div><p class="tiny sub">Cintura</p><p class="num"><b>{waist >= 0 ? "+" : ""}{fmt(waist, 1)}</b> cm · meta ±1</p><div style="margin-top:4px"><BarraSimples pct={Math.abs(waist) * 100} color={Math.abs(waist) > 1 ? "var(--bad)" : "var(--ok)"} /></div></div>
-      <div><p class="tiny sub">Frequência 2×</p><p class="num"><b>{C.MUSCLE_IDS.filter((m) => (S.week.freq[m] ?? 0) >= 2).length}</b>/{C.MUSCLE_IDS.length} músculos</p></div>
-    </div></div></div></Card>;
-}
+const Esqueleto = () => <div class="stack" aria-busy="true" aria-label="Carregando a Home"><div class="hm-esq" style="height:210px" /><div class="hm-esq" style="height:150px" /><div class="hm-esq" style="height:130px" /></div>;
 
-function Mini() {
-  const ws = dates.map((d) => S.week.checkins[d]?.weightKg).filter(Boolean);
-  const { kcal, protein: prot } = S.profile.diet;
-  const tf = foodTotals(today);
-  return <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
-    <Card><p class="kicker">Peso</p><p class="big num" style="margin-top:6px">{ws.length ? fmt(ws[ws.length - 1], 1) : "—"}<span class="small sub"> kg</span></p><p class="small sub">{ws.length} registro(s) na semana</p></Card>
-    <Card><p class="kicker">Comida hoje</p><p class="big num" style="margin-top:6px">{fmt(tf.kcal)}</p><p class="small sub num">kcal · meta {fmt(kcal)}</p>
-      <p class="small num" style="margin-top:6px"><b>{fmt(tf.prot)} g</b> <span class="sub">proteína · {prot}</span></p><div style="margin-top:4px"><BarraSimples pct={(tf.prot / prot) * 100} color="var(--acc)" /></div></Card></div>;
+/** Em tela larga, duas colunas independentes (sem buracos de linha); no celular, uma só, na ordem de importância. */
+function useLarga() {
+  const [w, set] = useState(() => matchMedia("(min-width:1100px)").matches);
+  useEffect(() => { const m = matchMedia("(min-width:1100px)"), f = () => set(m.matches); m.addEventListener("change", f); return () => m.removeEventListener("change", f); }, []);
+  return w;
 }
 
 export default function Hoje() {
-  useEffect(() => { garantirSemana(); }, []);
-  const plan = computePlan();
-  return <>
-    <div class="row between wrapx" style="margin-bottom:14px"><div><p class="kicker">{longDate(today)}{SERVER ? "" : " · demonstração"}</p><h1>Hoje</h1></div></div>
-    <FaixaCheckup />
-    <div class="grid dash"><div class="stack"><AvisoFalta /><Objetivo /><Semana plan={plan} /><Compensa plan={plan} /><TreinoCard plan={plan} /><Volume plan={plan} /></div>
-      <div class="stack"><CaixaClaude /><Mini /></div></div>
-  </>;
+  useEffect(() => { void garantirSemana(); void carregarHome(true); }, []);
+  const larga = useLarga();
+  const v = H.view;
+  const cab = <div class="row between wrapx" style="margin-bottom:14px"><div><p class="kicker">{longDate(today)}{SERVER ? "" : " · demonstração"}</p><h1>Hoje</h1></div></div>;
+  const topo = <><FaixaCheckup /><AvisoFalta /></>;
+  if (!v) return <>{cab}{topo}{H.erro
+    ? <Card><h2>Não deu para carregar</h2><p class="small sub" style="margin-top:4px">Sem conexão ou o servidor não respondeu. Seus registros estão salvos.</p><button type="button" class="btn pri" style="margin-top:10px" onClick={() => void carregarHome(true)}>Tentar de novo</button></Card>
+    : <Esqueleto />}</>;
+  const sem = <SemanaCarrossel />, obj = <Objetivo view={v} />, lac = <Lacunas gaps={v.gaps} />, com = <ComidaPainel c={v.comida} />, cla = <ClaudeCard />;
+  const paineis = v.vazio ? [] : [<Volume view={v} />, <ForcaPainel view={v} />, <PesoPainel view={v} />, <BracoCintura view={v} />, <PresencaPainel view={v} />, <CardioPainel view={v} />];
+  const comp = <Compensa />;
+  const col = (xs: ComponentChildren[]) => <div class="stack hm-col">{xs.map((x, i) => <div key={i}>{x}</div>)}</div>;
+  const A = [comp, sem, ...(v.vazio ? [] : [obj]), ...paineis.slice(0, 2)], B = [lac, com, ...paineis.slice(2), cla];
+  return <>{cab}{topo}{v.vazio && <div style="margin-bottom:12px"><Vazia /></div>}
+    {larga ? <div class="grid dash">{col(A)}{col(B)}</div>
+      : col([comp, sem, ...(v.vazio ? [] : [obj]), lac, com, ...paineis, cla])}</>;
 }

@@ -20,3 +20,4 @@ export * from "./midia.ts";
 export * from "./mp4.ts";
 export * from "./contexto-metodo.ts";
 export * from "./contexto.ts";
+export * from "./home.ts";
