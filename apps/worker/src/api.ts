@@ -516,7 +516,7 @@ on("GET", "/api/media/:id", async (req, env, p, u) => {
   if (!env.MEDIA) throw new HttpError(501, "R2 não configurado");
   const row = await env.DB.prepare("SELECT r2_key, mime, bytes FROM media WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL").bind(p.id, u.id).first<{ r2_key: string; mime: string; bytes: number }>();
   if (!row) throw new HttpError(404, "não encontrado");
-  const base = { "Content-Type": row.mime, "Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff", "Accept-Ranges": "bytes" };
+  const base = { "Content-Type": row.mime, "Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff", "Accept-Ranges": "bytes", "Content-Security-Policy": "default-src 'none'; media-src 'self'; img-src 'self'; sandbox" };
   const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get("Range") ?? "");
   if (m && (m[1] || m[2]) && row.bytes > 0) {
     let start = m[1] ? Number(m[1]) : Math.max(0, row.bytes - Number(m[2])), end = m[1] && m[2] ? Number(m[2]) : row.bytes - 1;

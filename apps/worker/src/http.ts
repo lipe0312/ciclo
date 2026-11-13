@@ -7,6 +7,8 @@ export const SECURITY_HEADERS: Record<string, string> = {
   "Cross-Origin-Opener-Policy": "same-origin",
   "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
   "Cache-Control": "no-store",
+  // Respostas da API não são página: nada carrega nem embute (a CSP do app fica em apps/web/public/_headers).
+  "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; sandbox",
 };
 
 export class HttpError extends Error {
