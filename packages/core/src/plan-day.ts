@@ -247,15 +247,16 @@ export function item(ex: Exercise, sets: number, alts: string[], extra: Partial<
   return { exerciseId: ex.id, nm: ex.nm, muscle: ex.m, kind: ex.kind, sets, reps: ex.r, rest: ex.rest, alts, ...extra };
 }
 
-/** Alvos semanais. level: 0 nunca · 1 <1 ano · 2 1–3 anos · 3 3+. Prioridades +4. Recuperação ruim −2. */
-export function weeklyTargets(level: 0 | 1 | 2 | 3, priorities: MuscleId[], poorRecovery = false): Record<MuscleId, number> {
+/** Alvos semanais. level: 0 nunca · 1 <1 ano · 2 1–3 anos · 3 3+. Prioridades +4. Recuperação ruim −2.
+ *  `fator` < 1 reduz tudo (volta de uma parada: ver fatorRampa); nunca abaixo de 4 séries. */
+export function weeklyTargets(level: 0 | 1 | 2 | 3, priorities: MuscleId[], poorRecovery = false, fator = 1): Record<MuscleId, number> {
   const add = [-2, 0, 2, 4][level];
   const out = {} as Record<MuscleId, number>;
   for (const m of MUSCLE_IDS) {
     let t = MUSCLES[m].base + (MUSCLES[m].base >= 10 ? add : 0);
     if (priorities.includes(m)) t += 4;
     if (poorRecovery) t -= 2;
-    out[m] = Math.max(4, t);
+    out[m] = Math.max(4, fator < 1 ? Math.round(t * fator) : t);
   }
   return out;
 }

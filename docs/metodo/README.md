@@ -8,7 +8,7 @@ O **objetivo e as prioridades do perfil mandam**. Métodos (shape em V, corpo at
 | Objetivo (`goal.id`) | Doc |
 |---|---|
 | `bracos_ombros` (atual do dono) | [bracos_ombros.md](bracos_ombros.md) |
-| `massa_geral`, `definir`, `recompor`, `forca`, `constancia` | [outros-objetivos.md](outros-objetivos.md) |
+| `massa_geral`, `definir`, `recompor`, `forca`, `constancia`, `shape_v`, `perder_barriga`, `saude`, `retorno` | [outros-objetivos.md](outros-objetivos.md) |
 
 ## Fontes (chave usada em `METODOS.*.fontes`)
 | Chave | Referência | O que dela vira regra |
