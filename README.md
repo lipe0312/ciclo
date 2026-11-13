@@ -16,10 +16,11 @@ npm run setup        # .dev.vars com token, build do front, banco local
 npm run dev          # vite build --watch + wrangler dev → http://localhost:8791  (demo: /?demo)
 npm run demo         # só o front (Vite :5173, /api e /mcp com proxy para :8791) em modo demonstração
 npm run check        # typecheck (core, web, worker) + testes + build do front
+npm run e2e:local    # roteiro de ponta a ponta numa conta fictícia (docs/09-teste-local.md)
 ```
 
 ## Usar na academia (Mac em casa desligado)
-Deploy grátis na Cloudflare (Workers + D1 + R2 + Access): [`docs/05-deploy-gratis.md`](docs/05-deploy-gratis.md). Depois instale no celular ("Adicionar à tela inicial") e adicione o connector no claude.ai.
+Deploy grátis na Cloudflare (Workers + D1 + R2 + Access): checklist copiável em [`docs/05-deploy-gratis.md`](docs/05-deploy-gratis.md) (`npm run cf:setup` → `npm run deploy` → Access → token → connector → PWA → rotina/vigia). `npm run deploy:dry` confere tudo sem subir nada.
 
 ## Como funciona
 ```
@@ -41,6 +42,7 @@ celular (PWA) ─┐                 ┌─ claude.ai / app do Claude (connector
 | [05 · Deploy grátis](docs/05-deploy-gratis.md) | Cloudflare passo a passo, celular, connector |
 | [06 · Roadmap](docs/06-roadmap.md) | marcos M0–M5 |
 | [07 · Claude](docs/07-claude.md) | ferramentas MCP, skills, modelo por pedido, automação |
+| [09 · Teste local](docs/09-teste-local.md) | roteiro de ponta a ponta antes do deploy |
 | [DESIGN](docs/DESIGN.md) · [ADRs](docs/adr) · [Concepção v2](docs/00-concepcao-v2.md) | |
 
 ## Licença

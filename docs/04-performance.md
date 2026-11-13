@@ -19,6 +19,14 @@
 | Mídia | Upload direto ao R2 pelo Worker (streaming), limite de 20 MB. Recomendado: gravar 720p de 10–15 s. 📋 Compressão no navegador (WebCodecs) antes de subir. |
 | Tokens do Claude | Respostas MCP compactas; o Claude manda só IDs; trocas e contas são locais. |
 
+## Medido (local, #31)
+| Item | Meta | Medido |
+|---|---|---|
+| JS inicial (`index-*.js`) | ≤ 150 KB gzip | **145,4 KB** gzip (+ CSS 9,9 KB); pdf.js (162 KB) e Leaflet (43 KB) só sob demanda |
+| Upload total do Worker + assets | — | 388 KB (105 KB gzip), `wrangler deploy --dry-run` |
+| `/api/state` e `/api/home` | < 150 ms | **4 ms** e **3 ms** (mediana, D1 local, `npm run e2e:local`). Em produção o D1 soma a ida à região do banco |
+| Lighthouse mobile ≥ 90 | — | passo do dono depois do deploy (05, passo 8) |
+
 ## Como medir
 - `npx lighthouse http://localhost:8791 --preset=desktop` (e `--form-factor=mobile`).
 - `wrangler tail` em produção (CPU por requisição).

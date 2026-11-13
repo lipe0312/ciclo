@@ -11,13 +11,14 @@ O repositório é **público** e os dados são **pessoais** (peso, dor, comida e
 | Claude (connector) | `/mcp` e `/mcp/media` ficam fora do Access e usam **token por usuário** (criado/revogado em "Conta", mostrado uma vez, guardado só como SHA-256, comparado em **tempo constante**) | `authenticateMcp` |
 | Local | `DEV_NO_AUTH=1` só vale para **localhost**: usuário de dev por `x-dev-user`/cookie `ciclo_dev_user`; `MCP_TOKEN` global só como bootstrap do usuário `dev`. Sem as variáveis do Access em produção, a API devolve 401 | `auth.ts` |
 | Abuso | Limite por usuário (contador no D1): escrita 120/min, upload 20/10 min → 429 | `hitRateLimit` |
-| LGPD | Exportar tudo (`GET /api/account/export`) e apagar a conta em cascata, incluindo o R2 (`DELETE /api/account`) | `db.ts` |
+| LGPD | Exportar tudo (`GET /api/account/export`) e apagar a conta em cascata, incluindo o R2 (`DELETE /api/account`). Teste lê o schema: toda tabela com `user_id` é apagada e exportada (menos as técnicas: limite, push, descanso, índice de busca) | `db.ts`, `test/deploy.test.ts` |
 | CSRF | Escrita só com `Origin` igual ao do app; sem CORS | `index.ts` |
 | Entrada | JSON com `Content-Type` obrigatório, **limite de tamanho** por rota (16–64 KB; mídia 20 MB; áudio 4 MB), validação de tipo e faixa em todo campo (`http.ts`) e `CHECK` no schema | `api.ts`, migrations |
 | SQL | **Só prepared statements** (`bind`). Nenhuma string do usuário é montada em SQL. Testado com `region: "x'; DROP TABLE pain;--"` → 400 | `db.ts`, `api.ts` |
 | Mídia | Lista de tipos permitidos (jpeg/png/webp/mp4/webm/mov; outro → 415), chave aleatória no R2 sob `u/<user_id>/`, **bucket privado**, leitura só autenticada, `nosniff`. Mídia de aparelho exige o lugar (`gymId`) da própria conta. Apagar lugar → lixeira de 30 dias, depois o cron apaga do R2 (ADR-0010) | `api.ts`, `db.ts` |
 | Arquivos locais (MCP do Mac) | `ciclo_anexar_midia` só lê arquivos de pastas permitidas (Filmes, Imagens, Downloads, Mesa; configurável por `CICLO_MEDIA_DIRS`) e com tipo e tamanho checados | `apps/mcp-local` |
-| Navegador | CSP estrita (`script-src 'self'`, sem script inline, sem terceiros), `frame-ancestors 'none'`, HSTS, `Referrer-Policy: no-referrer`, `Permissions-Policy` (câmera, microfone e localização só do próprio app; `img-src` com os tiles do OpenStreetMap, ADR-0010) | `apps/web/public/_headers` |
+| Produção | `preview_urls: false` (sem URL de preview fora do Access), nenhuma variável de dev em `vars`, migrations sem transação explícita: conferido por `scripts/predeploy.mjs` antes de todo `npm run deploy` e no `npm test`. Sem Access, **toda** rota `/api` e ferramenta MCP responde 401 (teste gerado do roteador) | `test/deploy.test.ts` |
+| Navegador | CSP estrita (`script-src 'self'`, sem script inline, sem terceiros), `frame-ancestors 'none'`, HSTS; respostas da API com `default-src 'none'; sandbox`; manifest com `crossorigin="use-credentials"` (o PWA instala atrás do Access), `Referrer-Policy: no-referrer`, `Permissions-Policy` (câmera, microfone e localização só do próprio app; `img-src` com os tiles do OpenStreetMap, ADR-0010) | `apps/web/public/_headers` |
 | XSS | Tudo o que vem de dados passa por `esc()` antes de virar HTML | `app.js` |
 | Exames (saúde) | PDF lido **no aparelho** (pdf.js sob demanda, ADR-0009), até 5 MB; só o texto vai ao D1 e é apagado na análise (`ciclo_exame_concluir`) ou em 7 dias (cron). Arquivo nunca vai ao R2; fica só o resumo estruturado | `diario.ts`, migration `0007` |
 | Erros | Mensagem genérica ao cliente; log sem dados pessoais (só a rota e a mensagem) | `api.ts`, `mcp.ts` |
@@ -35,8 +36,8 @@ O repositório é **público** e os dados são **pessoais** (peso, dor, comida e
 ## Checklist antes de publicar o deploy
 - [ ] Access ligado para o domínio `*.workers.dev` do Worker, com política "Allow" só para o seu e-mail, e **Bypass** só para `/mcp`, `/mcp/media` e `/api/health`.
 - [ ] `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` e `ALLOWED_EMAILS` definidos (`wrangler secret put` ou `vars`). **Não** definir `DEV_NO_AUTH` nem `MCP_TOKEN` em produção.
-- [ ] Token do Claude gerado em "Conta" (`POST /api/account/tokens`) e guardado no gerenciador de senhas.
-- [ ] `npm run check` verde; gitleaks verde.
+- [ ] Token do Claude gerado (`POST /api/account/tokens`, passo 5 do `05-deploy-gratis.md`) e guardado no gerenciador de senhas.
+- [ ] `npm run check`, `npm run deploy:dry`, `npm run e2e:local` e `npm audit` verdes; gitleaks verde (CI).
 - [ ] Testar sem login: `curl https://…/api/state?date=2026-01-01` → 401 (ou redirecionamento do Access).
 
 ## Reportar problema
