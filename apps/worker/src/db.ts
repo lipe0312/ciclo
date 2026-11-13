@@ -323,7 +323,7 @@ export const USER_TABLES = ["set_log", "exercise_skip", "media", "week_plan", "d
 /** Tudo da conta em JSON (mídia: só metadados; tokens: sem hash). */
 export async function exportAccount(env: Env, uid: string) {
   const q = (sql: string) => env.DB.prepare(sql).bind(uid);
-  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "gym_weekday", "mcp_token", "week_plan", "day_override", "cardio_log", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory"] as const;
+  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "gym_weekday", "mcp_token", "week_plan", "day_override", "cardio_log", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat"] as const;
   const res = await env.DB.batch([
     q("SELECT id, email, created_at, last_seen_at, onboarding_done_at FROM user WHERE id = ?1"),
     q("SELECT data, updated_at FROM profile WHERE user_id = ?1"),
@@ -353,6 +353,7 @@ export async function exportAccount(env: Env, uid: string) {
     q("SELECT last_open, snoozed_on, absence_days, absence_from, absence_to, updated_at FROM reminder_state WHERE user_id = ?1"),
     q("SELECT key, name, kcal, protein, carb, fat, units, source, uses, last_used_at, updated_at FROM food_item WHERE user_id = ?1 ORDER BY key"),
     q("SELECT id, fact, source, created_at, updated_at, expires_at FROM claude_memory WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT origem, at FROM claude_heartbeat WHERE user_id = ?1 ORDER BY origem"),
   ]);
   const out: Record<string, unknown> = { formato: "ciclo-export-1", exportadoEm: new Date().toISOString() };
   names.forEach((n, i) => { out[n] = n === "user" || n === "profile" ? res[i].results[0] ?? null : res[i].results; });

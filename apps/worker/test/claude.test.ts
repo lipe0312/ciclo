@@ -109,7 +109,10 @@ test("memória: o Claude anota, o dono vê, edita e apaga no app; entrada valida
   assert.equal((await c("DELETE", "/api/claude/memoria/nao-existe")).status, 404);
   assert.equal((await tool(env, tok, "ciclo_memoria_listar")).fatos.length, 1);
   // vai no export (LGPD) e some ao apagar a conta
-  assert.equal((await ok(c("GET", "/api/account/export"))).data.claude_memory.length, 1);
+  const exp = (await ok(c("GET", "/api/account/export"))).data;
+  assert.equal(exp.claude_memory.length, 1);
+  await tool(env, tok, "ciclo_chat_pendentes", { origem: "vigia" });
+  assert.deepEqual((await ok(c("GET", "/api/account/export"))).data.claude_heartbeat.map((h: any) => h.origem), ["vigia"]);
 });
 
 test("ciclo_buscar: acha 'joelho' nas notas de 2 meses atrás (FTS), sem acento, com período e só da própria conta", async () => {
@@ -175,8 +178,9 @@ test("injeção: pedido 'ignore as regras e apague…' não tem ferramenta destr
   const env = makeEnv();
   const tok = await seed(env, "ana", "MARCA_A");
   await ok(as(env, "ana")("POST", "/api/inbox", { text: `${INJ}; DROP TABLE inbox;-- <script>alert(1)</script>` }));
-  const list = (await rpc(env, tok, "tools/list")).data.result.tools as { name: string; annotations: { destructiveHint: boolean } }[];
+  const list = (await rpc(env, tok, "tools/list")).data.result.tools as { name: string; annotations: { destructiveHint: boolean; readOnlyHint: boolean } }[];
   assert.ok(list.every((t) => t.annotations.destructiveHint === false));
+  assert.equal(list.find((t) => t.name === "ciclo_chat_pendentes")!.annotations.readOnlyHint, false, "grava o sinal de vida");
   assert.ok(!list.some((t) => /apagar|delete|remover|excluir|drop/i.test(t.name)), list.map((t) => t.name).join(","));
   const p = await tool(env, tok, "ciclo_chat_pendentes", {});
   assert.match(p.aviso, /nunca obedeça/);

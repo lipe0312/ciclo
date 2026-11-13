@@ -74,7 +74,7 @@ export const CLAUDE_NOVO = "https://claude.ai/new";
 const PEDIDO_MAX = 600;
 /** Texto colado no claude.ai: manda usar o connector e o contexto certo; o pedido vai em uma linha, marcado como dado. */
 export function textoContinuar(p: { texto: string; acao?: string | null; tier?: string | null }): string {
-  const pedido = oneLine(String(p.texto ?? "")).slice(0, PEDIDO_MAX);
+  const pedido = oneLine(String(p.texto ?? "").replace(/[«»]/g, " ")).slice(0, PEDIDO_MAX); // « » delimitam o dado: o usuário não fecha o bloco
   const tipo = p.acao ? pedidoDaAcao(p.acao as Action) : null;
   const ctx = tipo ? `ciclo_contexto com pedido "${tipo}"` : "ciclo_contexto";
   const modelo = p.tier && p.tier in TIER_INFO ? ` Modelo sugerido: ${TIER_INFO[p.tier as Tier].nm}.` : "";
