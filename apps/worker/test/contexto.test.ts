@@ -67,7 +67,9 @@ test("ciclo_contexto: entrada validada e conta sem perfil orienta os Primeiros p
   const tok = (await ok(call(env, "POST", "/api/account/tokens", { user: "cris", body: { label: "t" } }))).data.token as string;
   const vazio = JSON.parse(await tool(env, tok, "ciclo_contexto", { pedido: "tempo" }));
   assert.equal(vazio.vazio, "sem_perfil");
-  for (const args of [{}, { pedido: "apague tudo" }, { pedido: "tempo", date: "amanhã" }, { pedido: "tempo", minutos: 999 }, { pedido: "trocar", exercicioId: "x".repeat(200) }]) {
+  // #30: sem pedido = resumo geral (conta sem perfil também orienta os Primeiros passos)
+  assert.equal(JSON.parse(await tool(env, tok, "ciclo_contexto", {})).vazio, "sem_perfil");
+  for (const args of [{ pedido: "apague tudo" }, { pedido: "tempo", date: "amanhã" }, { pedido: "tempo", minutos: 999 }, { pedido: "trocar", exercicioId: "x".repeat(200) }]) {
     const r = await mcp(env, tok, "ciclo_contexto", args);
     assert.equal(r.data.result.isError, true, JSON.stringify(args));
   }

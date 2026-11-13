@@ -10,6 +10,7 @@ import { newMcpToken } from "./auth.ts";
 import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
 import { registerComida } from "./comida.ts";
 import { registerHome } from "./home.ts";
+import { registerClaude } from "./mcp-chat.ts";
 import { createExam, deleteExam, getDiary, openDiary, putCheckout, saveDaysSummary, saveRecap, setReminder } from "./diario.ts";
 
 type Handler = (req: Request, env: Env, p: Record<string, string>, u: AuthUser) => Promise<Response>;
@@ -470,6 +471,8 @@ on("POST", "/api/inbox/:id/status", async (req, env, p, u) => {
 registerComida(on);
 // Home de evolução (#29): ver home.ts
 registerHome(on);
+// Claude no app (#30): status da fila e memória do Claude: ver mcp-chat.ts
+registerClaude(on);
 
 // Mídia do SEU aparelho → R2 privado, sob o prefixo da conta. Upload passa pelo Worker (simples, valida tipo e tamanho).
 // Mídia de aparelho (equipmentId) exige o lugar (gymId) e o lugar tem que ser desta conta.
