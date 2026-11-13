@@ -5,6 +5,7 @@ import { SERVER, send } from "../../lib/api/index.ts";
 import { Card, Chip, Icon, Seg, toast } from "../../lib/ui/index.tsx";
 import { Mic } from "../../lib/voz/index.tsx";
 import { clone, fmt, uid } from "../../lib/util.ts";
+import { loadClaude } from "./memoria.tsx";
 
 export const CATS = ["Hoje", "Treino", "Corpo", "Comida", "Plano"];
 type Tier = keyof typeof C.TIER_INFO;
@@ -66,7 +67,7 @@ export async function sendInbox(text: string, promptId?: string) {
   const cls = C.classify(text);
   const m: any = { id: uid(), created_at: Date.now(), text, action: preset?.action ?? cls.action, tier: S.ui.tierOverride ?? preset?.tier ?? cls.tier, status: "pendente" };
   S.inbox.unshift(m); S.ui.inboxDraft = ""; S.ui.tierOverride = null; commit();
-  if (SERVER) { const r = await send<{ id: string }>("POST", "/api/inbox", { text, promptId, tier: m.tier }).catch(() => null); if (r) m.id = r.id; toast(`Na fila · ${C.TIER_INFO[m.tier as Tier].nm}`); return; }
+  if (SERVER) { const r = await send<{ id: string }>("POST", "/api/inbox", { text, promptId, tier: m.tier }).catch(() => null); if (r) m.id = r.id; toast(`Na fila · ${C.TIER_INFO[m.tier as Tier].nm}`); loadClaude(); return; }
   setTimeout(() => { const a = demoAnswer(m); m.response = a.response; m.change = a.change ? { ...a.change, diff: previewDiff(a.change) } : null; m.status = a.change ? "respondido" : "aplicado"; commit(); }, 900);
 }
 
@@ -78,6 +79,10 @@ function applyInbox(m: any) {
 }
 function dropInbox(m: any) { m.status = "descartado"; commit(); send("POST", `/api/inbox/${m.id}/status`, { status: "descartado" }).catch(() => {}); }
 
+/** "Continuar no Claude": abre o claude.ai com o pedido e o tipo de contexto já escritos (conversa em tempo real pelo connector). */
+export const Continuar = ({ m }: { m: { text: string; action?: string; tier?: string } }) =>
+  <a class="btn ghost sm" href={C.linkContinuar({ texto: m.text, acao: m.action, tier: m.tier })} target="_blank" rel="noopener noreferrer"><Icon id="chat" />Continuar no Claude</a>;
+
 export function InboxItem({ m }: { m: any }) {
   const diff: { minus?: string; plus?: string }[] | null = m.change?.diff ?? (m.change?.itens ? m.change.itens.map((t: string) => ({ plus: t })) : null);
   return <div><div class="msg me small"><b>Você</b> <span class={`tier ${m.tier}`}>{C.TIER_INFO[m.tier as Tier]?.nm ?? m.tier}</span><br />{m.text}</div>
@@ -85,7 +90,8 @@ export function InboxItem({ m }: { m: any }) {
       {!!diff?.length && <div class="diff">{diff.map((d, i) => <div key={i}>{d.minus && <div class="minus">− {d.minus}</div>}{d.plus && <div class="plus">+ {d.plus}</div>}</div>)}</div>}
       {m.status === "respondido" && m.change && <div class="row" style="margin-top:8px;gap:6px"><button type="button" class="btn pri sm" onClick={() => applyInbox(m)}><Icon id="check" />Aplicar</button><button type="button" class="btn sm" onClick={() => dropInbox(m)}>Descartar</button></div>}
       {m.status === "aplicado" && <p class="tiny sub" style="margin-top:6px"><Icon id="check" style="width:12px;height:12px" /> aplicado</p>}
-    </div> : <p class="tiny sub" style="margin-top:4px"><Icon id="clock" style="width:12px;height:12px;vertical-align:-2px" /> {SERVER ? "na fila — o Claude responde quando processar a caixa" : "pensando…"}</p>}</div>;
+    </div> : <div class="row between wrapx" style="margin-top:4px;row-gap:4px"><p class="tiny sub"><Icon id="clock" style="width:12px;height:12px;vertical-align:-2px" /> {SERVER ? "na fila — o Claude responde quando processar a caixa" : "pensando…"}</p>
+      <Continuar m={m} /></div>}</div>;
 }
 
 export function CaixaClaude({ limit = 6 }: { limit?: number }) {
