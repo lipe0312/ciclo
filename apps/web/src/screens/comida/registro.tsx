@@ -1,9 +1,9 @@
 // Registrar o que comeu (voz ou texto), registro rápido (igual ao típico, refeições salvas) e o histórico do dia com editar/apagar.
 import { useState } from "preact/hooks";
-import { MEALS, MEAL_NM, foodParts, guessMeal } from "@ciclo/core";
+import { MEALS, MEAL_NM, guessMeal } from "@ciclo/core";
 import type { Meal } from "@ciclo/core";
 import { S, commit, today } from "../../lib/store/index.ts";
-import { DIET, addFood, deleteFood, deleteTemplate, editFood, foodRows, foodTotals, hourNow, saveTemplate } from "../../lib/store/regras.ts";
+import { DIET, addFood, deleteFood, deleteTemplate, editFood, estimarTexto, faltaDoDia, foodRows, foodTotals, hourNow, saveTemplate } from "../../lib/store/regras.ts";
 import type { FoodRow } from "../../lib/store/regras.ts";
 import { Card, Chip, Icon, toast } from "../../lib/ui/index.tsx";
 import { BarraSimples } from "../../lib/grafico/index.tsx";
@@ -78,8 +78,9 @@ export function Registro({ dia }: { dia: string }) {
   const [meal, setMeal] = useState<Meal | null>(null);
   const [gerenciar, setGerenciar] = useState(false);
   const draft = S.ui.foodDraft ?? "";
-  const parts = foodParts(draft);
-  const kcal = Math.round(parts.reduce((s, p) => s + p.kcal, 0)), prot = Math.round(parts.reduce((s, p) => s + p.prot, 0));
+  const est = estimarTexto(draft), parts = est.partes;
+  const kcal = est.kcal, prot = Math.round(est.prot);
+  const parteTxt = (p: (typeof parts)[number]) => p.texto + (p.fonte === "pessoal" ? " (sua base)" : "");
   const registrar = () => {
     const v = draft.trim(); if (!v) return toast("Fale ou escreva o que comeu");
     addFood(v, meal ?? guessMeal(v, hourNow()), undefined, dia); S.ui.foodDraft = ""; setMeal(null); setStatus(""); commit(); toast("Registrado · o Claude confere");
@@ -97,7 +98,7 @@ export function Registro({ dia }: { dia: string }) {
       <textarea class="input" style="flex:1;min-width:0" rows={4} aria-label="O que você comeu" placeholder="café: 3 ovos e 2 pães · almoço: arroz, feijão e frango" value={draft}
         onInput={(e) => { S.ui.foodDraft = e.currentTarget.value; }} onBlur={() => commit()} />
     </div>
-    <p class="small est-line num" style="margin-top:8px" aria-live="polite">{draft.trim() ? (kcal ? <>~{fmt(kcal)} kcal · {fmt(prot)} g de proteína <span class="sub">({parts.map((p) => p.label).join(", ")})</span></> : <span class="sub">Não reconheci os alimentos; o Claude estima na conferência.</span>) : <span class="sub">A estimativa aparece aqui enquanto você fala.</span>}</p>
+    <p class="small est-line num" style="margin-top:8px" aria-live="polite">{draft.trim() ? (kcal ? <>~{fmt(kcal)} kcal · {fmt(prot)} g de proteína <span class="sub">({parts.map(parteTxt).join(" · ")})</span></> : <span class="sub">Não reconheci os alimentos; o Claude estima na conferência.</span>) : <span class="sub">A estimativa aparece aqui enquanto você fala.</span>}</p>
     <span class="f" style="margin-top:10px;display:block">Refeição</span>
     <MealChips value={meal} onPick={setMeal} label="Refeição do registro" />
     <div class="row wrapx" style="margin-top:12px;gap:8px">
@@ -115,6 +116,16 @@ export function Registro({ dia }: { dia: string }) {
   </Card>;
 }
 
+/** "Faltam X g de proteína e ~Y kcal" e até 2 sugestões dos alimentos que a pessoa já come (core: faltaHoje). */
+function Falta({ dia }: { dia: string }) {
+  const f = faltaDoDia(dia), d = S.profile.diet, t = foodTotals(dia);
+  if (!f.sugestoes.length) return <p class="small" style="margin-top:10px"><b>Proteína batida{f.kcal ? `; faltam ~${fmt(f.kcal)} kcal para a meta` : ""}.</b> O resto é livre.</p>;
+  return <div style="margin-top:10px">
+    <p class="small num"><b>Faltam {fmt(f.prot)} g de proteína{f.kcal ? <> e ~{fmt(f.kcal)} kcal</> : ""}.</b> <span class="sub">({fmt(t.prot)} de {fmt(d.protein)} g · {fmt(t.kcal)} de {fmt(d.kcal)} kcal)</span></p>
+    <ul class="small" style="margin:6px 0 0;padding-left:18px">{f.sugestoes.map((s) => <li key={s.texto} class="num">{s.texto} <span class="sub">(~{fmt(s.kcal)} kcal)</span></li>)}</ul>
+  </div>;
+}
+
 /** O dia escolhido (hoje por padrão): totais contra a meta, registros com editar e apagar, e navegação pelos últimos dias. */
 export function DiaCard({ dia, setDia }: { dia: string; setDia: (d: string) => void }) {
   const d = S.profile.diet, t = foodTotals(dia), rows = foodRows().filter((f) => f.date === dia);
@@ -128,7 +139,7 @@ export function DiaCard({ dia, setDia }: { dia: string; setDia: (d: string) => v
     </div>
     <div class="vol num" style="margin-top:12px"><span>Calorias</span><BarraSimples pct={(t.kcal / d.kcal) * 100} /><span>{fmt(t.kcal)}</span></div>
     <div class="vol num"><span>Proteína</span><BarraSimples pct={(t.prot / d.protein) * 100} color="var(--acc)" /><span>{fmt(t.prot)} g</span></div>
-    <p class="small" style="margin-top:10px">{t.prot >= d.protein * 0.95 ? <b>Proteína batida. O resto é livre.</b> : <><b>Faltam ~{fmt(d.protein - t.prot)} g de proteína.</b> Ex.: 150 g de frango (~45 g) + 1 whey (~24 g).</>}</p>
+    <Falta dia={dia} />
     <hr />
     {rows.length === 0 ? <p class="small sub">Nada registrado {dia === today ? "hoje" : "neste dia"}.</p> : rows.map((f) => <div key={f.id} class="food-row">
       <span class="tx">{f.text}</span>
