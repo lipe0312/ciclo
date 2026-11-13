@@ -11,6 +11,8 @@ import { DOW_NM, img } from "../../lib/util.ts";
 import { FotoAparelho } from "../../lib/grade-aparelhos/index.tsx";
 import { apagarLugar, diasDoLugar, kindNm, midiaDoAparelho } from "../../lib/lugares/index.ts";
 import { PassoAPasso } from "./passos.tsx";
+import { AssistenteAcademias } from "./assistente.tsx";
+import { assistenteVisto } from "../../lib/mini-assistente/index.tsx";
 import { Mapa, linkMapa } from "./mapa.tsx";
 import { PaginaAparelho } from "./aparelho.tsx";
 import "./academias.css";
@@ -101,5 +103,7 @@ export default function Academias({ route }: { route?: Route }) {
     if (b === "aparelho" && c) return <PaginaAparelho gym={g} eqId={c} />;
     return <Lugar g={g} />;
   }
+  // 1ª vez: mini-assistente (#41); "Fazer manual" marca como visto e mostra a lista de sempre
+  if (!assistenteVisto("academias")) return <AssistenteAcademias onManual={commit} />;
   return <Lista />;
 }
