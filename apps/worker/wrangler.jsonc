@@ -5,6 +5,10 @@
   "name": "ciclo",
   "main": "src/index.ts",
   "compatibility_date": "2026-06-01",
+  // App em https://ciclo.<sua-conta>.workers.dev (atrás do Cloudflare Access). Sem URLs de preview por versão:
+  // elas teriam outro host, fora da aplicação do Access (o Worker ainda exigiria o JWT, mas não abrimos a porta).
+  "workers_dev": true,
+  "preview_urls": false,
   "assets": {
     "directory": "../web/dist",
     "binding": "ASSETS",
@@ -21,6 +25,8 @@
   // (o app usa o reconhecimento de voz do navegador enquanto isso). Em produção basta descomentar a linha acima e fazer o deploy.
   // 1 min: Web Push do fim do descanso (#25). O fechamento de treinos esquecidos roda a cada 30 min dentro do mesmo cron.
   "triggers": { "crons": ["* * * * *"] },
+  // Só valores públicos aqui. Segredos (ACCESS_*, ALLOWED_EMAILS, VAPID_*) vão por `wrangler secret put`;
+  // DEV_NO_AUTH e MCP_TOKEN são só de .dev.vars (localhost) e NUNCA entram em produção (scripts/predeploy.mjs confere).
   "vars": { "APP_VERSION": "0.1.0" },
   "observability": { "enabled": true },
   "upload_source_maps": false
