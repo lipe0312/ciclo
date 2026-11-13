@@ -20,7 +20,7 @@ export function lastGroup(): C.Group | "full" | null {
 export function dayInput(ui = S.ui, extraPains: any[] = []): C.DayInput {
   const p = S.profile, gym = gymById(ui.gymId);
   return {
-    targets: C.weeklyTargets(p.level, p.priorities), done: S.week.done, freq: S.week.freq, priorities: p.priorities,
+    targets: C.weeklyTargets(p.level, p.priorities, false, C.fatorRampa(p, today)), done: S.week.done, freq: S.week.freq, priorities: p.priorities,
     daysLeft: ui.daysLeft, minutes: ui.minutes, lastGroup: lastGroup(), mode: ui.mode, focus: ui.focus.length ? ui.focus : null,
     equipment: gym ? gym.equipment : [], crowded: ui.crowded, prefs: p.prefs, pinned: { ...p.pinned, ...ui.swapsToday }, avoid: p.avoid,
     pains: [...S.pains, ...extraPains].map((x) => ({ region: x.region, intensity: x.intensity })),

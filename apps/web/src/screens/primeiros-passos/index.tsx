@@ -1,14 +1,14 @@
-// Primeiros passos: quiz de uma pergunta por tela (~10 telas, ≤ 2 min). Cada resposta já grava no perfil, então dá para
+// Primeiros passos: quiz de uma pergunta por tela (~10 telas, ≤ 2 min). Prioridades por GRUPO de músculo (até 5) e "onde treina" leve (#41). Cada resposta já grava no perfil, então dá para
 // voltar, retomar de onde parou (rota #primeiros-passos/<n> + passo salvo no aparelho) e refazer quando quiser.
 import { useEffect, useState } from "preact/hooks";
 import { C, S, commit, today } from "../../lib/store/index.ts";
-import { computePlan, gymChanged, mName, profileChanged } from "../../lib/store/regras.ts";
+import { computePlan, profileChanged } from "../../lib/store/regras.ts";
 import { SERVER, api, send } from "../../lib/api/index.ts";
 import type { Route } from "../../lib/roteador/index.ts";
 import { go, href, replace } from "../../lib/roteador/index.ts";
 import { Icon, Seg, Stepper, toast } from "../../lib/ui/index.tsx";
-import { SeletorPrioridades, setSubPriorities } from "../../lib/prioridades/index.tsx";
-import { GradeAparelhos } from "../../lib/grade-aparelhos/index.tsx";
+import { escolherObjetivo } from "../../lib/prioridades/index.tsx";
+import { SeletorGrupos } from "../../lib/mapa-corpo/index.tsx";
 import { IlustCorpo, IlustObjetivo } from "../../lib/ilustracoes/index.tsx";
 import { BODY, DAYS_LONG, DIET, GOALS, LEVELS, LIM } from "../../lib/perfil-dados.ts";
 import { DEFAULT_GYMS } from "../../lib/store/index.ts";
@@ -16,7 +16,7 @@ import { limparDispensaCheckup } from "../../lib/faixa-checkup/index.tsx";
 import { lsGet, lsSet, setPath } from "../../lib/util.ts";
 
 const KEY = "ciclo:pp";
-const pp = { ...{ step: 0, gym: "" }, ...lsGet<{ step?: number; gym?: string }>(KEY, {}) };
+const pp = { ...{ step: 0 }, ...lsGet<{ step?: number }>(KEY, {}) };
 const savePP = () => lsSet(KEY, pp);
 
 const pset = (k: string, v: unknown) => { setPath(S.profile, k, v); profileChanged(); commit(); };
@@ -31,14 +31,12 @@ const Opt = ({ on, onClick, title, desc, children }: { on: boolean; onClick: () 
 
 // ---------- telas ----------
 function Objetivo() {
-  const g = S.profile.goal;
-  return <div class="opts two">{GOALS.map((o) => <Opt key={o.id} on={g.id === o.id} title={o.nm} desc={o.desc} onClick={() => {
-    Object.assign(g, { id: o.id, statement: o.statement });
-    setSubPriorities(C.goalPreset(o.id), profileChanged); commit();
-  }}><IlustObjetivo id={o.id} /></Opt>)}</div>;
+  const g = S.profile.goal, info = C.GOAL_INFO[g.id as C.GoalId];
+  return <>{info && <div class="note goal-muda" style="margin-bottom:14px" role="status"><Icon id="target" /><span><b>O que muda no seu treino:</b> {info.muda}</span></div>}
+    <div class="opts two">{GOALS.map((o) => <Opt key={o.id} on={g.id === o.id} title={o.nm} desc={o.desc} onClick={() => { escolherObjetivo(o.id, profileChanged); commit(); }}><IlustObjetivo id={o.id} /></Opt>)}</div></>;
 }
 
-const Prioridades = () => <SeletorPrioridades size="md" onChange={() => { profileChanged(); commit(); }} />;
+const Prioridades = () => <SeletorGrupos onChange={() => { profileChanged(); commit(); }} />;
 
 const Experiencia = () => <div class="opts">{LEVELS.map(([v, nm, d]) => <Opt key={v} on={S.profile.level === v} title={nm} desc={d} onClick={() => pset("level", v)} />)}</div>;
 
@@ -53,22 +51,28 @@ function Rotina() {
     <div style="margin-top:20px"><span class="f">Quanto dura um treino</span><Seg opts={[[45, "45 min"], [60, "60 min"], [75, "75 min"], [90, "90 min"]]} value={pr.minutes} onPick={(v) => pset("minutes", v)} label="Duração" /></div></>;
 }
 
-const GYM_KINDS: [string, string, string, number][] = [["completa", "Academia completa", "barras, polias e máquinas", 0], ["basica", "Academia básica", "halteres, banco e poucas máquinas", 1], ["casa", "Em casa", "halteres, elástico e barra fixa", 2]];
-function pickGym(kind: string) {
-  const idx = GYM_KINDS.find((k) => k[0] === kind)![3], base = DEFAULT_GYMS[idx];
-  const g = { id: "acad1", name: kind === "casa" ? "Casa" : "Academia 1", equipment: [...base.equipment], busyHours: [] as string[] };
-  S.gyms = [g]; S.ui.gymId = g.id; S.ui.gymTab = g.id;
-  S.profile.dayGym = Object.fromEntries(C.DOWS.map((d) => [d, g.id]));
-  pp.gym = kind; savePP(); gymChanged(g); profileChanged(); commit();
+const LUGARES: [C.PlaceChoice, string, string][] = [["academia", "Academia", "máquinas, polias e halteres"], ["casa", "Casa", "halteres, elástico e barra fixa"]];
+/** Conta nova: a resposta leve vira o(s) lugar(es) com os aparelhos mais comuns (sem perguntar aparelho; ajusta depois em Academias). */
+function aplicarLugares(places: readonly string[]) {
+  const acad = places.includes("academia"), casa = places.includes("casa");
+  const mk = (id: string, name: string, kind: C.PlaceKind, base: (typeof DEFAULT_GYMS)[number]) => ({ id, name, kind, equipment: [...base.equipment], busyHours: [] as string[] });
+  const gs = [...(acad ? [mk("acad1", "Academia 1", "academia", DEFAULT_GYMS[0])] : []), ...(casa ? [mk("casa", "Casa", "casa", DEFAULT_GYMS[2])] : [])];
+  if (!gs.length) return;
+  S.gyms = gs; S.ui.gymId = gs[0].id; S.ui.gymTab = gs[0].id;
+  S.profile.dayGym = Object.fromEntries(C.DOWS.map((d) => [d, acad && casa && (d === "sab" || d === "dom") ? "casa" : gs[0].id]));
 }
+const novaConta = () => SERVER && S.onboarding !== "concluido";
 function Onde() {
-  const keep = !SERVER || S.onboarding === "concluido";
-  const g = S.gyms[0];
-  if (keep) return <><div class="note"><Icon id="gym" /><span>Suas academias ficam como estão ({S.gyms.map((x) => x.name).join(", ")}). Para mexer nos aparelhos, use <a class="link44" href="#academias">Academias</a>.</span></div></>;
-  return <><div class="opts">{GYM_KINDS.map(([k, nm, d]) => <Opt key={k} on={pp.gym === k} title={nm} desc={d} onClick={() => pickGym(k)} />)}
-    <Opt on={pp.gym === "depois"} title="Decido depois" desc="começo com uma academia padrão" onClick={() => { pickGym("completa"); pp.gym = "depois"; savePP(); commit(); }} /></div>
-    {pp.gym && pp.gym !== "depois" && g && <details class="prio-lista"><summary>Ajustar os aparelhos ({g.equipment.length} marcados)</summary>
-      <div style="margin-top:10px"><GradeAparelhos selected={g.equipment} onToggle={(id) => { const i = g.equipment.indexOf(id); i >= 0 ? g.equipment.splice(i, 1) : g.equipment.push(id); gymChanged(g); commit(); }} /></div></details>}</>;
+  const places = S.profile.places ?? ["academia"];
+  const toggle = (k: C.PlaceChoice) => {
+    const a = places.includes(k) ? places.filter((x) => x !== k) : [...places, k];
+    if (!a.length) return toast("Escolha ao menos uma opção");
+    pset("places", C.PLACES.filter((x) => a.includes(x)));
+    if (novaConta()) { aplicarLugares(S.profile.places); commit(); }
+  };
+  return <><div class="opts" role="group" aria-label="Onde você treina (pode marcar os dois)">{LUGARES.map(([k, nm, d]) => <Opt key={k} on={places.includes(k)} title={nm} desc={d} onClick={() => toggle(k)} />)}</div>
+    <div class="note" style="margin-top:14px"><Icon id="gym" /><span>{novaConta() ? <>Os aparelhos de cada lugar você ajusta depois, em <a class="link44" href="#academias">Academias</a>, com um passo a passo rápido.</>
+      : <>Seus lugares ficam como estão ({S.gyms.map((x) => x.name).join(", ")}). Para mexer nos aparelhos, use <a class="link44" href="#academias">Academias</a>.</>}</span></div></>;
 }
 
 function resolvePain(region: string) {
@@ -109,16 +113,16 @@ function Resumo() {
       <p class="small sub num" style="margin-top:2px">{plan.items.length} exercícios · {plan.setsTotal} séries · ~{plan.estMinutes} min</p>
       <ul class="pp-prev">{plan.items.slice(0, 6).map((i) => <li key={i.exerciseId}><span>{i.nm}</span><span class="sub num">{i.sets}×{i.reps.join("–")}</span></li>)}</ul>
       {plan.items.length > 6 && <p class="tiny sub">+ {plan.items.length - 6} no treino completo</p>}
-      <p class="tiny sub" style="margin-top:10px">Prioridades: {S.profile.priorities.map(mName).join(" › ") || "nenhuma"}. Você pode mudar tudo depois em Perfil.</p></div></>;
+      <p class="tiny sub" style="margin-top:10px">Prioridades: {C.groupsOfSubs(S.profile.subPriorities ?? []).map((g) => C.priorityGroups[g].nm).join(" › ") || "nenhuma"}. Você pode mudar tudo depois em Perfil.</p></div></>;
 }
 
 interface Passo { id: string; title: string; sub: string; Tela: () => any }
 const PASSOS: Passo[] = [
   { id: "objetivo", title: "Qual é o seu objetivo principal?", sub: "Ele guia o volume, as prioridades e as metas.", Tela: Objetivo },
-  { id: "musculos", title: "Quais músculos mais importam?", sub: "Toque no desenho, até 3, na ordem de importância. O treino protege esses primeiro.", Tela: Prioridades },
+  { id: "musculos", title: "Quais músculos mais importam?", sub: "Toque no desenho ou na lista, até 5, na ordem de importância. O treino protege esses primeiro.", Tela: Prioridades },
   { id: "experiencia", title: "Há quanto tempo você treina?", sub: "Muda quantas séries você faz por semana.", Tela: Experiencia },
   { id: "rotina", title: "Como é a sua semana?", sub: "Muda como as séries se distribuem nos dias que você realmente vai.", Tela: Rotina },
-  { id: "onde", title: "Onde você treina?", sub: "Muda quais exercícios entram: só os dos aparelhos que existem.", Tela: Onde },
+  { id: "onde", title: "Academia, casa ou os dois?", sub: "Pode marcar os dois. Os aparelhos você cadastra depois, em Academias.", Tela: Onde },
   { id: "dores", title: "Algo dói ou incomoda hoje?", sub: "Muda quais exercícios saem e o aquecimento de fortalecimento.", Tela: Dores },
   { id: "corpo", title: "Seus dados básicos", sub: "Calibra o ritmo de ganho e as metas.", Tela: Corpo },
   { id: "comovoce", title: "Como você se vê hoje?", sub: "Ajuda a ajustar o ritmo e o alerta de cintura.", Tela: ComoVoce },
@@ -130,13 +134,14 @@ const LAST = PASSOS.length - 1;
 async function concluir(setBusy: (b: boolean) => void) {
   setBusy(true);
   try {
-    S.profile.meta = { filledBy: "app", confirmed: true, checkup: "feito" }; limparDispensaCheckup();
+    S.profile.meta = { ...S.profile.meta, filledBy: "app", confirmed: true, checkup: "feito" }; limparDispensaCheckup();
+    if (novaConta()) aplicarLugares(S.profile.places ?? ["academia"]);
     S.ui.locked = false; S.ui.planSource = undefined; S.ui.minutes = S.profile.minutes; S.ui.format = S.profile.dynamics; S.ui.minutesSet = true;
     S.ui.daysLeft = Math.min(4, Math.max(1, S.profile.daysTarget));
     const plan = computePlan(true);
     if (SERVER) {
       await api("PUT", "/api/profile", { data: S.profile });
-      for (const g of S.gyms.slice(0, 1)) await api("PUT", `/api/gyms/${encodeURIComponent(g.id)}`, { name: g.name, equipment: g.equipment, busyHours: g.busyHours });
+      for (const g of S.gyms.slice(0, 2)) await api("PUT", `/api/gyms/${encodeURIComponent(g.id)}`, { name: g.name, kind: g.kind, equipment: g.equipment, busyHours: g.busyHours });
       await api("PUT", `/api/day-plan/${today}`, { plan, gymId: S.ui.gymId, source: "core" });
       await api("PATCH", "/api/account", { onboarding: "concluido" });
     }
@@ -164,7 +169,7 @@ export default function PrimeirosPassos({ route }: { route: Route }) {
   const goto = (i: number) => go(href("primeiros-passos", [String(i)]));
   const feito = S.onboarding === "concluido" || !SERVER;
   const porClaude = S.profile.meta?.filledBy === "claude" && !S.profile.meta.confirmed;
-  const blocked = (P.id === "musculos" && !S.profile.subPriorities.length && S.profile.goal.id !== "constancia") || (P.id === "rotina" && !S.profile.daysUsual.length);
+  const blocked = (P.id === "musculos" && !S.profile.subPriorities.length && C.goalPreset(S.profile.goal.id).length > 0) || (P.id === "rotina" && !S.profile.daysUsual.length);
   return <div class="pp">
     <div class="pp-top"><button type="button" class="btn" disabled={step === 0} onClick={() => goto(step - 1)} aria-label="Voltar uma pergunta"><Icon id="back" />Voltar</button>
       <span class="small sub num" aria-hidden="true">{step + 1} de {PASSOS.length}</span>

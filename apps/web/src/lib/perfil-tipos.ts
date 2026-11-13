@@ -1,1 +1,1 @@
-export type GoalId = "bracos_ombros" | "massa_geral" | "definir" | "recompor" | "forca" | "constancia";
+export type GoalId = import("@ciclo/core").GoalId;

@@ -37,7 +37,7 @@ test("ciclo_salvar_perfil: entrada inválida é recusada e nada é gravado", asy
   await mcp(env, t, "ciclo_salvar_perfil", { perfil: { minutes: 50 } });
   const before = JSON.stringify(profileOf(env, "ana")), n = historyN(env, "ana");
   const bad: Record<string, unknown>[] = [
-    { subPriorities: ["ombro_lat", "biceps", "triceps_longa", "peito_sup"] }, { subPriorities: ["ombro_inventado"] }, { priorities: ["a", "b", "c", "d"] },
+    { subPriorities: ["ombro_lat", "biceps", "triceps_longa", "peito_sup", "dorsal", "quad"] }, { subPriorities: ["ombro_inventado"] }, { priorities: ["a", "b", "c", "d"] },
     { age: 3 }, { weekStart: "segunda" }, { minutes: "60" }, { avoid: ["Exercicio_Inventado"] }, { foo: 1 }, { prefs: { ombro: "foguete" } },
   ];
   for (const perfil of bad) {
@@ -47,7 +47,7 @@ test("ciclo_salvar_perfil: entrada inválida é recusada e nada é gravado", asy
   for (const args of [{}, { perfil: null }, { perfil: [] }, { perfil: "x" }]) assert.equal((await mcp(env, t, "ciclo_salvar_perfil", args)).data.result.isError, true, JSON.stringify(args));
   assert.equal(JSON.stringify(profileOf(env, "ana")), before); assert.equal(historyN(env, "ana"), n);
   // o mesmo vale para o app (PUT /api/profile)
-  assert.equal((await call(env, "PUT", "/api/profile", { user: "ana", body: { data: { priorities: ["ombro", "biceps", "triceps", "peito"] } } })).status, 400);
+  assert.equal((await call(env, "PUT", "/api/profile", { user: "ana", body: { data: { priorities: ["ombro", "biceps", "triceps", "peito", "costas", "quad"] } } })).status, 400);
   assert.equal((await call(env, "PUT", "/api/profile", { user: "ana", body: { data: { subPriorities: ["x"] } } })).status, 400);
   assert.equal(JSON.stringify(profileOf(env, "ana")), before);
 });

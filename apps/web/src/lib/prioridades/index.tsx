@@ -1,6 +1,6 @@
-// Escolha das prioridades no mapa de músculos (SVG com subdivisões): até 3, na ordem do toque, com ▲▼ para reordenar.
-// Também dá para escolher pela lista (toque ≥ 44 px), que é o caminho acessível. Usado nos Primeiros passos e no Perfil.
-import { C, S } from "../store/index.ts";
+// Escolha das prioridades por SUBDIVISÃO (modo avançado do Perfil): até 5 grupos de músculos, na ordem do toque, com ▲▼ para reordenar.
+// Também dá para escolher pela lista (toque ≥ 44 px), que é o caminho acessível. O quiz usa o mapa por grupo (lib/mapa-corpo).
+import { C, S, today } from "../store/index.ts";
 import { Icon, toast } from "../ui/index.tsx";
 import { MapaMusculos } from "../mapa-musculos/index.tsx";
 
@@ -13,13 +13,21 @@ export function setSubPriorities(subs: C.SubMuscleId[], onChange: () => void) {
   onChange();
 }
 
+/** Escolher o objetivo: frase, metas e prioridades sugeridas (preset); "voltar a treinar" marca o dia para a rampa de volume. */
+export function escolherObjetivo(id: string, onChange: () => void) {
+  const d = C.goalDefaults(id), g = S.profile.goal;
+  Object.assign(g, { id: d.id, statement: d.statement, horizonWeeks: d.horizonWeeks, metrics: d.metrics });
+  if (d.id === "retorno") g.since = today; else delete g.since;
+  const preset = C.goalPreset(d.id);
+  if (preset.length || !(S.profile.subPriorities ?? []).length) setSubPriorities(preset, onChange); else onChange();
+}
+
 export function SeletorPrioridades({ onChange, size = "sm" }: { onChange: () => void; size?: "sm" | "md" }) {
   const subs = S.profile.subPriorities ?? [];
   const toggle = (s: C.SubMuscleId) => {
-    const i = subs.indexOf(s);
-    if (i >= 0) return setSubPriorities(subs.filter((x) => x !== s), onChange);
-    if (subs.length >= C.MAX_PRIORITIES) return toast(`Até ${C.MAX_PRIORITIES} prioridades: toque numa marcada para tirar`);
-    setSubPriorities([...subs, s], onChange);
+    const r = C.toggleSub(subs, s);
+    if (!r.changed) return toast(`Máximo ${C.MAX_PRIORITIES} prioridades: toque numa marcada para tirar`);
+    setSubPriorities(r.subs, onChange);
   };
   const move = (i: number, d: number) => { const a = [...subs]; const j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; setSubPriorities(a, onChange); };
   return <div class="prio">

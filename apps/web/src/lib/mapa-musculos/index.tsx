@@ -4,11 +4,11 @@
 import * as C from "@ciclo/core";
 import type { SubMuscleId } from "@ciclo/core";
 
-type Shapes = Partial<Record<SubMuscleId, string[]>>;
-const SIL = [
+export type Shapes = Partial<Record<SubMuscleId, string[]>>;
+export const SIL = [
   "M100 58 C88 58 74 59 62 62 C50 65 42 75 42 92 C40 110 40 126 43 140 C38 160 35 182 37 204 L49 206 C53 186 57 166 58 148 L60 112 C62 140 64 170 68 200 C66 212 64 222 66 232 C60 262 60 296 66 326 C60 350 60 376 63 400 L81 400 C83 376 84 352 82 330 C88 300 92 266 96 238 L100 238 Z",
 ];
-const FRENTE: Shapes = {
+export const FRENTE: Shapes = {
   trapezio: ["M92 56 C84 60 74 62 66 64 L84 66 C88 63 91 60 92 56 Z"],
   ombro_lat: ["M58 63 C48 66 43 76 43 92 L49 94 C49 81 53 71 62 65 Z"],
   ombro_ant: ["M62 65 C54 71 50 82 50 95 L59 97 C63 86 70 76 78 67 C72 64 67 64 62 65 Z"],
@@ -23,7 +23,7 @@ const FRENTE: Shapes = {
   adutores: ["M91 232 C93 256 93 280 89 300 L98 298 C99 272 99 248 97 236 Z"],
   pant: ["M66 338 C61 352 61 372 64 390 L71 390 C71 370 71 352 72 338 Z"],
 };
-const COSTAS: Shapes = {
+export const COSTAS: Shapes = {
   trapezio: ["M99 52 L99 112 C92 98 81 80 66 66 C77 61 88 57 99 52 Z"],
   ombro_lat: ["M57 63 C47 67 42 77 42 92 L47 92 C47 80 51 70 61 64 Z"],
   ombro_post: ["M61 64 C52 70 48 80 48 92 L57 93 C60 84 66 76 74 70 C70 66 65 64 61 64 Z"],
@@ -46,7 +46,7 @@ export interface MapaProps {
   selected?: SubMuscleId[]; onToggle?: (id: SubMuscleId) => void;
   views?: Vista[]; size?: "sm" | "md";
 }
-const MIRROR = "matrix(-1 0 0 1 200 0)";
+export const MIRROR = "matrix(-1 0 0 1 200 0)";
 
 /** Caixa do desenho (os caminhos usam só coordenadas absolutas M/L/C/Z). */
 function bbox(ds: string[]) {

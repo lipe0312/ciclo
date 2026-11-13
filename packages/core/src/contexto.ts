@@ -175,7 +175,7 @@ function fatiaRevisao(e: EstadoContexto, prios: MuscleId[]): Record<string, unkn
 /** Monta a fatia do pedido. Determinística: mesma entrada → mesmo JSON (na mesma ordem). */
 export function contexto(pedido: Pedido, e: EstadoContexto): Fatia {
   const obj = objetivo(e.perfil);
-  const head = { objetivo: obj, metodo: resumoMetodo(e.perfil ?? {}), pedido, data: e.data };
+  const head = { objetivo: obj, metodo: resumoMetodo(e.perfil ?? {}, e.data), pedido, data: e.data };
   let corpo: Record<string, unknown>;
   switch (pedido) {
     case "trocar": corpo = fatiaTroca(e, false); break;
