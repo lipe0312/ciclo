@@ -131,6 +131,7 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["DELETE /api/food/:id", () => a("DELETE", `/api/food/${B.food}`), 404],
     ["POST /api/meal-templates", () => a("POST", "/api/meal-templates", { name: "A", text: "pão" }), 201],
     ["DELETE /api/meal-templates/:id", () => a("DELETE", `/api/meal-templates/${B.tpl}`), 404],
+    ["GET /api/home", () => a("GET", `/api/home?date=${D}`)],
     ["GET /api/diet", () => a("GET", `/api/diet?date=${D}`)],
     ["POST /api/diet/adapt", () => a("POST", "/api/diet/adapt", { date: D })],
     ["POST /api/transcribe", () => call(env, "POST", "/api/transcribe", { user: "ana", raw: PNG, ct: "audio/webm" })],
