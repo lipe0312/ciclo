@@ -1,6 +1,6 @@
 // Comida 2.0 (#28): registros (editar/apagar), refeições salvas, calorias adaptativas e transcrição de voz.
 // Todo SQL com bind e filtrado por user_id; entrada validada com http.ts. Nada de texto do usuário em log.
-import { ALIMENTO_BY_KEY, MAX_ITENS_PESSOAIS, MEALS, PACES, adaptiveTarget, estimarComBase, estimateFood } from "@ciclo/core";
+import { ALIMENTO_BY_KEY, MAX_ITENS_PESSOAIS, UNIDADE_NOME_RE, MEALS, PACES, adaptiveTarget, estimarComBase, estimateFood } from "@ciclo/core";
 import type { Alimento, Meal, Pace, ParteReconhecida, Unidade } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, id, json, num, oneOf, readJson, str } from "./http.ts";
@@ -51,11 +51,19 @@ function lembrar(env: Env, uid: string, partes: ParteReconhecida[], now: number)
     ];
   });
 }
-function unidadesIn(v: unknown): Unidade[] {
+/** Unidades caseiras da pessoa: nome (e plural) só letras, espaço e hífen; sem plural, vale o da base comum para o mesmo nome. */
+function unidadesIn(v: unknown, base: Alimento): Unidade[] {
   if (!Array.isArray(v) || v.length < 1 || v.length > 6) throw new HttpError(400, "unidades: de 1 a 6");
+  const nomeOk = (x: unknown, f: string, req: boolean) => {
+    const t = str(x, f, 30, req)?.trim() ?? null;
+    if (t != null && !UNIDADE_NOME_RE.test(t)) throw new HttpError(400, `${f}: só letras, espaço e hífen`);
+    return t;
+  };
   return v.map((u, i) => {
     const o = (u ?? {}) as Record<string, unknown>;
-    return { nome: str(o.nome, `unidades[${i}].nome`, 30)!.trim() || "porção", g: num(o.g, `unidades[${i}].g`, 1, 1000)! };
+    const nome = nomeOk(o.nome, `unidades[${i}].nome`, true)!, g = num(o.g, `unidades[${i}].g`, 1, 1000)!;
+    const pl = nomeOk(o.pl, `unidades[${i}].pl`, false) ?? base.unidades.find((x) => x.nome === nome)?.pl;
+    return pl ? { nome, g, pl } : { nome, g };
   });
 }
 
@@ -140,7 +148,7 @@ export function registerComida(on: (method: string, path: string, h: Handler) =>
     const b = await readJson<Record<string, unknown>>(req, 8 * 1024);
     const nome = (str(b.nome, "nome", 60, false) ?? "").trim() || base.nome;
     const kcal = num(b.kcal, "kcal", 0, 900)!, prot = num(b.prot, "prot", 0, 100)!, carb = num(b.carb, "carb", 0, 100)!, gord = num(b.gord, "gord", 0, 100)!;
-    const units = JSON.stringify(unidadesIn(b.unidades)), now = Date.now();
+    const units = JSON.stringify(unidadesIn(b.unidades, base)), now = Date.now();
     const r = await env.DB.prepare(`INSERT INTO food_item (user_id, key, name, kcal, protein, carb, fat, units, source, uses, updated_at)
       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'usuario', 0, ?9
       WHERE EXISTS (SELECT 1 FROM food_item WHERE user_id = ?1 AND key = ?2) OR (SELECT COUNT(*) FROM food_item WHERE user_id = ?1) < ?10

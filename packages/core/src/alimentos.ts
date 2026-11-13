@@ -55,7 +55,19 @@ export const MAX_ITENS_PESSOAIS = 200;
 const norm = (s: string) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/-/g, " ");
 const r1 = (n: number) => Math.round(n * 10) / 10;
 const termRe = new Map<string, RegExp>();
-const re = (t: string) => termRe.get(t) ?? termRe.set(t, new RegExp(`(?:^|[^a-z])${t}(?:s|es)?(?=[^a-z]|$)`)).get(t)!;
+const MAX_CACHE = 300;
+/** Escapa tudo que é especial em RegExp: nome de unidade pode vir da pessoa (base pessoal). */
+export const escRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&");
+const re = (t: string) => {
+  const hit = termRe.get(t);
+  if (hit) return hit;
+  if (termRe.size >= MAX_CACHE) termRe.clear(); // teto: termos pessoais não crescem o cache sem fim
+  const r = new RegExp(`(?:^|[^a-z])${escRe(t)}(?:s|es)?(?=[^a-z]|$)`);
+  termRe.set(t, r);
+  return r;
+};
+/** Nome de unidade caseira aceito da pessoa: letras (com acento), espaço e hífen, 1 a 30. */
+export const UNIDADE_NOME_RE = /^[\p{L}][\p{L} -]{0,29}$/u;
 
 /** Base em vigor: a pessoal primeiro (o ajuste da pessoa vence), depois as comuns que ela ainda não tem. */
 export function baseAlimentos(pessoal: readonly Alimento[]): Alimento[] {
@@ -171,6 +183,12 @@ export function faltaHoje(meta: { kcal: number; protein: number }, totais: { kca
       prot: Math.round(o.p), kcal: Math.round(o.k),
     })),
   };
+}
+
+/** A sugestão escrita só com chave, quantidade e os nomes da base comum (nada digitado pela pessoa): para o MCP. */
+export function textoSugestaoBase(s: Sugestao): string {
+  const partes = s.itens.flatMap((i) => { const a = ALIMENTO_BY_KEY[i.key]; return a ? [rotulo(a, a.unidades[0], i.qtd)] : []; });
+  return `${partes.join(" + ")} = ${s.prot} g`;
 }
 
 // ---------- semana ----------

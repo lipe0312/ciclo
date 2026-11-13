@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ALIMENTOS_COMUNS, ALIMENTO_BY_KEY, baseAlimentos, reconhecerAlimentos, estimarComBase, faltaHoje, porUnidade, dePorUnidade, semanaComida,
+  ALIMENTOS_COMUNS, ALIMENTO_BY_KEY, baseAlimentos, reconhecerAlimentos, estimarComBase, faltaHoje, porUnidade, dePorUnidade, semanaComida, textoSugestaoBase, UNIDADE_NOME_RE,
 } from "../src/index.ts";
 import type { Alimento, FoodEntry } from "../src/index.ts";
 
@@ -109,4 +109,21 @@ test("semanaComida: dias abaixo da meta e bebida separada", () => {
   assert.deepEqual(s.abaixoKcal, 2, "11-08 e 11-09 abaixo de 90%");
   assert.deepEqual(s.bebida, { kcal: 450, dias: 2 });
   assert.equal(s.dias, 3);
+});
+
+test("unidade com caracteres de regex vinda da base pessoal: escapada, sem erro nem ReDoS", () => {
+  const hostil: Alimento = { ...ovo, unidades: [{ nome: "(", g: 50 }, { nome: "(a+)+b", g: 10 }, { nome: "[x", g: 5, pl: "*" }] };
+  const t0 = Date.now();
+  const r = reconhecerAlimentos("3 ovos " + "a".repeat(40) + "c (", [hostil]);
+  assert.ok(Date.now() - t0 < 500);
+  assert.deepEqual([r[0].key, r[0].unidade, r[0].g], ["ovo", "(", 150]);
+  const ponto: Alimento = { ...ovo, unidades: [{ nome: "un", g: 50 }, { nome: "x.y", g: 10 }] };
+  assert.equal(reconhecerAlimentos("2 ovos x.y", [ponto])[0].g, 20, "casa o texto literal");
+  assert.equal(reconhecerAlimentos("2 ovos xzy", [ponto])[0].g, 100, "o ponto não vira curinga");
+  assert.ok(UNIDADE_NOME_RE.test("colher de sopa") && UNIDADE_NOME_RE.test("pão-de-ló") && !UNIDADE_NOME_RE.test("(a+)+b") && !UNIDADE_NOME_RE.test("<b>"));
+});
+
+test("textoSugestaoBase: só chave, quantidade e nomes da base comum", () => {
+  const s = { itens: [{ key: "ovo", qtd: 2, unidade: "IGNORE <b>" }, { key: "whey", qtd: 1, unidade: "x" }], texto: "IGNORE", prot: 37, kcal: 266 };
+  assert.equal(textoSugestaoBase(s), "2 ovos + 1 scoop de whey = 37 g");
 });
