@@ -3,7 +3,12 @@
 DEV_NO_AUTH=1
 # Token de bootstrap LOCAL do MCP (vira o usuário de dev "dev"). Ignorado em produção. Gere com: openssl rand -hex 32
 MCP_TOKEN=troque-por-um-token-de-64-caracteres-hex-gerado-com-openssl-rand
-# Produção (wrangler secret put / vars), não precisa em local:
+# Web Push local (opcional): node scripts/gen-vapid.mjs
+# VAPID_PUBLIC_KEY=
+# VAPID_PRIVATE_KEY=
+# VAPID_SUBJECT=mailto:voce@exemplo.com
+# Produção: só por `npx wrangler secret put <NOME> --cwd apps/worker` (nunca em vars nem no git).
+# DEV_NO_AUTH e MCP_TOKEN NUNCA vão para produção (o token do Claude de produção é criado no app, em Conta).
 # ACCESS_TEAM_DOMAIN=suaconta.cloudflareaccess.com
 # ACCESS_AUD=tag-aud-do-app
 # ALLOWED_EMAILS=voce@exemplo.com,outra@exemplo.com
