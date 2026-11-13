@@ -87,20 +87,61 @@ export const DIET = { templates: [] as Template[], history: [] as DietHist[], we
 
 export const foodRows = (): FoodRow[] => S.food as FoodRow[];
 export const foodTotals = (d: string) => foodRows().filter((f) => f.date === d).reduce((a, f) => ({ kcal: a.kcal + (f.kcal ?? 0), prot: a.prot + (f.prot ?? 0) }), { kcal: 0, prot: 0 });
-const entries = (): C.FoodEntry[] => foodRows().map((f) => ({ date: f.date, meal: f.meal, kcal: f.kcal, prot: f.prot, text: f.text }));
+const entries = (): C.FoodEntry[] => foodRows().map((f) => ({ id: f.id, date: f.date, meal: f.meal, kcal: f.kcal, prot: f.prot, text: f.text }));
+
+// ---------- base de alimentos pessoal (#43) ----------
+export type ItemBase = C.Alimento & { usos: number };
+/** A base pessoal (mais usados primeiro). Vence a base comum nos próximos registros. */
+export const FOODBASE = { itens: [] as ItemBase[] };
+const fromItem = (i: any): ItemBase | null => {
+  const b = C.ALIMENTO_BY_KEY[i?.key]; if (!b) return null;
+  return { ...b, nome: i.nome, kcal: i.kcal, prot: i.prot, carb: i.carb, gord: i.gord, unidades: i.unidades, fonte: i.fonte, usos: i.usos ?? 0 };
+};
+const sortBase = () => FOODBASE.itens.sort((a, b) => b.usos - a.usos);
+/** Igual ao servidor: cada alimento reconhecido entra (ou soma um uso) na base pessoal. */
+function lembrarLocal(partes: C.ParteReconhecida[]) {
+  for (const k of new Set(partes.flatMap((p) => (p.key ? [p.key] : [])))) {
+    const it = FOODBASE.itens.find((x) => x.key === k);
+    if (it) it.usos++; else if (C.ALIMENTO_BY_KEY[k] && FOODBASE.itens.length < C.MAX_ITENS_PESSOAIS) FOODBASE.itens.push({ ...C.ALIMENTO_BY_KEY[k], usos: 1 });
+  }
+  sortBase();
+}
+/** Ajuste da pessoa (por 100 g e unidades): vale para os próximos registros, os antigos ficam. */
+export function salvarAlimento(key: string, nome: string, m: C.Macros, unidades: C.Unidade[]) {
+  const b = C.ALIMENTO_BY_KEY[key]; if (!b) return;
+  const cur = FOODBASE.itens.find((x) => x.key === key);
+  const it: ItemBase = { ...b, nome: nome || b.nome, kcal: m.kcal, prot: m.prot, carb: m.carb, gord: m.gord, unidades, fonte: "usuario", usos: cur?.usos ?? 0 };
+  FOODBASE.itens = [...FOODBASE.itens.filter((x) => x.key !== key), it]; sortBase();
+  send("PUT", `/api/food-items/${encodeURIComponent(key)}`, { nome: it.nome, kcal: m.kcal, prot: m.prot, carb: m.carb, gord: m.gord, unidades }).catch(() => {});
+}
+/** Volta para a base comum (TACO). */
+export function voltarAlimento(key: string) {
+  FOODBASE.itens = FOODBASE.itens.filter((x) => x.key !== key);
+  send("DELETE", `/api/food-items/${encodeURIComponent(key)}`).catch(() => {});
+}
+export const estimarTexto = (text: string) => C.estimarComBase(text, FOODBASE.itens);
+/** "Faltam X g / ~Y kcal" do dia e até 2 sugestões dos alimentos que a pessoa já come. */
+export function faltaDoDia(d: string) {
+  const t = foodTotals(d), diet = S.profile.diet;
+  return C.faltaHoje({ kcal: diet.kcal, protein: diet.protein }, t, FOODBASE.itens);
+}
 /** Painel: média dos últimos 7 dias contra a meta, e a semana anterior para a tendência. */
 export function foodPanel() {
   const d = S.profile.diet, targets = { kcal: d.kcal, protein: d.protein };
   const cur = C.foodAverages(entries(), today, targets), prev = C.foodAverages(entries(), addDays(today, -7), targets);
   const week = foodRows().filter((f) => f.date >= cur.from && f.date <= today);
-  return { cur, prev, top: C.topProteinFoods(week as unknown as C.FoodEntry[]), targets };
+  return { cur, prev, top: C.topProteinFoods(week as unknown as C.FoodEntry[]), targets, semana: C.semanaComida(entries(), today, targets) };
 }
 export const hourNow = () => Number(new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", hourCycle: "h23" }).format(new Date()));
 
 const fromServer = (e: any): FoodRow => ({ id: e.id, date: e.date, text: e.text, kcal: e.kcal, prot: e.prot, meal: e.meal, source: e.source, confidence: e.confidence });
 export async function loadFood() {
   if (!SERVER) return seedDemoComida();
-  try { await flush(); const r = await api<{ entries: any[] }>("GET", `/api/food?from=${addDays(today, -13)}&to=${today}`); S.food = r.entries.map(fromServer); commit(); } catch { /* offline: fica o que há */ }
+  try {
+    await flush();
+    const [r, b] = await Promise.all([api<{ entries: any[] }>("GET", `/api/food?from=${addDays(today, -13)}&to=${today}`), api<{ itens: any[] }>("GET", "/api/food-items")]);
+    S.food = r.entries.map(fromServer); FOODBASE.itens = b.itens.flatMap((i) => { const x = fromItem(i); return x ? [x] : []; }); commit();
+  } catch { /* offline: fica o que há */ }
 }
 let adaptTried = false;
 export async function loadDiet() {
@@ -121,7 +162,8 @@ export async function loadDiet() {
 /** `meal` omitido = pela palavra do texto ou pela hora. Outras telas (caixa do Claude) chamam só com o texto. */
 export function addFood(text: string, meal?: C.Meal | null, over?: { kcal: number | null; prot: number | null }, date = today) {
   if (meal === undefined) meal = C.guessMeal(text, hourNow());
-  const e = C.estimateFood(text), kcal = over ? over.kcal : e.kcal || null, prot = over ? over.prot : e.prot || null;
+  const e = estimarTexto(text), kcal = over ? over.kcal : e.kcal || null, prot = over ? over.prot : e.prot || null;
+  lembrarLocal(e.partes);
   const row: FoodRow = { id: uid(), date, text, kcal, prot, meal, source: "local", confidence: null };
   S.food.push(row);
   send<{ id: string }>("POST", "/api/food", { date, text, meal, ...(over ? { kcal: over.kcal, protein: over.prot } : {}) }).then((r) => { if (r?.id) row.id = r.id; commit(); }).catch(() => {});
@@ -131,7 +173,7 @@ export function editFood(id: string, patch: { text?: string; meal?: C.Meal | nul
   const row = foodRows().find((f) => f.id === id); if (!row) return;
   const body: Record<string, unknown> = {};
   if (patch.text !== undefined && patch.text !== row.text) {
-    row.text = patch.text; const e = C.estimateFood(patch.text); row.kcal = e.kcal || null; row.prot = e.prot || null; row.source = "local"; row.confidence = null; body.text = patch.text;
+    row.text = patch.text; const e = estimarTexto(patch.text); row.kcal = e.kcal || null; row.prot = e.prot || null; row.source = "local"; row.confidence = null; body.text = patch.text;
   }
   if (patch.meal !== undefined) { row.meal = patch.meal; body.meal = patch.meal; }
   if ((patch.kcal !== undefined && patch.kcal !== row.kcal) || (patch.prot !== undefined && patch.prot !== row.prot)) {
@@ -163,6 +205,9 @@ const DEMO_DAYS: [string, number, number][][] = [
   [["café: 2 ovos e pão", 280, 17], ["almoço: arroz, feijão e carne", 640, 53], ["jantar: arroz e frango", 450, 49]],
 ];
 function seedDemoComida() {
+  if (!FOODBASE.itens.length) { // base pessoal fictícia: o que o "dono da demo" mais come
+    FOODBASE.itens = ([["ovo", 18], ["pao", 14], ["whey", 12], ["frango", 11], ["arroz", 10], ["feijao", 9], ["carne", 6], ["banana", 4]] as const).map(([k, usos]) => ({ ...C.ALIMENTO_BY_KEY[k], usos }));
+  }
   if (S.food.length) return;
   const rows: FoodRow[] = [];
   for (let i = 0; i < 21; i++) {
@@ -173,6 +218,8 @@ function seedDemoComida() {
       rows.push({ id: `demo-${i}-${rows.length}`, date, text, kcal: Math.round(kcal * 1.45) + (i % 4) * 25, prot, meal: m === "café" ? "cafe" : m === "almoço" ? "almoco" : m === "lanche" ? "lanche" : m === "jantar" ? "jantar" : null, source: i % 2 ? "claude" : "local", confidence: i % 2 ? "media" : null });
     }
   }
+  // bebida do Diário (#42): vira registro "bebida-…" na Comida; o painel mostra à parte
+  for (const [i, text, kcal] of [[15, "2 latas de cerveja", 300], [19, "1 taça de vinho", 125]] as const) rows.push({ id: `bebida-demo-${i}`, date: addDays(today, -20 + i), text, kcal, prot: 0, meal: null, source: "local", confidence: null });
   S.food = rows; commit();
 }
 function demoDiet() {

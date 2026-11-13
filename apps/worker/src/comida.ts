@@ -1,7 +1,7 @@
 // Comida 2.0 (#28): registros (editar/apagar), refeições salvas, calorias adaptativas e transcrição de voz.
 // Todo SQL com bind e filtrado por user_id; entrada validada com http.ts. Nada de texto do usuário em log.
-import { MEALS, PACES, adaptiveTarget, estimateFood } from "@ciclo/core";
-import type { Meal, Pace } from "@ciclo/core";
+import { ALIMENTO_BY_KEY, MAX_ITENS_PESSOAIS, UNIDADE_NOME_RE, MEALS, PACES, adaptiveTarget, estimarComBase, estimateFood } from "@ciclo/core";
+import type { Alimento, Meal, Pace, ParteReconhecida, Unidade } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, id, json, num, oneOf, readJson, str } from "./http.ts";
 import { getProfile, saveProfile } from "./db.ts";
@@ -20,6 +20,52 @@ const mealOrNull = (v: unknown): Meal | null => (v == null || v === "" ? null : 
 interface FoodRow { id: string; date: string; raw_text: string; meal: Meal | null; kcal: number | null; protein: number | null; kcal_est: number | null; protein_est: number | null; manual: 0 | 1; source: "local" | "claude"; confidence: string | null; created_at: number }
 export const foodOut = (r: FoodRow) => ({ id: r.id, date: r.date, text: r.raw_text, meal: r.meal, kcal: r.kcal, prot: r.protein, kcalEst: r.kcal_est, protEst: r.protein_est, manual: !!r.manual, source: r.source, confidence: r.confidence, createdAt: r.created_at });
 export const FOOD_COLS = "id, date, raw_text, meal, kcal, protein, kcal_est, protein_est, manual, source, confidence, created_at";
+
+// ---- base de alimentos pessoal (#43) ----
+interface ItemRow { key: string; name: string; kcal: number; protein: number; carb: number; fat: number; units: string; source: Alimento["fonte"]; uses: number }
+const ITEM_COLS = "key, name, kcal, protein, carb, fat, units, source, uses";
+const itemToAlimento = (r: ItemRow): Alimento | null => {
+  const base = ALIMENTO_BY_KEY[r.key];
+  if (!base) return null;
+  let unidades: Unidade[] = base.unidades;
+  try { const u = JSON.parse(r.units); if (Array.isArray(u) && u.length) unidades = u; } catch { /* fica a da base comum */ }
+  return { ...base, nome: r.name, kcal: r.kcal, prot: r.protein, carb: r.carb, gord: r.fat, unidades, fonte: r.source };
+};
+/** A base pessoal da conta, mais usados primeiro (é a ordem das sugestões do "o que falta"). */
+export async function basePessoal(env: Env, uid: string): Promise<(Alimento & { usos: number })[]> {
+  const { results } = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM food_item WHERE user_id = ?1 ORDER BY uses DESC, last_used_at DESC, key LIMIT ?2`)
+    .bind(uid, MAX_ITENS_PESSOAIS).all<ItemRow>();
+  return results.flatMap((r) => { const a = itemToAlimento(r); return a ? [{ ...a, usos: r.uses }] : []; });
+}
+/** Cada alimento reconhecido vira (ou reforça) um item da base pessoal, semeado pela base comum. Teto de itens checado no mesmo comando. */
+function lembrar(env: Env, uid: string, partes: ParteReconhecida[], now: number) {
+  const keys = [...new Set(partes.flatMap((p) => (p.key && ALIMENTO_BY_KEY[p.key] ? [p.key] : [])))];
+  return keys.flatMap((k) => {
+    const a = ALIMENTO_BY_KEY[k];
+    return [
+      env.DB.prepare("UPDATE food_item SET uses = uses + 1, last_used_at = ?3 WHERE user_id = ?1 AND key = ?2").bind(uid, k, now),
+      env.DB.prepare(`INSERT INTO food_item (user_id, key, name, kcal, protein, carb, fat, units, source, uses, last_used_at, updated_at)
+        SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, ?10, ?10
+        WHERE NOT EXISTS (SELECT 1 FROM food_item WHERE user_id = ?1 AND key = ?2) AND (SELECT COUNT(*) FROM food_item WHERE user_id = ?1) < ?11`)
+        .bind(uid, k, a.nome, a.kcal, a.prot, a.carb, a.gord, JSON.stringify(a.unidades), a.fonte, now, MAX_ITENS_PESSOAIS),
+    ];
+  });
+}
+/** Unidades caseiras da pessoa: nome (e plural) só letras, espaço e hífen; sem plural, vale o da base comum para o mesmo nome. */
+function unidadesIn(v: unknown, base: Alimento): Unidade[] {
+  if (!Array.isArray(v) || v.length < 1 || v.length > 6) throw new HttpError(400, "unidades: de 1 a 6");
+  const nomeOk = (x: unknown, f: string, req: boolean) => {
+    const t = str(x, f, 30, req)?.trim() ?? null;
+    if (t != null && !UNIDADE_NOME_RE.test(t)) throw new HttpError(400, `${f}: só letras, espaço e hífen`);
+    return t;
+  };
+  return v.map((u, i) => {
+    const o = (u ?? {}) as Record<string, unknown>;
+    const nome = nomeOk(o.nome, `unidades[${i}].nome`, true)!, g = num(o.g, `unidades[${i}].g`, 1, 1000)!;
+    const pl = nomeOk(o.pl, `unidades[${i}].pl`, false) ?? base.unidades.find((x) => x.nome === nome)?.pl;
+    return pl ? { nome, g, pl } : { nome, g };
+  });
+}
 
 /** Lê o corpo com teto de bytes, mesmo sem Content-Length (chunked). */
 async function readLimited(req: Request, max: number): Promise<Uint8Array> {
@@ -55,9 +101,10 @@ export function registerComida(on: (method: string, path: string, h: Handler) =>
     const b = await readJson<Record<string, unknown>>(req);
     const fid = id(), text = str(b.text, "text", 2000)!, d = date(b.date), meal = mealOrNull(b.meal);
     const given = { kcal: num(b.kcal, "kcal", 0, 20000, false), prot: num(b.protein, "protein", 0, 1000, false) };
-    const est = estimateFood(text);
+    const est = estimarComBase(text, await basePessoal(env, u.id)), now = Date.now();
     const kcal = given.kcal ?? (est.kcal || null), prot = given.prot ?? (est.prot || null);
     await env.DB.batch([
+      ...lembrar(env, u.id, est.partes, now),
       env.DB.prepare("INSERT INTO food_log (user_id, id, date, raw_text, meal, kcal, protein, kcal_est, protein_est, source, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'local', ?10)")
         .bind(u.id, fid, d, text, meal, kcal, prot, est.kcal || null, est.prot || null, Date.now()),
       env.DB.prepare("INSERT INTO inbox (user_id, id, created_at, text, action, tier) VALUES (?4, ?1, ?2, ?3, 'registrar_comida', 'haiku')").bind(id(), Date.now(), `[comida ${d}] ${text}`, u.id),
@@ -75,7 +122,7 @@ export function registerComida(on: (method: string, path: string, h: Handler) =>
     let { kcal, protein, kcal_est, protein_est, source, confidence, manual } = cur;
     if (kcalIn != null || protIn != null) { kcal = kcalIn ?? kcal; protein = protIn ?? protein; source = "local"; confidence = null; manual = 1; } // ajuste manual do dono: o Claude não sobrescreve
     else if (text !== cur.raw_text) {
-      const est = estimateFood(text);
+      const est = estimarComBase(text, await basePessoal(env, u.id));
       kcal = kcal_est = est.kcal || null; protein = protein_est = est.prot || null; source = "local"; confidence = null; manual = 0;
     }
     await env.DB.prepare("UPDATE food_log SET raw_text = ?3, meal = ?4, kcal = ?5, protein = ?6, kcal_est = ?7, protein_est = ?8, source = ?9, confidence = ?10, manual = ?11 WHERE user_id = ?1 AND id = ?2")
@@ -86,6 +133,35 @@ export function registerComida(on: (method: string, path: string, h: Handler) =>
   on("DELETE", "/api/food/:id", async (_req, env, p, u) => {
     const r = await env.DB.prepare("DELETE FROM food_log WHERE user_id = ?1 AND id = ?2").bind(u.id, p.id).run();
     if (!r.meta.changes) throw new HttpError(404, "registro não encontrado");
+    return json({ ok: true });
+  });
+
+  // ---- base de alimentos pessoal ----
+  on("GET", "/api/food-items", async (_req, env, _p, u) => {
+    const itens = await basePessoal(env, u.id);
+    return json({ itens: itens.map((a) => ({ key: a.key, nome: a.nome, kcal: a.kcal, prot: a.prot, carb: a.carb, gord: a.gord, unidades: a.unidades, fonte: a.fonte, usos: a.usos })) });
+  });
+  // ajuste da pessoa (por 100 g): vence a base comum nos próximos registros; os antigos ficam como estão
+  on("PUT", "/api/food-items/:key", async (req, env, p, u) => {
+    const base = ALIMENTO_BY_KEY[p.key];
+    if (!base) throw new HttpError(404, "alimento não encontrado");
+    const b = await readJson<Record<string, unknown>>(req, 8 * 1024);
+    const nome = (str(b.nome, "nome", 60, false) ?? "").trim() || base.nome;
+    const kcal = num(b.kcal, "kcal", 0, 900)!, prot = num(b.prot, "prot", 0, 100)!, carb = num(b.carb, "carb", 0, 100)!, gord = num(b.gord, "gord", 0, 100)!;
+    const units = JSON.stringify(unidadesIn(b.unidades, base)), now = Date.now();
+    const r = await env.DB.prepare(`INSERT INTO food_item (user_id, key, name, kcal, protein, carb, fat, units, source, uses, updated_at)
+      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'usuario', 0, ?9
+      WHERE EXISTS (SELECT 1 FROM food_item WHERE user_id = ?1 AND key = ?2) OR (SELECT COUNT(*) FROM food_item WHERE user_id = ?1) < ?10
+      ON CONFLICT (user_id, key) DO UPDATE SET name = excluded.name, kcal = excluded.kcal, protein = excluded.protein, carb = excluded.carb, fat = excluded.fat,
+        units = excluded.units, source = 'usuario', updated_at = excluded.updated_at`)
+      .bind(u.id, p.key, nome, kcal, prot, carb, gord, units, now, MAX_ITENS_PESSOAIS).run();
+    if (!r.meta.changes) throw new HttpError(409, `até ${MAX_ITENS_PESSOAIS} alimentos na base`);
+    return json({ ok: true });
+  });
+  // volta para os valores da base comum (TACO)
+  on("DELETE", "/api/food-items/:key", async (_req, env, p, u) => {
+    const r = await env.DB.prepare("DELETE FROM food_item WHERE user_id = ?1 AND key = ?2").bind(u.id, p.key).run();
+    if (!r.meta.changes) throw new HttpError(404, "alimento não encontrado");
     return json({ ok: true });
   });
 

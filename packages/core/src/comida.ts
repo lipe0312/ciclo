@@ -68,7 +68,7 @@ const addDays = (iso: string, n: number) => new Date(Date.parse(iso + "T12:00:00
 const diffDays = (a: string, b: string) => Math.round((Date.parse(b + "T12:00:00Z") - Date.parse(a + "T12:00:00Z")) / 864e5);
 
 // ---------- médias, aderência e distribuição ----------
-export interface FoodEntry { date: string; meal?: Meal | null; kcal: number | null; prot: number | null; text?: string }
+export interface FoodEntry { id?: string; date: string; meal?: Meal | null; kcal: number | null; prot: number | null; text?: string }
 export interface DayTotals { date: string; kcal: number; prot: number; logged: boolean }
 
 export function dayTotals(entries: readonly FoodEntry[], date: string): DayTotals {

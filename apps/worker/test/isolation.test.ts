@@ -35,6 +35,8 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   const inbox = (await ok(c("POST", "/api/inbox", { text: `${tag} pedido` }))).data.id;
   const food = (await ok(c("POST", "/api/food", { date: D, text: `${tag} comida`, meal: "cafe" }))).data.id;
   const tpl = (await ok(c("POST", "/api/meal-templates", { name: `${tag} marmita`, text: `${tag} arroz` }))).data.id;
+  // #43: base de alimentos pessoal (o ovo ajustado com a marca no nome)
+  await ok(c("PUT", "/api/food-items/ovo", { nome: `${tag} ovo`, kcal: 150, prot: 13, carb: 1, gord: 10, unidades: [{ nome: "ovo", g: 55 }] }));
   const media = (await ok(call(env, "POST", `/api/media?note=${tag}`, { user, raw: PNG, ct: "image/png" }))).data.id;
   // #26: lugar só desta conta (nome, endereço e ponto no mapa com a marca) e mídia de aparelho dentro dele
   const lug = `lug_${user}`;
@@ -129,6 +131,10 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["GET /api/food", () => a("GET", `/api/food?from=${D}&to=${D}`)],
     ["PUT /api/food/:id", () => a("PUT", `/api/food/${B.food}`, { text: "hackeado", kcal: 1 }), 404],
     ["DELETE /api/food/:id", () => a("DELETE", `/api/food/${B.food}`), 404],
+    ["GET /api/food-items", () => a("GET", "/api/food-items")],
+    ["PUT /api/food-items/:key", () => a("PUT", "/api/food-items/ovo", { nome: "A ovo", kcal: 140, prot: 12, carb: 1, gord: 9, unidades: [{ nome: "ovo", g: 50 }] })],
+    ["DELETE /api/food-items/:key", () => a("DELETE", "/api/food-items/ovo")],
+    ["DELETE /api/food-items/:key (já apagado)", () => a("DELETE", "/api/food-items/ovo"), 404],
     ["POST /api/meal-templates", () => a("POST", "/api/meal-templates", { name: "A", text: "pão" }), 201],
     ["DELETE /api/meal-templates/:id", () => a("DELETE", `/api/meal-templates/${B.tpl}`), 404],
     ["GET /api/home", () => a("GET", `/api/home?date=${D}`)],

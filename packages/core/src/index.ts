@@ -15,6 +15,7 @@ export * from "./perfil.ts";
 export * from "./objetivos.ts";
 export * from "./checkup.ts";
 export * from "./comida.ts";
+export * from "./alimentos.ts";
 export * from "./diario.ts";
 export * from "./diario-recap.ts";
 export * from "./lugares.ts";

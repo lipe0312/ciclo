@@ -23,7 +23,7 @@ function Colunas({ dias, meta, unit, bate }: { dias: { date: string; v: number; 
 const sign = (n: number) => (n > 0 ? "+" : n < 0 ? "−" : "") + fmt(Math.abs(n));
 
 export function Painel() {
-  const { cur, prev, top, targets } = foodPanel();
+  const { cur, prev, top, targets, semana } = foodPanel();
   const semDados = cur.daysLogged === 0;
   const dk = cur.avgKcal != null && prev.avgKcal != null ? cur.avgKcal - prev.avgKcal : null;
   const dp = cur.avgProt != null && prev.avgProt != null ? cur.avgProt - prev.avgProt : null;
@@ -40,6 +40,8 @@ export function Painel() {
         <p class="small"><b class="num">{cur.adherence.hit} de {cur.adherence.of}</b> dias bateu a proteína <span class="sub">({cur.adherence.rate}%)</span></p>
         <p class="small sub num">{cur.daysLogged} de 7 dias registrados</p>
       </div>
+      <p class="small num" style="margin-top:6px">Abaixo da meta: <b>{semana.abaixoProt} {semana.abaixoProt === 1 ? "dia" : "dias"}</b> na proteína · <b>{semana.abaixoKcal} {semana.abaixoKcal === 1 ? "dia" : "dias"}</b> nas calorias <span class="sub">(dos registrados)</span></p>
+      <p class="small num" style="margin-top:4px">Bebida: {semana.bebida.kcal ? <><b>{fmt(semana.bebida.kcal)} kcal</b> em {semana.bebida.dias} {semana.bebida.dias === 1 ? "dia" : "dias"} <span class="sub">(do Diário; já somada nas calorias)</span></> : <span class="sub">nada registrado na semana</span>}</p>
       <h3 class="small" style="margin:14px 0 6px">Calorias por dia</h3>
       <Colunas dias={cur.days.map((d) => ({ date: d.date, v: d.kcal, logged: d.logged }))} meta={targets.kcal} unit="kcal" bate={(v) => v >= targets.kcal * 0.9 && v <= targets.kcal * 1.1} />
       <h3 class="small" style="margin:14px 0 6px">Proteína por dia (g)</h3>
