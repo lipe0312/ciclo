@@ -8,7 +8,7 @@ import { toolNames } from "../src/mcp.ts";
 import { USER_TABLES } from "../src/db.ts";
 import { call, makeEnv, mcp } from "./fakes.ts";
 // script JS (sem tipos): a mesma checagem roda no `npm run deploy`
-import { readMigrations, readWrangler, staticProblems } from "../../../scripts/predeploy.mjs";
+import { readMigrations, readWrangler, secretProblems, staticProblems } from "../../../scripts/predeploy.mjs";
 
 const PROD = "ciclo.exemplo.workers.dev";
 const sample = (p: string) => p.replace(/:(\w+)/g, (_m, k) => (k === "date" ? "2026-11-05" : k === "setNo" ? "1" : "x1"));
@@ -83,4 +83,14 @@ test("nada de dado real versionado: migrations não semeiam pessoas nem e-mails"
     for (const i of ins) assert.match(i, /geocode_gate|busca/i, `${name}: seed inesperado (${i})`);
     assert.ok(!/@[a-z0-9-]+\.(com|br|net|org)/i.test(sql), `${name}: e-mail no SQL`);
   }
+});
+
+test("#56 predeploy: AUTH_PEPPER obrigatório, Turnstile com as duas chaves ou nenhuma, secret do Turnstile fora de vars", () => {
+  assert.deepEqual(secretProblems(["AUTH_PEPPER"]), []);
+  assert.deepEqual(secretProblems(["AUTH_PEPPER", "TURNSTILE_SITE_KEY", "TURNSTILE_SECRET"]), []);
+  assert.match(secretProblems([]).join(), /AUTH_PEPPER/);
+  assert.match(secretProblems(["AUTH_PEPPER", "TURNSTILE_SECRET"]).join(), /Turnstile pela metade/);
+  assert.match(secretProblems(["AUTH_PEPPER"], { TURNSTILE_SITE_KEY: "x" }).join(), /Turnstile pela metade/);
+  const cfg = readWrangler();
+  assert.ok(staticProblems({ ...cfg, vars: { ...cfg.vars, TURNSTILE_SECRET: "x" } }, []).some((x: string) => /TURNSTILE_SECRET/.test(x)));
 });

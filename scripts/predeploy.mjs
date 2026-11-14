@@ -1,6 +1,7 @@
 // Confere, sem rede, o que costuma quebrar o 1º deploy: database_id ainda de exemplo, variável de dev indo para produção,
 // URLs de preview abertas, migration com transação (o D1 remoto recusa) e o build do front ausente.
 // `npm run deploy` roda isto antes de tudo; `node scripts/predeploy.mjs` também funciona sozinho.
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -13,7 +14,7 @@ const MIG_RE = /^(\d{4})_[a-z0-9_]+\.sql$/;
 export function staticProblems(cfg, migrations) {
   const p = [];
   const vars = cfg.vars ?? {};
-  for (const k of ["DEV_NO_AUTH", "MCP_TOKEN", "VAPID_PRIVATE_KEY", "ACCESS_AUD", "ALLOWED_EMAILS", "OWNER_SETUP_CODE", "AUTH_PEPPER"]) if (k in vars) p.push(`wrangler.jsonc: "${k}" não pode estar em vars (dev ou segredo; use wrangler secret put)`);
+  for (const k of ["DEV_NO_AUTH", "MCP_TOKEN", "VAPID_PRIVATE_KEY", "ACCESS_AUD", "ALLOWED_EMAILS", "OWNER_SETUP_CODE", "AUTH_PEPPER", "TURNSTILE_SECRET"]) if (k in vars) p.push(`wrangler.jsonc: "${k}" não pode estar em vars (dev ou segredo; use wrangler secret put)`);
   if (cfg.workers_dev !== true) p.push("wrangler.jsonc: workers_dev precisa ser true (o app mora em *.workers.dev)");
   if (cfg.preview_urls !== false) p.push("wrangler.jsonc: preview_urls precisa ser false (URL de preview ficaria fora do Access)");
   const first = cfg.assets?.run_worker_first ?? [];
@@ -33,6 +34,16 @@ export function staticProblems(cfg, migrations) {
   return p;
 }
 
+/** #56: secrets de produção (nomes de `wrangler secret list` + vars). AUTH_PEPPER é obrigatório (sem ele o login falha
+ *  fechado em produção) e o Turnstile precisa das duas chaves ou de nenhuma. */
+export function secretProblems(names, vars = {}) {
+  const tem = (k) => names.includes(k) || k in vars;
+  const p = [];
+  if (!tem("AUTH_PEPPER")) p.push("secret AUTH_PEPPER ausente: sem ele o login falha fechado em produção (`npx wrangler secret put AUTH_PEPPER --cwd apps/worker`)");
+  if (tem("TURNSTILE_SITE_KEY") !== tem("TURNSTILE_SECRET")) p.push("Turnstile pela metade: defina TURNSTILE_SITE_KEY e TURNSTILE_SECRET, ou nenhum dos dois");
+  return p;
+}
+
 export const readMigrations = () => readdirSync(`${ROOT}apps/worker/migrations`).filter((f) => f.endsWith(".sql")).sort()
   .map((name) => ({ name, sql: readFileSync(`${ROOT}apps/worker/migrations/${name}`, "utf8") }));
 
@@ -42,7 +53,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const db = (cfg.d1_databases ?? []).find((d) => d.binding === "DB");
   const soEstatico = process.argv.includes("--static"); // deploy:dry: confere tudo menos o database_id (que só existe depois do cf:setup)
   if (!soEstatico && (!db || /^0{8}-/.test(db.database_id ?? ""))) p.push("database_id ainda é o de exemplo: rode `npx wrangler login` e `npm run cf:setup`");
+  if (!soEstatico) {
+    let names = null;
+    try { names = JSON.parse(execFileSync("npx", ["wrangler", "secret", "list", "--format", "json"], { cwd: `${ROOT}apps/worker`, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })).map((s) => s.name); }
+    catch { console.warn("⚠ não deu para listar os secrets (wrangler login?): confira AUTH_PEPPER e as duas chaves do Turnstile à mão"); }
+    if (names) p.push(...secretProblems(names, cfg.vars ?? {}));
+  }
   if (process.argv.includes("--with-build") && !existsSync(`${ROOT}apps/web/dist/index.html`)) p.push("apps/web/dist ausente: rode `npm run build`");
   if (p.length) { console.error("✖ Antes do deploy:\n  - " + p.join("\n  - ")); process.exit(1); }
-  console.log(`✔ pré-deploy ok (D1 ${(db?.database_id ?? "?").slice(0, 8)}…, ${readMigrations().length} migrations). Secrets esperados: OWNER_SETUP_CODE (1º acesso; apague depois), ACCESS_* + ALLOWED_EMAILS só na transição (e VAPID_* opcional) → \`npx wrangler secret list --cwd apps/worker\``);
+  console.log(`✔ pré-deploy ok (D1 ${(db?.database_id ?? "?").slice(0, 8)}…, ${readMigrations().length} migrations). Secrets esperados: AUTH_PEPPER (obrigatório), OWNER_SETUP_CODE (1º acesso; apague depois), ACCESS_* + ALLOWED_EMAILS só na transição (e VAPID_* opcional) → \`npx wrangler secret list --cwd apps/worker\``);
 }

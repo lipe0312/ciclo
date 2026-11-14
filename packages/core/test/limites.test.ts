@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  AUTH_BLOQUEIO, AUTH_GLOBAL, AUTH_TENTATIVAS, CONTA_R2_MAX_BYTES, GRATIS, LINHAS_POR_ESCRITA, ARQUIVO_MAX_BYTES, bloqueioRestante, cabeNaConta,
+  AUTH_BLOQUEIO, AUTH_GLOBAL, AUTH_TENTATIVAS, COTA_ESCRITAS_DIA, falhasVigentes, globalAuth, grupoIp, CONTA_R2_MAX_BYTES, GRATIS, LINHAS_POR_ESCRITA, ARQUIVO_MAX_BYTES, bloqueioRestante, cabeNaConta,
   diaUtc, esperaJanela, nivelGlobal, precisaTurnstile, registrarFalha, tipoConfere, tipoPorConteudo,
 } from "../src/index.ts";
 import type { Falhas } from "../src/index.ts";
@@ -17,20 +17,43 @@ test("janela: 5 tentativas por minuto; a 6ª espera o fim do minuto", () => {
   assert.ok(AUTH_GLOBAL.recover.max >= 50 && AUTH_GLOBAL.setup.max >= 5, "global sobra para o uso real");
 });
 
-test("bloqueio: 10 falhas seguidas → 15 min; sucesso (null) zera; bloqueio vencido recomeça", () => {
+test("bloqueio: 10 falhas seguidas → 15 min; o sucesso não zera; 15 min sem falha decai; bloqueio vencido recomeça", () => {
   let f: Falhas | null = null;
-  for (let i = 1; i < AUTH_BLOQUEIO.falhas; i++) { f = registrarFalha(f, NOW); assert.equal(bloqueioRestante(f, NOW), 0, `falha ${i}`); }
+  for (let i = 1; i < AUTH_BLOQUEIO.falhas; i++) { f = registrarFalha(f, NOW + i); assert.equal(bloqueioRestante(f, NOW + i), 0, `falha ${i}`); }
   assert.equal(f!.falhas, 9);
   f = registrarFalha(f, NOW);
   assert.equal(bloqueioRestante(f, NOW), 15 * 60);
   assert.equal(bloqueioRestante(f, NOW + 15 * 60_000), 0);
-  assert.deepEqual(registrarFalha(f, NOW + 15 * 60_000), { falhas: 1, ate: null }, "depois do bloqueio, conta de novo do zero");
+  assert.deepEqual(registrarFalha(f, NOW + 15 * 60_000), { falhas: 1, ate: null, em: NOW + 15 * 60_000 }, "depois do bloqueio, do zero");
+  const velho = { falhas: 7, ate: null, em: NOW };
+  assert.equal(falhasVigentes(velho, NOW + 14 * 60_000), 7);
+  assert.equal(falhasVigentes(velho, NOW + 15 * 60_000), 0, "decai em 15 min sem falha");
 });
 
-test("Turnstile a partir da 3ª falha seguida", () => {
-  assert.equal(precisaTurnstile(null), false);
-  assert.equal(precisaTurnstile({ falhas: 2, ate: null }), false);
-  assert.equal(precisaTurnstile({ falhas: 3, ate: null }), true);
+test("Turnstile a partir da 3ª falha vigente", () => {
+  assert.equal(precisaTurnstile(null, NOW), false);
+  assert.equal(precisaTurnstile({ falhas: 2, ate: null, em: NOW }, NOW), false);
+  assert.equal(precisaTurnstile({ falhas: 3, ate: null, em: NOW }, NOW), true);
+  assert.equal(precisaTurnstile({ falhas: 3, ate: null, em: NOW }, NOW + AUTH_BLOQUEIO.decaiMs), false);
+});
+
+test("global: conta falhas; no teto, só com Turnstile (até 10×); acima disso fecha", () => {
+  const j = AUTH_GLOBAL.recover;
+  assert.equal(globalAuth(j.max - 1, j), "livre");
+  assert.equal(globalAuth(j.max, j), "turnstile");
+  assert.equal(globalAuth(j.max * 10 - 1, j), "turnstile");
+  assert.equal(globalAuth(j.max * 10, j), "fechado");
+});
+
+test("IP: IPv4 inteiro, IPv6 pelo /64, mapeado vira IPv4, lixo → null", () => {
+  assert.equal(grupoIp("203.0.113.9"), "203.0.113.9");
+  assert.equal(grupoIp("2001:db8:1:2:aaaa::1"), "2001:db8:1:2::/64");
+  assert.equal(grupoIp("2001:DB8:1:2:ffff:ffff:ffff:ffff"), "2001:db8:1:2::/64", "mesmo /64, mesma chave");
+  assert.equal(grupoIp("2001:0db8:0000:0002::"), "2001:db8:0:2::/64");
+  assert.equal(grupoIp("::1"), "0:0:0:0::/64");
+  assert.equal(grupoIp("::ffff:198.51.100.4"), "198.51.100.4");
+  for (const x of ["", "local", "999.1.1.1", "1::2::3", "2001:db8:zz::1", "1:2:3:4:5:6:7:8:9"]) assert.equal(grupoIp(x), null, x);
+  assert.equal(COTA_ESCRITAS_DIA, 2000);
 });
 
 test("magic bytes: o conteúdo manda, não o Content-Type", () => {

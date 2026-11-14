@@ -5,15 +5,47 @@ export interface Janela { max: number; windowMs: number }
 
 /** Tentativas que validam segredo em /auth/* (login, registro, recuperação, convite, setup): 5 por minuto por IP. */
 export const AUTH_TENTATIVAS: Janela = { max: 5, windowMs: 60_000 };
-/** 10 falhas seguidas do mesmo IP → bloqueio de 15 min. Sucesso zera a contagem. */
-export const AUTH_BLOQUEIO = { falhas: 10, ms: 15 * 60_000 } as const;
+/** 10 falhas seguidas do mesmo IP → bloqueio de 15 min. O sucesso NÃO zera (não limpa o rastro de quem tenta vários alvos):
+ *  a contagem decai sozinha quando passam 15 min sem falha. */
+export const AUTH_BLOQUEIO = { falhas: 10, ms: 15 * 60_000, decaiMs: 15 * 60_000 } as const;
 /** Depois de 3 falhas seguidas, o IP precisa do Turnstile (quando ligado). */
 export const TURNSTILE_DEPOIS = 3;
-/** Limite GLOBAL (todas as origens juntas) contra força bruta distribuída. Sobra muito para o uso real (10 contas). */
+/** Limite GLOBAL (todas as origens juntas) contra força bruta distribuída. Conta só FALHAS de verificação (código errado),
+ *  não requisições. Passou do teto: só segue quem passou no Turnstile, até um teto 10× maior (o dono não fica trancado). */
 export const AUTH_GLOBAL = {
   recover: { max: 100, windowMs: 3_600_000 },
   setup: { max: 20, windowMs: 3_600_000 },
 } as const satisfies Record<string, Janela>;
+export const AUTH_GLOBAL_TURNSTILE_X = 10;
+/** Decisão do limite global com as falhas já contadas na janela: livre, só com Turnstile, ou fechado. */
+export function globalAuth(falhas: number, j: Janela): "livre" | "turnstile" | "fechado" {
+  if (falhas < j.max) return "livre";
+  return falhas < j.max * AUTH_GLOBAL_TURNSTILE_X ? "turnstile" : "fechado";
+}
+
+/** Chave de origem: IPv4 inteiro; IPv6 agrupado pelo /64 (um cliente costuma ter o /64 inteiro). null = IP inválido. */
+export function grupoIp(ip: string): string | null {
+  const v = ip.trim().toLowerCase();
+  const v4 = (x: string) => /^\d{1,3}(\.\d{1,3}){3}$/.test(x) && x.split(".").every((n) => Number(n) <= 255) ? x : null;
+  if (!v.includes(":")) return v4(v);
+  const mapeado = /^::ffff:([\d.]+)$/.exec(v);
+  if (mapeado) return v4(mapeado[1]);
+  if (!/^[0-9a-f:]+$/.test(v)) return null;
+  const partes = v.split("::");
+  if (partes.length > 2) return null;
+  const bloco = (x: string) => (x ? x.split(":") : []);
+  let h: string[];
+  if (partes.length === 1) h = bloco(v);
+  else {
+    const ini = bloco(partes[0]), fim = bloco(partes[1]);
+    if (ini.length + fim.length > 7) return null;
+    h = [...ini, ...Array(8 - ini.length - fim.length).fill("0"), ...fim];
+  }
+  if (h.length !== 8 || h.some((x) => !/^[0-9a-f]{1,4}$/.test(x))) return null;
+  return h.slice(0, 4).map((x) => x.replace(/^0+(?=.)/, "")).join(":") + "::/64";
+}
+/** Cota diária de escritas por pessoa (API e MCP): uma conta sozinha não esgota o grátis do app. */
+export const COTA_ESCRITAS_DIA = 2_000;
 
 /** Janela fixa: início da janela que contém `now`. */
 export const inicioJanela = (now: number, windowMs: number) => now - (now % windowMs);
@@ -23,17 +55,23 @@ export function esperaJanela(count: number, j: Janela, now: number): number {
   return Math.max(1, Math.ceil((inicioJanela(now, j.windowMs) + j.windowMs - now) / 1000));
 }
 
-export interface Falhas { falhas: number; ate: number | null }
+export interface Falhas { falhas: number; ate: number | null; em?: number | null }
 /** Segundos de bloqueio restantes (0 = livre). */
 export const bloqueioRestante = (f: Falhas | null, now: number) =>
   f?.ate != null && f.ate > now ? Math.ceil((f.ate - now) / 1000) : 0;
-/** Mais uma falha: na 10ª seguida, bloqueia por 15 min e recomeça a contagem. Bloqueio vencido zera. */
-export function registrarFalha(f: Falhas | null, now: number): Falhas {
-  const atual = f && !(f.ate != null && f.ate <= now) ? f.falhas : 0;
-  const n = atual + 1;
-  return n >= AUTH_BLOQUEIO.falhas ? { falhas: 0, ate: now + AUTH_BLOQUEIO.ms } : { falhas: n, ate: null };
+/** Falhas que ainda contam: zera depois de um bloqueio vencido ou de 15 min sem falha. */
+export function falhasVigentes(f: Falhas | null, now: number): number {
+  if (!f) return 0;
+  if (f.ate != null && f.ate <= now) return 0;
+  if (f.em != null && f.em <= now - AUTH_BLOQUEIO.decaiMs) return 0;
+  return f.falhas;
 }
-export const precisaTurnstile = (f: Falhas | null) => (f?.falhas ?? 0) >= TURNSTILE_DEPOIS;
+/** Mais uma falha: na 10ª seguida, bloqueia por 15 min e recomeça a contagem. (O Worker faz o mesmo num upsert atômico.) */
+export function registrarFalha(f: Falhas | null, now: number): Falhas {
+  const n = falhasVigentes(f, now) + 1;
+  return n >= AUTH_BLOQUEIO.falhas ? { falhas: 0, ate: now + AUTH_BLOQUEIO.ms, em: now } : { falhas: n, ate: null, em: now };
+}
+export const precisaTurnstile = (f: Falhas | null, now: number) => falhasVigentes(f, now) >= TURNSTILE_DEPOIS;
 
 // ---- mídia: tamanho, tipo real e cota da conta ----
 /** Arquivo: o limite do servidor (20 MB) fica abaixo do teto de 25 MB do plano. */

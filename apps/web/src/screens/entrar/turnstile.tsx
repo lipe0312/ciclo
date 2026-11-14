@@ -27,7 +27,7 @@ export function Turnstile({ siteKey, onToken, onErro }: { siteKey: string; onTok
     carregar().then((t) => {
       if (!vivo || !el.current) return;
       id = t.render(el.current, {
-        sitekey: siteKey, theme: "auto", size: "flexible", language: "pt-br",
+        sitekey: siteKey, action: "auth", theme: "auto", size: "flexible", language: "pt-br",
         callback: (tok: string) => onToken(tok), "expired-callback": () => onToken(""), "error-callback": () => { onToken(""); onErro(); },
       });
     }).catch(onErro);

@@ -499,13 +499,13 @@ export async function uploadMedia(req: Request, env: Env, uid: string): Promise<
     const g = await getGymRow(env, uid, gid);
     if (!g || g.deleted_at != null) throw new HttpError(404, "lugar não encontrado");
   }
-  // #56: cota do app inteiro (95% do grátis para uploads) e da conta (500 MB) antes de ler o corpo
+  // #56: cota do app inteiro (95% do grátis para uploads) antes de ler o corpo (o Content-Length grande já saiu com 413 acima)
   await exigirCotaGlobal(env);
-  await exigirCotaConta(env, uid, len);
-  // Corpo inteiro na memória (≤ 20 MB): o tamanho real e o tipo real (magic bytes) são conferidos antes de ir ao R2.
+  // Corpo inteiro na memória (≤ 20 MB): tamanho real, tipo real (magic bytes) e cota da conta (500 MB) pelo que chegou de fato.
   const body = new Uint8Array(await req.arrayBuffer());
   if (!body.length || body.length > MAX_MEDIA) throw new HttpError(413, "arquivo grande demais");
   if (!tipoConfere(mime, body)) throw new HttpError(415, COTA_MSG.tipo, "tipo_falso");
+  await exigirCotaConta(env, uid, body.length);
   const mid = id(), key = `${mediaPrefix(uid)}media/${new Date().toISOString().slice(0, 7)}/${mid}`;
   const obj = await env.MEDIA.put(key, body, { httpMetadata: { contentType: mime } });
   if (!obj) throw new HttpError(500, "não deu para guardar o arquivo");

@@ -14,8 +14,8 @@ import { cookie, sha256Hex, timingSafeEqualHex, touchUser, userRowToAuth } from 
 import type { UserRow } from "./auth.ts";
 import type { Handler } from "./comida.ts";
 import {
-  anotarFalha, bloqueioRestante, chaveIp, contarGlobal, contarJanela, exigirCotaGlobal, exigirTurnstile, lerFalhas, precisaTurnstile,
-  turnstileLigado, zerarFalhas,
+  anotarFalha, anotarFalhaGlobal, bloqueioRestante, chaveIp, contarJanela, estadoGlobal, exigirCotaGlobal, exigirTurnstile, lerFalhas,
+  precisaTurnstile, turnstileLigado,
 } from "./limites.ts";
 
 export const SESSION_COOKIE = "__Host-ciclo";
@@ -210,20 +210,27 @@ async function tentativa(req: Request, env: Env, path: string, b: Record<string,
   const opcoesComSegredo = path === "/auth/register/options" && (b.setup != null || b.convite != null);
   const conta = path === "/auth/login" || path === "/auth/register" || path === "/auth/recover" || opcoesComSegredo;
   if (conta) {
-    const wait = await contarJanela(env, "t:" + ipk, AUTH_TENTATIVAS, now)
-      || (path === "/auth/recover" ? await contarGlobal(env, "recover", now) : 0)
-      || (path === "/auth/register/options" && b.setup != null ? await contarGlobal(env, "setup", now) : 0);
+    const wait = await contarJanela(env, "t:" + ipk, AUTH_TENTATIVAS, now);
     if (wait) return json({ error: "muitas tentativas; espere um pouco", code: "limite" }, 429, { "Retry-After": String(wait) });
   }
   const inicio = path === "/auth/login/options" || path === "/auth/register/options" || path === "/auth/recover";
-  if ((path === "/auth/register/options" && b.convite != null) || (inicio && precisaTurnstile(f))) await exigirTurnstile(env, req, b.turnstile);
-  let res: Response;
-  try { res = await rota(); } catch (e) {
+  let robo = (path === "/auth/register/options" && b.convite != null) || (inicio && precisaTurnstile(f, now));
+  // Limite global (só falhas de verificação contam): no teto, passa quem tem Turnstile válido; sem Turnstile ligado, espera.
+  const g = path === "/auth/recover" ? "recover" as const : path === "/auth/register/options" && b.setup != null ? "setup" as const : null;
+  if (g) {
+    const st = await estadoGlobal(env, g, now);
+    if (st.estado === "fechado" || (st.estado === "turnstile" && !turnstileLigado(env)))
+      return json({ error: "muitas tentativas no app; espere um pouco", code: "limite_global" }, 429, { "Retry-After": String(st.espera) });
+    if (st.estado === "turnstile") robo = true;
+  }
+  if (robo) await exigirTurnstile(env, req, b.turnstile);
+  try { return await rota(); } catch (e) {
     if (conta && e instanceof HttpError && e.status >= 400 && e.status < 500 && e.status !== 429) await anotarFalha(env, fk, now);
+    if (g === "recover" && e instanceof HttpError && e.status === 401) await anotarFalhaGlobal(env, "recover", now);
+    if (g === "setup" && e instanceof HttpError && e.code === "setup_errado") await anotarFalhaGlobal(env, "setup", now);
     throw e;
   }
-  if (conta && res.ok && f && path !== "/auth/register/options") await zerarFalhas(env, fk);
-  return res;
+  // O sucesso não zera as falhas do IP: elas decaem sozinhas (15 min sem falha).
 }
 
 async function logout(req: Request, env: Env) {
@@ -278,7 +285,7 @@ async function registerOptions(req: Request, env: Env, b: Record<string, unknown
     const c = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM user WHERE role = 'owner') AS o, (SELECT COUNT(*) FROM passkeys) AS p").first<{ o: number; p: number }>();
     if (!bootstrapOpen(env, c)) throw new HttpError(403, "o primeiro acesso já foi feito");
     const got = typeof b.setup === "string" ? b.setup.trim() : "";
-    if (!timingSafeEqualHex(await sha256Hex(got), await sha256Hex(env.OWNER_SETUP_CODE!))) throw new HttpError(403, "código de configuração errado");
+    if (!timingSafeEqualHex(await sha256Hex(got), await sha256Hex(env.OWNER_SETUP_CODE!))) throw new HttpError(403, "código de configuração errado", "setup_errado");
     const me = await quem(req, env); // dono que já usa o app pelo Access: vira owner da conta que já tem os dados
     if (!me && !nomeIn) throw new HttpError(400, "nome obrigatório");
     if (!me && (await countUsers(env)) >= maxUsersOf(env)) throw new HttpError(409, "sem vagas");
@@ -297,6 +304,7 @@ async function registerOptions(req: Request, env: Env, b: Record<string, unknown
     } else {
       if (!nomeIn) throw new HttpError(400, "nome obrigatório");
       if ((await countUsers(env)) >= maxUsersOf(env)) throw new HttpError(409, `sem vagas: o app aceita até ${maxUsersOf(env)} contas`, "sem_vagas");
+      await exigirCotaGlobal(env, now); // #56: a 95% do grátis, conta nova por convite para (o dono ainda cria convite e reseta acesso)
       targetUid = crypto.randomUUID(); userName = nomeIn;
       data = { mode: "convite", uid: targetUid, invite: await inviteHash(code!), nome: nomeIn, email: inv!.email, nova: true };
     }
@@ -461,7 +469,6 @@ export function registerConta(on: (method: string, path: string, h: Handler) => 
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, "email inválido");
     const max = maxUsersOf(env);
     if ((await countUsers(env)) >= max) throw new HttpError(409, `sem vagas: o app aceita até ${max} contas`, "sem_vagas");
-    await exigirCotaGlobal(env); // #56: a 95% do grátis, convites param
     return json(await createInvite(req, env, u.id, null, email), 201);
   });
 
@@ -478,7 +485,6 @@ export function registerConta(on: (method: string, path: string, h: Handler) => 
     if (p.id === u.id) throw new HttpError(400, "para você mesmo, use um código de recuperação ou adicione uma passkey");
     const t = await env.DB.prepare("SELECT id FROM user WHERE id = ?1").bind(p.id).first<{ id: string }>();
     if (!t) throw new HttpError(404, "pessoa não encontrada");
-    await exigirCotaGlobal(env); // #56: o reset também gera convite
     // sessões caem e os tokens do Claude dela são revogados agora (quem tinha acesso perde tudo); os dados ficam
     await env.DB.batch([
       env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(t.id),

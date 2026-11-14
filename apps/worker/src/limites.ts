@@ -3,8 +3,8 @@
 // Por que D1 e não o binding `ratelimits`: ele só aceita janelas de 10 s ou 60 s e é aproximado por local; os limites
 // por hora, o bloqueio de 15 min e os testes determinísticos pedem um contador exato.
 import {
-  AUTH_GLOBAL, COTA_MSG, CONTA_R2_MAX_BYTES, bloqueioRestante, cabeNaConta, diaUtc, esperaJanela, inicioJanela, nivelGlobal,
-  precisaTurnstile, registrarFalha,
+  AUTH_BLOQUEIO, AUTH_GLOBAL, COTA_MSG, CONTA_R2_MAX_BYTES, bloqueioRestante, cabeNaConta, diaUtc, esperaJanela, globalAuth, grupoIp,
+  inicioJanela, nivelGlobal, precisaTurnstile,
 } from "@ciclo/core";
 import type { Falhas, Janela, NivelCota } from "@ciclo/core";
 import type { Env } from "./env.ts";
@@ -13,15 +13,30 @@ import { HttpError } from "./http.ts";
 const te = new TextEncoder();
 const hex = (u8: Uint8Array) => [...u8].map((b) => b.toString(16).padStart(2, "0")).join("");
 
-/** Pepper do HMAC do IP: secret AUTH_PEPPER (recomendado); sem ele, o OWNER_SETUP_CODE; em último caso, fixo (só dev/teste). */
-const pepperOf = (env: Env) => env.AUTH_PEPPER || env.OWNER_SETUP_CODE || "ciclo-auth-dev";
+const LOCAIS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const NAO_PROD = new Set(["development", "local", "test"]);
+/** Produção = `ENVIRONMENT` ausente ou de produção (staging conta como produção) e host que não é localhost. */
+export const ehProducao = (env: Env, req: Request) =>
+  !NAO_PROD.has(env.ENVIRONMENT ?? "") && !LOCAIS.has(new URL(req.url).hostname);
+/** Pepper do HMAC do IP: em produção, só o secret AUTH_PEPPER (sem ele, falha fechado); local/teste usa um fixo. */
+function pepperOf(env: Env, req: Request) {
+  if (env.AUTH_PEPPER) return env.AUTH_PEPPER;
+  if (ehProducao(env, req)) throw new HttpError(503, "login indisponível: configuração do servidor incompleta", "config");
+  return "ciclo-auth-dev";
+}
 async function hmacHex(key: string, msg: string) {
   const k = await crypto.subtle.importKey("raw", te.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return hex(new Uint8Array(await crypto.subtle.sign("HMAC", k, te.encode(msg))));
 }
 export const ipDe = (req: Request) => req.headers.get("CF-Connecting-IP") ?? "local";
-/** Chave da origem: HMAC do IP (nunca o IP puro nem um hash adivinhável). */
-export const chaveIp = async (env: Env, req: Request) => (await hmacHex(pepperOf(env), ipDe(req))).slice(0, 32);
+/** Chave da origem: HMAC do IP (IPv6 agrupado pelo /64), nunca o IP puro nem um hash adivinhável.
+ *  Em produção, sem CF-Connecting-IP válido a requisição é recusada (não existe "origem desconhecida" compartilhada). */
+export async function chaveIp(env: Env, req: Request) {
+  const pepper = pepperOf(env, req);
+  const g = grupoIp(req.headers.get("CF-Connecting-IP") ?? "");
+  if (!g && ehProducao(env, req)) throw new HttpError(400, "origem desconhecida");
+  return (await hmacHex(pepper, g ?? "local")).slice(0, 32);
+}
 
 /** Conta +1 na chave (tabela auth_rate_limit, janela fixa) e devolve os segundos de espera (0 = pode). */
 export async function contarJanela(env: Env, key: string, j: Janela, now = Date.now()): Promise<number> {
@@ -31,27 +46,36 @@ export async function contarJanela(env: Env, key: string, j: Janela, now = Date.
     .bind(key, w).first<{ count: number }>();
   return esperaJanela(r?.count ?? 0, j, now);
 }
-/** Limite global de uma rota sensível (todas as origens juntas). */
-export const contarGlobal = (env: Env, rota: keyof typeof AUTH_GLOBAL, now = Date.now()) => contarJanela(env, `g:${rota}`, AUTH_GLOBAL[rota], now);
+/** Limite global de uma rota sensível: conta só FALHAS de verificação (todas as origens juntas). */
+export const anotarFalhaGlobal = (env: Env, rota: keyof typeof AUTH_GLOBAL, now = Date.now()) => contarJanela(env, `g:${rota}`, AUTH_GLOBAL[rota], now);
+/** Estado do limite global agora (sem contar): livre, só com Turnstile, ou fechado. */
+export async function estadoGlobal(env: Env, rota: keyof typeof AUTH_GLOBAL, now = Date.now()) {
+  const j = AUTH_GLOBAL[rota];
+  const r = await env.DB.prepare("SELECT count FROM auth_rate_limit WHERE key = ?1 AND window_start = ?2").bind(`g:${rota}`, inicioJanela(now, j.windowMs)).first<{ count: number }>();
+  const estado = globalAuth(r?.count ?? 0, j);
+  return { estado, espera: Math.max(1, Math.ceil((inicioJanela(now, j.windowMs) + j.windowMs - now) / 1000)) };
+}
 
 // ---- falhas seguidas (bloqueio de 15 min e Turnstile) ----
 export async function lerFalhas(env: Env, key: string): Promise<Falhas | null> {
-  return env.DB.prepare("SELECT falhas, ate FROM auth_falhas WHERE key = ?1").bind(key).first<Falhas>();
+  return env.DB.prepare("SELECT falhas, ate, updated_at AS em FROM auth_falhas WHERE key = ?1").bind(key).first<Falhas>();
 }
+/** +1 falha num upsert atômico (mesma regra de `registrarFalha` do core): decai após 15 min sem falha ou bloqueio vencido;
+ *  na 10ª, bloqueia por 15 min e recomeça. Sem ler-e-gravar: requisições simultâneas não se perdem. */
 export async function anotarFalha(env: Env, key: string, now = Date.now()) {
-  const f = registrarFalha(await lerFalhas(env, key), now);
-  await env.DB.prepare(`INSERT INTO auth_falhas (key, falhas, ate, updated_at) VALUES (?1, ?2, ?3, ?4)
-    ON CONFLICT(key) DO UPDATE SET falhas = ?2, ate = ?3, updated_at = ?4`).bind(key, f.falhas, f.ate, now).run();
-}
-export async function zerarFalhas(env: Env, key: string) {
-  await env.DB.prepare("DELETE FROM auth_falhas WHERE key = ?1").bind(key).run();
+  const n = "(CASE WHEN (ate IS NOT NULL AND ate <= ?2) OR updated_at <= ?2 - ?3 THEN 1 ELSE falhas + 1 END)";
+  await env.DB.prepare(`INSERT INTO auth_falhas (key, falhas, ate, updated_at) VALUES (?1, 1, NULL, ?2)
+    ON CONFLICT(key) DO UPDATE SET falhas = CASE WHEN ${n} >= ?4 THEN 0 ELSE ${n} END,
+      ate = CASE WHEN ${n} >= ?4 THEN ?2 + ?5 ELSE NULL END, updated_at = ?2`)
+    .bind(key, now, AUTH_BLOQUEIO.decaiMs, AUTH_BLOQUEIO.falhas, AUTH_BLOQUEIO.ms).run();
 }
 export { bloqueioRestante, precisaTurnstile };
 
 // ---- Turnstile (opcional: sem TURNSTILE_SECRET fica desligado, como no dev local e nos testes) ----
 export const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 export const turnstileLigado = (env: Env) => !!env.TURNSTILE_SECRET && !!env.TURNSTILE_SITE_KEY;
-/** Valida o token no servidor. Sem token, token inválido, já usado ou siteverify fora do ar → 403 (falha fechada). */
+export const TURNSTILE_ACTION = "auth";
+/** Valida o token no servidor. Sem token, token inválido, já usado, de outro host ou outra ação, ou siteverify fora do ar → 403. */
 export async function exigirTurnstile(env: Env, req: Request, token: unknown): Promise<void> {
   if (!turnstileLigado(env)) return;
   if (typeof token !== "string" || !token || token.length > 2048) throw new HttpError(403, "confirme que você não é um robô", "turnstile");
@@ -59,7 +83,8 @@ export async function exigirTurnstile(env: Env, req: Request, token: unknown): P
   try {
     const body = new URLSearchParams({ secret: env.TURNSTILE_SECRET!, response: token, remoteip: ipDe(req) });
     const r = await fetch(SITEVERIFY, { method: "POST", body });
-    ok = r.ok && (await r.json() as { success?: boolean }).success === true;
+    const d = r.ok ? await r.json() as { success?: boolean; hostname?: string; action?: string } : null;
+    ok = d?.success === true && d.hostname === new URL(req.url).hostname && (d.action == null || d.action === "" || d.action === TURNSTILE_ACTION);
   } catch { ok = false; }
   if (!ok) throw new HttpError(403, "a verificação contra robôs falhou; tente de novo", "turnstile");
 }
