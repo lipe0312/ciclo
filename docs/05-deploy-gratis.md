@@ -11,6 +11,22 @@
 
 Sem domínio próprio: o app fica em `https://ciclo.<sua-conta>.workers.dev`.
 
+## Ambientes de teste: local → (túnel) → staging opcional → produção (#58)
+Teste sempre na ordem mais barata. Tudo com dados fictícios; produção só no fim.
+
+| Ambiente | Comando | Para quê | Dados |
+|---|---|---|---|
+| **Local** (padrão) | `npm run dev` → http://localhost:8791 | tudo, inclusive Face ID/Touch ID (o WebAuthn aceita `localhost`) | D1/R2 locais, fictícios |
+| **Túnel** | `npm run dev:tunnel` | celular e connector do claude.ai, sem deploy | os mesmos locais, atrás de uma URL https temporária |
+| **Staging** (opcional) | `npm run staging` | ensaio com Cloudflare de verdade | D1 `ciclo-db-staging` e R2 `ciclo-media-staging`, só de teste |
+| **Produção** | `npm run deploy` | o app de verdade | seus dados |
+
+**Túnel.** Precisa do `cloudflared` (`brew install cloudflared`; sem ele o comando mostra como instalar). Usa o quick tunnel: sem conta e sem deploy, a URL `https://….trycloudflare.com` muda a cada execução. O túnel força `DEV_NO_AUTH=0` e sem `MCP_TOKEN`, e passa o código por arquivo temporário (nunca na linha de comando). O comando imprime a URL, o connector (`<URL>/mcp`) e um **código de 1º acesso** novo (conta nova nessa URL). O rpId e a origem do passkey vêm do host do túnel (em produção a origem vem de `vars.PUBLIC_ORIGIN` no `wrangler.jsonc`, que o predeploy exige; local, túnel e staging usam o host). A faixa **AMBIENTE DE TESTES** aparece no topo.
+
+**Staging.** Um comando, idempotente (pode repetir): cria o D1 e o R2 `-staging` se faltarem (e grava o `database_id` só na seção `env.staging` do `wrangler.jsonc`), aplica as migrations, roda o predeploy (`scripts/predeploy.mjs --staging`) e faz o deploy em `env.staging` (Worker `ciclo-staging`). Pré: `npx wrangler login`. `node scripts/staging.mjs --dry` mostra o plano sem executar nada. **Obrigatório depois do deploy:** `npx wrangler secret put AUTH_PEPPER --env staging --config apps/worker/wrangler.jsonc` e o mesmo com `OWNER_SETUP_CODE` (≥ 16 caracteres); sem eles o `/auth/*` do staging responde 503. O cron do staging roda a cada 15 min. A faixa **AMBIENTE DE TESTES** aparece no app.
+- Nunca toca a produção: bindings e variáveis do staging são redeclarados (o wrangler não herda), e `apps/worker/test/ambiente.test.ts` falha se o staging apontar para o D1, o R2 ou o Worker de produção, ou levar variável de dev.
+- Staging fica numa URL `*.workers.dev` separada, fora do Access; use só dados fictícios.
+
 ## Checklist final do deploy (copie e siga em ordem, ~30 min)
 Tudo local já foi conferido por `npm run check`, `npm run deploy:dry` e `npm run e2e:local` (docs/09-teste-local.md).
 
