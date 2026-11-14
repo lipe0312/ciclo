@@ -19,7 +19,7 @@ export function staticProblems(cfg, migrations) {
   if (cfg.workers_dev !== true) p.push("wrangler.jsonc: workers_dev precisa ser true (o app mora em *.workers.dev)");
   if (cfg.preview_urls !== false) p.push("wrangler.jsonc: preview_urls precisa ser false (URL de preview ficaria fora do Access)");
   const first = cfg.assets?.run_worker_first ?? [];
-  for (const r of ["/api/*", "/auth/*", "/mcp", "/mcp/*"]) if (!first.includes(r)) p.push(`wrangler.jsonc: assets.run_worker_first sem "${r}"`);
+  for (const r of ["/api/*", "/auth/*", "/mcp", "/mcp/*", "/oauth/*", "/.well-known/*"]) if (!first.includes(r)) p.push(`wrangler.jsonc: assets.run_worker_first sem "${r}"`);
   const db = (cfg.d1_databases ?? []).find((d) => d.binding === "DB");
   if (!db || db.database_name !== "ciclo-db" || db.migrations_dir !== "migrations") p.push("wrangler.jsonc: binding DB (ciclo-db, migrations) ausente");
   if (!(cfg.r2_buckets ?? []).some((b) => b.binding === "MEDIA")) p.push("wrangler.jsonc: binding MEDIA (R2) ausente");

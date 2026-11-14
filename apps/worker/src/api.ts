@@ -1,9 +1,10 @@
 // API JSON do app (atrás do Cloudflare Access). Rotas pequenas, um estado agregado por chamada (/api/state)
 // para o celular fazer 1 requisição ao abrir. Toda rota recebe o usuário autenticado (u) e filtra por u.id.
 import { MAX_MCP_TOKENS, estadoToken, tokensAtivos, CARDIO_BY_ID, COTA_MSG, EQUIPMENT_BY_ID, EXERCISE_BY_ID, INTENSITIES, MAX_PLACES, MEDIA_MAX_BYTES, MUSCLE_IDS, PROMPTS, applyManualEdit, checkCardio, classify, planDay, tipoConfere, validatePlace } from "@ciclo/core";
-import type { DayPlan, Intensity, ManualEdit, Mode, MuscleId, Tier } from "@ciclo/core";
+import type { Action, DayPlan, Intensity, ManualEdit, Mode, MuscleId, Tier } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
-import { HttpError, date, id, int, json, num, oneOf, readJson, str } from "./http.ts";
+import { HttpError, date, id, int, isDate, json, num, oneOf, readJson, str } from "./http.ts";
+import { responderNaCaixa } from "./cerebro.ts";
 import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, countGyms, deleteAccount, exerciseHistory, exportAccount, getGymRow, getProfile, gymDays, gymView, hitRateLimit, listGyms, mediaPrefix, parse, planProfileFingerprint, saveProfile, setGymWeekdays, summarizeSession, takeGeocodeSlot, trashGym, upsertPain, weekState } from "./db.ts";
 import { pushEnabled, validEndpoint } from "./push.ts";
 import { newMcpToken } from "./auth.ts";
@@ -25,7 +26,7 @@ const TIERS = ["haiku", "sonnet", "opus"] as const;
 const MEDIA_MIME: Record<string, "foto" | "video"> = { "image/jpeg": "foto", "image/png": "foto", "image/webp": "foto", "video/mp4": "video", "video/webm": "video", "video/quicktime": "video" };
 const MAX_MEDIA = MEDIA_MAX_BYTES;
 
-type TokenRow = { id: string; label: string; createdAt: number; lastUsedAt: number | null; revokedAt: number | null };
+type TokenRow = { id: string; label: string; kind?: "manual" | "oauth"; createdAt: number; lastUsedAt: number | null; revokedAt: number | null };
 const account = (u: AuthUser) => ({ email: u.email.endsWith("@passkey.invalid") ? null : u.email, name: u.name, role: u.role, via: u.via ?? null, createdAt: u.createdAt, onboardingDoneAt: u.onboardingDoneAt });
 const onboarding = (u: AuthUser) => (u.onboardingDoneAt ? "concluido" : "pendente");
 
@@ -81,17 +82,18 @@ on("DELETE", "/api/account", async (req, env, _p, u) => {
 });
 
 on("GET", "/api/account/tokens", async (_req, env, _p, u) => {
-  const { results } = await env.DB.prepare("SELECT id, label, created_at AS createdAt, last_used_at AS lastUsedAt, revoked_at AS revokedAt FROM mcp_token WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 50").bind(u.id).all<TokenRow>();
+  const { results } = await env.DB.prepare("SELECT id, label, kind, created_at AS createdAt, last_used_at AS lastUsedAt, revoked_at AS revokedAt FROM mcp_token WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 50").bind(u.id).all<TokenRow>();
   // #55: estado (ativo, expirando, expirado, revogado) e o teto vêm do core; a tela usa lastUsedAt para o ✅ do teste
   const now = Date.now();
-  return json({ tokens: results.map((t) => ({ ...t, ...estadoToken(t, now) })), max: MAX_MCP_TOKENS, ativos: tokensAtivos(results, now) });
+  return json({ tokens: results.map((t) => ({ ...t, ...estadoToken(t, now) })), max: MAX_MCP_TOKENS, ativos: tokensAtivos(results.filter((t) => t.kind !== "oauth"), now) });
 });
 
 on("POST", "/api/account/tokens", async (req, env, _p, u) => {
   const b = await readJson<Record<string, unknown>>(req, 2 * 1024);
   const label = str(b.label, "label", 60, false) ?? "Claude";
   const now = Date.now();
-  const { results } = await env.DB.prepare("SELECT created_at AS createdAt, last_used_at AS lastUsedAt, revoked_at AS revokedAt FROM mcp_token WHERE user_id = ?1 AND revoked_at IS NULL").bind(u.id).all<TokenRow>();
+  // #66: o teto de 5 é das chaves manuais; as conexões OAuth têm teto próprio (core/oauth.ts)
+  const { results } = await env.DB.prepare("SELECT created_at AS createdAt, last_used_at AS lastUsedAt, revoked_at AS revokedAt FROM mcp_token WHERE user_id = ?1 AND kind = 'manual' AND revoked_at IS NULL").bind(u.id).all<TokenRow>();
   if (tokensAtivos(results, now) >= MAX_MCP_TOKENS) throw new HttpError(409, `máximo de ${MAX_MCP_TOKENS} chaves ativas; revogue uma`, "max_tokens");
   const t = await newMcpToken();
   await env.DB.prepare("INSERT INTO mcp_token (id, user_id, hash, label, created_at) VALUES (?1, ?2, ?3, ?4, ?5)").bind(t.id, u.id, t.hash, label, now).run();
@@ -467,7 +469,11 @@ on("POST", "/api/inbox", async (req, env, _p, u) => {
   const iid = id();
   await env.DB.prepare("INSERT INTO inbox (user_id, id, created_at, text, action, tier) VALUES (?6, ?1, ?2, ?3, ?4, ?5)")
     .bind(iid, Date.now(), text, preset?.action ?? auto.action, tier, u.id).run();
-  return json({ id: iid, tier, action: preset?.action ?? auto.action }, 201);
+  // #66 Cerebro: a regra responde na hora quando dá (ex.: "qual meu treino de hoje"); a API paga, se ligada, só gera/ajusta
+  // treino; senão o pedido fica na fila para o Claude (rotina na nuvem ou conector). Sem `date`, vale o dia de São Paulo.
+  const hoje = isDate(b.date) ? b.date : new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+  const r = await responderNaCaixa(env, u.id, { id: iid, texto: text, acao: (preset?.action ?? auto.action) as Action, hoje });
+  return json({ id: iid, tier, action: preset?.action ?? auto.action, ...(r ? { status: "respondido", response: r.response, change: r.change, cerebro: r.cerebro } : { status: "pendente" }) }, 201);
 });
 on("POST", "/api/inbox/:id/status", async (req, env, p, u) => {
   const b = await readJson<Record<string, unknown>>(req);

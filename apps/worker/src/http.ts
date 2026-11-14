@@ -33,6 +33,23 @@ export async function readJson<T = Record<string, unknown>>(req: Request, maxByt
   try { return JSON.parse(text) as T; } catch { throw new HttpError(400, "JSON inválido"); }
 }
 
+/** #66 Corpo application/x-www-form-urlencoded (endpoints OAuth). Aceita JSON também (algumas ferramentas mandam). */
+export async function readForm(req: Request, maxBytes = 8 * 1024): Promise<Record<string, string>> {
+  const len = Number(req.headers.get("Content-Length") ?? "0");
+  if (len > maxBytes) throw new HttpError(413, "corpo grande demais");
+  const ct = req.headers.get("Content-Type") ?? "";
+  const text = await req.text();
+  if (text.length > maxBytes) throw new HttpError(413, "corpo grande demais");
+  if (ct.includes("application/json")) {
+    let o: unknown;
+    try { o = JSON.parse(text); } catch { throw new HttpError(400, "JSON inválido"); }
+    if (!o || typeof o !== "object" || Array.isArray(o)) throw new HttpError(400, "corpo inválido");
+    return Object.fromEntries(Object.entries(o).filter(([, v]) => typeof v === "string")) as Record<string, string>;
+  }
+  if (!ct.includes("application/x-www-form-urlencoded")) throw new HttpError(415, "use application/x-www-form-urlencoded");
+  return Object.fromEntries(new URLSearchParams(text));
+}
+
 // ---- validação mínima (sem dependências) ----
 export const isDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
 export function str(v: unknown, field: string, max = 500, required = true): string | null {

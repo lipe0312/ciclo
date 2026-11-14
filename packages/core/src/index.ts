@@ -28,3 +28,6 @@ export * from "./claude.ts";
 export * from "./conta.ts";
 export * from "./limites.ts";
 export * from "./conexao.ts";
+export * from "./oauth.ts";
+export * from "./cerebro.ts";
+export * from "./pdf-texto.ts";
