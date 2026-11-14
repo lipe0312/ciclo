@@ -2,7 +2,7 @@
 // #71 Começa vazio (nada marcado, nem do cadastro: ele aparece como sugestão) e salva ao responder: cada toque grava o rascunho no
 // aparelho e, logo depois, faz PATCH /api/profile só com os campos daquele passo (fila offline se sem sinal). Continuar, Voltar,
 // Pular etapa e Pular por agora gravam na hora. Voltar, recarregar e reabrir mostram o que já foi respondido.
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { C, S, calc, commit, rascunhoPP, today } from "../../lib/store/index.ts";
 import { computePlan, profileChanged } from "../../lib/store/regras.ts";
 import { HttpError, SERVER, api, queue, send } from "../../lib/api/index.ts";
@@ -66,14 +66,25 @@ function escolherObjetivo(id: string) {
   if (d.id === "retorno") g.since = today; else delete g.since;
   mudou("objetivo");
 }
+/** #71 O campo do foco entra logo abaixo da linha do objetivo escolhido (largura toda), para aparecer sem rolar no celular. */
+function Foco({ info }: { info: { statement: string; muda: string } }) {
+  const g = S.profile.goal, ref = useRef<HTMLDivElement>(null);
+  // escolheu um objetivo lá embaixo: traz o campo para cima do botão fixo (scroll-margin no CSS)
+  useEffect(() => { (ref.current as (HTMLElement & { scrollIntoView?: (o: object) => void }) | null)?.scrollIntoView?.({ block: "nearest" }); }, [g.id]);
+  return <div class="pp-foco" ref={ref}>
+    <p class="small sub"><b>O que muda no seu treino:</b> {info.muda}</p>
+    <label class="f" for="pp-foco" style="margin-top:10px">Seu foco, nas suas palavras</label>
+    <textarea id="pp-foco" class="input" rows={2} maxLength={140} value={g.statement} placeholder={info.statement}
+      onInput={(e) => { g.statement = (e.currentTarget as HTMLTextAreaElement).value.slice(0, 140); mudou("objetivo"); }} />
+    <p class="tiny sub" style="margin-top:4px">Aparece no seu plano. Ex.: "ombros largos para o verão".</p></div>;
+}
 function Objetivo() {
-  const g = S.profile.goal, info = C.GOAL_INFO[g.id as C.GoalId];
-  return <>{info && <div class="note goal-muda" style="margin-bottom:14px" role="status"><Icon id="target" /><span><b>O que muda no seu treino:</b> {info.muda}</span></div>}
-    <div class="opts two">{GOALS.map((o) => <Opt key={o.id} on={g.id === o.id} title={o.nm} desc={o.desc} onClick={() => escolherObjetivo(o.id)}><IlustObjetivo id={o.id} /></Opt>)}</div>
-    {info && <div style="margin-top:16px"><label class="f" for="pp-foco">Seu foco, nas suas palavras</label>
-      <textarea id="pp-foco" class="input" rows={2} maxLength={140} value={g.statement} placeholder={info.statement}
-        onInput={(e) => { g.statement = (e.currentTarget as HTMLTextAreaElement).value.slice(0, 140); mudou("objetivo"); }} />
-      <p class="tiny sub" style="margin-top:4px">Aparece no seu plano. Ex.: "ombros largos para o verão".</p></div>}</>;
+  const g = S.profile.goal, info = C.GOAL_INFO[g.id as C.GoalId], i = GOALS.findIndex((o) => o.id === g.id);
+  const fimDaLinha = i < 0 ? -1 : Math.min(GOALS.length - 1, i - (i % 2) + 1); // grade de 2 colunas
+  return <div class="opts two">{GOALS.map((o, k) => [
+    <Opt key={o.id} on={g.id === o.id} title={o.nm} desc={o.desc} onClick={() => escolherObjetivo(o.id)}><IlustObjetivo id={o.id} /></Opt>,
+    info && k === fimDaLinha ? <Foco key="foco" info={info} /> : null,
+  ])}</div>;
 }
 
 /** Sugestão do objetivo: chips tracejados (não marcados) e "Usar sugestão". */

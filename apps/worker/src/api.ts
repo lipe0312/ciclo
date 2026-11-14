@@ -5,7 +5,7 @@ import type { Action, DayPlan, Intensity, ManualEdit, Mode, MuscleId, Tier } fro
 import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, id, int, isDate, json, num, oneOf, readJson, str } from "./http.ts";
 import { responderNaCaixa } from "./cerebro.ts";
-import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, countGyms, deleteAccount, exerciseHistory, exportAccount, getGymRow, getProfile, gymDays, gymView, hitRateLimit, listGyms, mediaPrefix, parse, planProfileFingerprint, saveProfile, setGymWeekdays, summarizeSession, takeGeocodeSlot, trashGym, upsertPain, weekState } from "./db.ts";
+import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, countGyms, deleteAccount, exerciseHistory, exportAccount, getGymRow, getProfile, gymDays, rawProfile, gymView, hitRateLimit, listGyms, mediaPrefix, parse, planProfileFingerprint, saveProfile, setGymWeekdays, summarizeSession, takeGeocodeSlot, trashGym, upsertPain, weekState } from "./db.ts";
 import { pushEnabled, validEndpoint } from "./push.ts";
 import { newMcpToken } from "./auth.ts";
 import { exigirCotaConta, exigirCotaGlobal, somarBytesR2 } from "./limites.ts";
@@ -40,7 +40,7 @@ on("GET", "/api/state", async (req, env, _p, u) => {
   const today = date(url.searchParams.get("date"));
   await closeStaleSessions(env, u.id);
   const [profile, gyms, week, dayPlan, hist, media, meas] = await Promise.all([
-    getProfile(env, u.id), listGyms(env, u.id), weekState(env, u.id, today),
+    rawProfile(env, u.id), listGyms(env, u.id), weekState(env, u.id, today), // #71 sem DEFAULTS: o app não pode ver level/minutos do padrão como resposta
     env.DB.prepare("SELECT plan, source, gym_id, created_at FROM day_plan WHERE user_id = ?2 AND date = ?1").bind(today, u.id).first<{ plan: string; source: string; gym_id: string; created_at: number }>(),
     // última sessão de cada exercício (para a dupla progressão sugerir a carga)
     env.DB.prepare(`SELECT l.exercise_id, l.kg, l.reps FROM set_log l

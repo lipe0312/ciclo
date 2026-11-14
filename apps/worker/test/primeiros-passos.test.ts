@@ -26,12 +26,16 @@ test("PATCH por passo: só os campos do passo, mescla com o que já está salvo 
   // o estado devolve o rascunho como está (o app monta o resto vazio)
   const st = (await c("GET", `/api/state?date=${D}`)).data;
   assert.equal(st.profile.diet.mode, "leve"); assert.equal(st.profile.bodyType, undefined);
+  for (const k of ["minutes", "daysTarget", "prefs", "pinned", "avoid", "priorities"]) assert.equal(st.profile[k], undefined, `/api/state não pode devolver ${k} do padrão`);
   assert.notEqual(st.profile.weightKg, DEFAULT_PROFILE.weightKg);
 });
 
 test("rascunho com campos vazios (null, \"\", goal.id vazio, places []) é aceito no PUT e no PATCH", async () => {
   const env = makeEnv();
   const c = (m: string, p: string, body?: unknown) => call(env, m, p, { user: "nova", body });
+  // #71 passo 15 do e2e: com só o objetivo salvo, o estado não traz "level" (antes vinha 1 do padrão do Worker = "Menos de 1 ano" marcado)
+  await c("PATCH", "/api/profile", { data: { goal: { id: "forca" } } });
+  assert.equal((await c("GET", `/api/state?date=${D}`)).data.profile.level, undefined);
   const r = await c("PUT", "/api/profile", { data: perfilVazio() });
   assert.equal(r.status, 200, r.text);
   assert.equal((await c("PATCH", "/api/profile", { data: { goal: { id: "", statement: "" }, places: [], age: null, bodyType: "" } })).status, 200);

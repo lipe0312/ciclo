@@ -38,8 +38,8 @@ export async function putProfile(env: Env, uid: string, data: unknown): Promise<
   return (r[2].results as { n: number }[])[0]?.n ?? 1;
 }
 
-/** Perfil bruto da conta (sem preencher padrões) ou null. */
-async function rawProfile(env: Env, uid: string): Promise<Record<string, unknown> | null> {
+/** Perfil bruto da conta (sem preencher padrões) ou null. #71: é o que o app recebe em /api/state (resposta não dada fica de fora). */
+export async function rawProfile(env: Env, uid: string): Promise<Record<string, unknown> | null> {
   const r = await env.DB.prepare("SELECT data FROM profile WHERE user_id = ?1").bind(uid).first<{ data: string }>();
   return r ? normalizeProfile(parse<unknown>(r.data, {})) : null;
 }
