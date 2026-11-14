@@ -28,6 +28,49 @@ test("WebAuthn: PUBLIC_ORIGIN fixa o par; valor http não-local ou inválido é 
   assert.equal(webauthnWhere(r, { PUBLIC_ORIGIN: "lixo" }).rpId, "interno");
 });
 
+test("PUBLIC_ORIGIN (produção) não vale no localhost nem no túnel", () => {
+  const o = { PUBLIC_ORIGIN: "https://ciclo.exemplo.workers.dev" };
+  assert.equal(webauthnWhere(rq("http://localhost:8791/x"), o).rpId, "localhost");
+  assert.equal(webauthnWhere(rq("http://x.trycloudflare.com/x", { "X-Forwarded-Proto": "https" }), { ...o, DEV_TUNNEL: "1" }).rpId, "x.trycloudflare.com");
+  assert.equal(webauthnWhere(rq("https://qualquer.host/x"), o).rpId, "ciclo.exemplo.workers.dev", "em produção o host da requisição não manda");
+});
+
+test("túnel: /api/* e /mcp respondem 401 pelo host do túnel ou X-Forwarded-Host, com DEV_NO_AUTH ligado ou desligado", async () => {
+  for (const dev of ["0", "1"]) {
+    const env = makeEnv({ DEV_NO_AUTH: dev, DEV_TUNNEL: "1", MCP_TOKEN: dev === "1" ? "t".repeat(40) : "" });
+    for (const headers of [{}, { "X-Forwarded-Host": "localhost:8791" }, { Host: "localhost", "X-Forwarded-Host": "localhost" }, { "x-dev-user": "ana", Cookie: "ciclo_dev_user=ana" }]) {
+      const r = await call(env, "GET", "/api/state", { host: "abc.trycloudflare.com", headers });
+      assert.equal(r.status, 401, `DEV_NO_AUTH=${dev} ${JSON.stringify(headers)}`);
+    }
+    assert.equal((await call(env, "POST", "/mcp", { host: "abc.trycloudflare.com", bearer: "t".repeat(40), body: { jsonrpc: "2.0", id: 1, method: "tools/list" } })).status, 401);
+  }
+});
+
+test("staging falha fechado sem AUTH_PEPPER e OWNER_SETUP_CODE; produção não é afetada", async () => {
+  const post = (env: unknown) => call(env, "POST", "/auth/login/options", { host: "ciclo-staging.exemplo.workers.dev", body: {} });
+  assert.equal((await post(makeEnv({ ENVIRONMENT: "staging", DEV_NO_AUTH: undefined }))).status, 503);
+  assert.equal((await post(makeEnv({ ENVIRONMENT: "staging", DEV_NO_AUTH: undefined, AUTH_PEPPER: "p".repeat(32) }))).status, 503);
+  assert.notEqual((await post(makeEnv({ ENVIRONMENT: "staging", DEV_NO_AUTH: undefined, AUTH_PEPPER: "p".repeat(32), OWNER_SETUP_CODE: "o".repeat(20) }))).status, 503);
+  assert.notEqual((await post(makeEnv({ DEV_NO_AUTH: undefined }))).status, 503);
+});
+
+test("config de produção exige PUBLIC_ORIGIN https e proíbe DEV_TUNNEL; staging sem cron por minuto", () => {
+  const cfg = readWrangler();
+  assert.equal(cfg.vars.PUBLIC_ORIGIN, "https://ciclo.ciclo-worker.workers.dev");
+  const m = (f: (c: any) => void) => { const c = structuredClone(cfg); f(c); return staticProblems(c, readMigrations()); };
+  assert.ok(m((c) => { delete c.vars.PUBLIC_ORIGIN; }).some((p: string) => p.includes("PUBLIC_ORIGIN")));
+  assert.ok(m((c) => { c.vars.PUBLIC_ORIGIN = "http://ciclo.exemplo.com"; }).some((p: string) => p.includes("PUBLIC_ORIGIN")));
+  assert.ok(m((c) => { c.vars.DEV_TUNNEL = "1"; }).some((p: string) => p.includes("DEV_TUNNEL")));
+  const c2 = structuredClone(cfg); c2.env.staging.triggers.crons = ["* * * * *"];
+  assert.ok(stagingProblems(c2).some((p: string) => p.includes("cron")));
+});
+
+test("dev:tunnel nunca passa o código na linha de comando e força DEV_NO_AUTH=0", () => {
+  const src = readFileSync(new URL("../../../scripts/dev-tunnel.mjs", import.meta.url), "utf8");
+  assert.ok(!/--var[^\n]*OWNER_SETUP_CODE/.test(src));
+  assert.match(src, /"DEV_NO_AUTH:0"/); assert.match(src, /"MCP_TOKEN:"/); assert.match(src, /--env-file/);
+});
+
 test("/api/health informa o ambiente (staging, túnel ou nada) para a faixa do app", async () => {
   assert.equal(ambiente({}), null);
   assert.equal((await call(makeEnv(), "GET", "/api/health")).data.ambiente, null);

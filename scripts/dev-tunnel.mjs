@@ -2,6 +2,9 @@
 // (quick tunnel: sem conta, sem deploy). Serve para testar no celular e com o connector do claude.ai.
 // O WebAuthn usa o host do túnel (rpId e origem); DEV_TUNNEL=1 só existe aqui. 1º acesso: código de uso único mostrado abaixo.
 import { spawn, spawnSync, execSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
@@ -12,9 +15,16 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (spawnSync("cloudflared", ["--version"], { stdio: "ignore" }).error) { console.error("✖ " + INSTALL); process.exit(1); }
   execSync("npm run build -w @ciclo/web", { stdio: "inherit" });
   const code = randomBytes(12).toString("hex"); // 24 caracteres, só desta execução
+  // O código vai num arquivo temporário (modo 600, apagado ao sair), nunca na linha de comando (ps). DEV_NO_AUTH e MCP_TOKEN são
+  // forçados fora: o túnel é público, só vale a conta por passkey/código (o guard de auth.ts também exige host localhost).
+  const dir = mkdtempSync(join(tmpdir(), "ciclo-tunel-"));
+  const envFile = join(dir, "tunel.env");
+  writeFileSync(envFile, `OWNER_SETUP_CODE=${code}\n`, { mode: 0o600 });
+  const limpa = () => { try { rmSync(dir, { recursive: true, force: true }); } catch { /* ok */ } };
+  process.on("exit", limpa);
   const kids = [
     spawn("npm", ["run", "watch", "-w", "@ciclo/web"], { stdio: "inherit" }),
-    spawn("npm", ["run", "dev", "-w", "@ciclo/worker", "--", "--var", "DEV_TUNNEL:1", "--var", `OWNER_SETUP_CODE:${code}`], { stdio: "inherit" }),
+    spawn("npm", ["run", "dev", "-w", "@ciclo/worker", "--", "--env-file", envFile, "--var", "DEV_TUNNEL:1", "--var", "DEV_NO_AUTH:0", "--var", "MCP_TOKEN:"], { stdio: "inherit" }),
   ];
   const t = spawn("cloudflared", ["tunnel", "--no-autoupdate", "--url", "http://localhost:8791"], { stdio: ["ignore", "pipe", "pipe"] });
   kids.push(t);

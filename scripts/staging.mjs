@@ -73,5 +73,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     process.exit(1);
   }
   say("\n✔ Staging no ar (faixa AMBIENTE DE TESTES). A URL https://ciclo-staging.<sua-conta>.workers.dev apareceu no deploy acima.");
-  say("  1º acesso: `npx wrangler secret put OWNER_SETUP_CODE --env staging --config apps/worker/wrangler.jsonc` (código de uso único).");
+  say("  OBRIGATÓRIO (sem eles o /auth/* do staging responde 503, falha fechada):");
+  say("    npx wrangler secret put AUTH_PEPPER --env staging --config apps/worker/wrangler.jsonc        (texto aleatório longo)");
+  say("    npx wrangler secret put OWNER_SETUP_CODE --env staging --config apps/worker/wrangler.jsonc   (≥ 16 caracteres, uso único)");
 }

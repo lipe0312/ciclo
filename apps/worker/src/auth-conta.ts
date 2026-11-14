@@ -13,7 +13,7 @@ import { HttpError, json, readJson, str } from "./http.ts";
 import { cookie, sha256Hex, timingSafeEqualHex, touchUser, userRowToAuth } from "./auth.ts";
 import type { UserRow } from "./auth.ts";
 import type { Handler } from "./comida.ts";
-import { webauthnWhere } from "./ambiente.ts";
+import { segredosFaltando, webauthnWhere } from "./ambiente.ts";
 
 export const SESSION_COOKIE = "__Host-ciclo";
 const CHALLENGE_MS = 5 * 60_000;
@@ -196,6 +196,7 @@ export async function handleAuth(req: Request, env: Env, quem: Quem, now = Date.
       return json({ bootstrap: bootstrapOpen(env, owner) });
     }
     if (req.method !== "POST") return json({ error: "rota não encontrada" }, 404);
+    if (segredosFaltando(env).length) return json({ error: "ambiente de testes sem os secrets AUTH_PEPPER e OWNER_SETUP_CODE" }, 503);
     const wait = await hitAuthLimit(env, req, now);
     if (wait) return json({ error: "muitas tentativas; espere alguns minutos" }, 429, { "Retry-After": String(wait) });
     const b = await readJson<Record<string, unknown>>(req, 70 * 1024);
