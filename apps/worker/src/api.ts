@@ -11,6 +11,7 @@ import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
 import { registerComida } from "./comida.ts";
 import { registerHome } from "./home.ts";
 import { registerClaude } from "./mcp-chat.ts";
+import { registerConta } from "./auth-conta.ts";
 import { createExam, deleteExam, getDiary, openDiary, putCheckout, saveDaysSummary, saveRecap, setReminder } from "./diario.ts";
 
 type Handler = (req: Request, env: Env, p: Record<string, string>, u: AuthUser) => Promise<Response>;
@@ -24,7 +25,7 @@ const MEDIA_MIME: Record<string, "foto" | "video"> = { "image/jpeg": "foto", "im
 const MAX_MEDIA = MEDIA_MAX_BYTES;
 const MAX_TOKENS = 10;
 
-const account = (u: AuthUser) => ({ email: u.email, createdAt: u.createdAt, onboardingDoneAt: u.onboardingDoneAt });
+const account = (u: AuthUser) => ({ email: u.email.endsWith("@passkey.invalid") ? null : u.email, name: u.name, role: u.role, via: u.via ?? null, createdAt: u.createdAt, onboardingDoneAt: u.onboardingDoneAt });
 const onboarding = (u: AuthUser) => (u.onboardingDoneAt ? "concluido" : "pendente");
 
 on("GET", "/api/state", async (req, env, _p, u) => {
@@ -473,6 +474,8 @@ registerComida(on);
 registerHome(on);
 // Claude no app (#30): status da fila e memória do Claude: ver mcp-chat.ts
 registerClaude(on);
+// Conta própria (#54): aparelhos, sair de todos, passkeys, códigos de recuperação, pessoas e convites: ver auth-conta.ts
+registerConta(on);
 
 // Mídia do SEU aparelho → R2 privado, sob o prefixo da conta. Upload passa pelo Worker (simples, valida tipo e tamanho).
 // Mídia de aparelho (equipmentId) exige o lugar (gymId) e o lugar tem que ser desta conta.

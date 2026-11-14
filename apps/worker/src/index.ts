@@ -3,6 +3,7 @@ import type { Env } from "./env.ts";
 import { DEV_USER_RE, authenticateApi, authenticateMcp, isLocalDev } from "./auth.ts";
 import { handleApi, uploadMedia } from "./api.ts";
 import { HttpError, json } from "./http.ts";
+import { handleAuth, purgeAuth } from "./auth-conta.ts";
 import { handleMcp } from "./mcp.ts";
 import { closeStaleSessions, hitRateLimit, purgeTrash } from "./db.ts";
 import { sendDueRests } from "./push.ts";
@@ -41,16 +42,28 @@ export default {
       return new Response(null, { status: 302, headers: { Location: "/", "Set-Cookie": `ciclo_dev_user=${slug}; Path=/; SameSite=Strict; HttpOnly`, "Cache-Control": "no-store" } });
     }
 
+    // #54 login próprio (passkey, convite, recuperação). Mesma regra de origem da API; limite por IP dentro.
+    if (url.pathname.startsWith("/auth/")) {
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        const origin = req.headers.get("Origin");
+        if (origin && origin !== url.origin) return json({ error: "origem inválida" }, 403);
+      }
+      return handleAuth(req, env, async (r, e) => (await authenticateApi(r, e).catch(() => null))?.user ?? null);
+    }
+
     if (url.pathname.startsWith("/api/")) {
       // CSRF: escrita só da própria origem (o app não usa CORS)
       if (req.method !== "GET" && req.method !== "HEAD") {
         const origin = req.headers.get("Origin");
         if (origin && origin !== url.origin) return json({ error: "origem inválida" }, 403);
       }
-      let u;
-      try { u = await authenticateApi(req, env); } catch { return json({ error: "erro interno" }, 500); }
-      if (!u) return json({ error: "não autorizado" }, 401);
-      return handleApi(req, env, u);
+      let a;
+      try { a = await authenticateApi(req, env); } catch { return json({ error: "erro interno" }, 500); }
+      if (!a) return json({ error: "não autorizado", code: "entrar" }, 401);
+      const res = await handleApi(req, env, a.user);
+      // sessão renovada no uso (90 dias a partir de agora); a rota pode ter limpado o cookie (sair) e isso vence
+      if (a.setCookie && !res.headers.has("Set-Cookie")) res.headers.append("Set-Cookie", a.setCookie);
+      return res;
     }
 
     return env.ASSETS.fetch(req);
@@ -64,6 +77,9 @@ export default {
       ctx.waitUntil(closeStaleSessions(env));
       ctx.waitUntil(purgeExpiredExams(env, c.scheduledTime).catch(() => null)); // #27: texto bruto de exame some em até 7 dias
     }
-    if (new Date(c.scheduledTime).getUTCMinutes() === 0) ctx.waitUntil(purgeTrash(env).catch(() => null)); // lixeira de 30 dias (#26)
+    if (new Date(c.scheduledTime).getUTCMinutes() === 0) {
+      ctx.waitUntil(purgeTrash(env).catch(() => null)); // lixeira de 30 dias (#26)
+      ctx.waitUntil(purgeAuth(env, c.scheduledTime).catch(() => null)); // sessões vencidas, desafios e convites velhos (#54)
+    }
   },
 } satisfies ExportedHandler<Env>;

@@ -26,7 +26,7 @@ npm run cf:setup                         # cria D1 "ciclo-db" + R2 "ciclo-media"
 
 **2. Primeiro deploy**
 ```bash
-npm run deploy      # confere a config (scripts/predeploy.mjs) → build → migrations 0001…0010 remotas, em ordem → deploy
+npm run deploy      # confere a config (scripts/predeploy.mjs) → build → migrations 0001…0011 remotas, em ordem → deploy
 curl https://ciclo.<sua-conta>.workers.dev/api/health          # {"ok":true,…}
 curl -i "https://ciclo.<sua-conta>.workers.dev/api/state?date=2026-01-01"   # 401: sem Access configurado ninguém entra
 ```
@@ -44,6 +44,26 @@ npx wrangler secret put ALLOWED_EMAILS --cwd apps/worker       # seu e-mail (vá
 npx wrangler secret list --cwd apps/worker                     # os três aparecem
 ```
 Confira: aba anônima → URL do app → pede o código → abre. `curl -i …/api/state?date=2026-01-01` → 302/401. `curl …/api/health` → ok.
+
+**3b. Conta própria com Face ID (#54) e saída do Access** — o login passa a ser passkey + convite; o Access fica só na transição.
+```bash
+openssl rand -base64 24 | tr -d '/+=' | cut -c1-24               # gere o código de 1º acesso (≥ 16 caracteres)
+npx wrangler secret put OWNER_SETUP_CODE --cwd apps/worker       # cole o código; ele só vale enquanto não existe dono nem passkey
+npm run deploy                                                   # aplica a migration 0011 (passkeys, sessions, invites, recovery_codes)
+```
+1. **Com o Access ainda ligado**, abra o app no iPhone → `…/#entrar` → **Primeiro acesso (dono do app)** → código + Face ID. Como você já está logado pelo Access, a **sua conta atual (com os dados) vira a dona**; guarde os 8 códigos de recuperação.
+2. Conta → **Aparelhos** mostra a sessão nova (90 dias, renovada no uso). Se usa o Mac fora do iCloud Keychain, **Adicionar passkey** nele também.
+3. Quem já usava o app pelo Access: entre pelo Access e, em Conta → Passkeys, **Adicionar passkey neste aparelho** (a conta e os dados são os mesmos). Gente nova: Conta → **Pessoas → Criar convite** (uso único, 7 dias; teto de 10 contas, conferido no servidor).
+4. **Desligar o Access**: Zero Trust → Access → Applications → apague a aplicação do `ciclo.<sua-conta>.workers.dev` (e as de Bypass). Depois:
+```bash
+npx wrangler secret delete ACCESS_AUD --cwd apps/worker          # sem ACCESS_* o caminho do Access deixa de existir (falha fechada)
+npx wrangler secret delete ACCESS_TEAM_DOMAIN --cwd apps/worker
+npx wrangler secret delete ALLOWED_EMAILS --cwd apps/worker
+npx wrangler secret delete OWNER_SETUP_CODE --cwd apps/worker    # opcional: o bootstrap já está fechado
+```
+Confira em aba anônima: o app abre na tela **Entrar** (não no código por e-mail); `curl -i …/api/state?date=2026-01-01` → 401 `{"code":"entrar"}`.
+
+**Convivência (enquanto os secrets ACCESS_* existirem):** cada requisição em `/api/*` tenta, em ordem, (1) a sessão do cookie `__Host-ciclo`, (2) o JWT do Access (`Cf-Access-Jwt-Assertion`, mesma verificação de antes: RS256, `aud`, `iss`, `exp` e e-mail em `ALLOWED_EMAILS`). Se qualquer um valer, a requisição passa; a conta é a mesma (o Access acha pelo e-mail, a passkey pelo id). Contas criadas pelo Access também respeitam o teto de 10. `/auth/*` precisa ficar acessível sem Access (Bypass) se você quiser testar o login por passkey em outro aparelho antes de desligar o Access. `/mcp` não muda (token do Claude).
 
 **4. Opcionais (podem vir depois)**
 - Aviso do descanso com a tela bloqueada: `node scripts/gen-vapid.mjs` e `npx wrangler secret put VAPID_PUBLIC_KEY|VAPID_PRIVATE_KEY|VAPID_SUBJECT --cwd apps/worker` (detalhes abaixo).

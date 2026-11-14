@@ -1,9 +1,13 @@
 // Autenticação (falha fechada) e contas:
-// - App e /api: Cloudflare Access na borda + verificação do JWT aqui (defesa em profundidade). E-mail precisa estar em ALLOWED_EMAILS.
+// - App e /api (#54): 1º a sessão própria (cookie __Host-ciclo, criada por passkey ou código de recuperação; auth-conta.ts);
+//   2º, durante a transição, o JWT do Cloudflare Access, se os secrets existirem (verificado aqui; e-mail em ALLOWED_EMAILS).
+//   Sem os secrets ACCESS_* o caminho do Access simplesmente não existe (falha fechada).
 // - /mcp e /mcp/media: token do Claude POR USUÁRIO (tabela mcp_token, só o hash SHA-256), comparação em tempo constante.
 // - Local: DEV_NO_AUTH=1 só em localhost/127.0.0.1; usuário de dev pelo cabeçalho x-dev-user ou cookie ciclo_dev_user.
 //   O MCP_TOKEN global vale só aí, como bootstrap do usuário de dev "dev".
+import { maxUsers } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
+import { authenticateSession } from "./auth-conta.ts";
 
 type Jwk = JsonWebKey & { kid: string };
 let certCache: { team: string; at: number; keys: Jwk[] } | null = null;
@@ -22,7 +26,7 @@ export function isLocalDev(req: Request, env: Env): boolean {
   return env.DEV_NO_AUTH === "1" && (host === "localhost" || host === "127.0.0.1");
 }
 
-function cookie(req: Request, name: string): string | null {
+export function cookie(req: Request, name: string): string | null {
   for (const part of (req.headers.get("Cookie") ?? "").split(";")) {
     const [k, ...v] = part.trim().split("=");
     if (k === name) return v.join("=");
@@ -74,30 +78,36 @@ export async function verifyAccess(req: Request, env: Env): Promise<{ email: str
   }
 }
 
-type UserRow = { id: string; email: string; created_at: number; last_seen_at: number | null; onboarding_done_at: number | null; deleted_at: number | null };
+export type UserRow = { id: string; email: string; name: string | null; role: "owner" | "user"; created_at: number; last_seen_at: number | null; onboarding_done_at: number | null; deleted_at: number | null };
+export const userRowToAuth = (u: UserRow): AuthUser => ({ id: u.id, email: u.email, name: u.name, role: u.role, createdAt: u.created_at, onboardingDoneAt: u.onboarding_done_at });
 
-/** Acha ou cria a conta do e-mail (primeiro acesso) e atualiza last_seen_at (no máx. a cada 5 min). */
+/** Acha ou cria a conta do e-mail (primeiro acesso) e atualiza last_seen_at (no máx. a cada 5 min).
+ *  Criar respeita o teto de contas (#54) no mesmo INSERT: com o teto cheio, a conta nova não nasce (401). */
 export async function userForEmail(env: Env, email: string, now = Date.now()): Promise<AuthUser | null> {
-  const sel = env.DB.prepare("SELECT id, email, created_at, last_seen_at, onboarding_done_at, deleted_at FROM user WHERE email = ?1").bind(email);
+  const sel = env.DB.prepare("SELECT id, email, name, role, created_at, last_seen_at, onboarding_done_at, deleted_at FROM user WHERE email = ?1").bind(email);
   let u = await sel.first<UserRow>();
   if (!u) {
-    await env.DB.prepare("INSERT INTO user (id, email, created_at, last_seen_at) VALUES (?1, ?2, ?3, ?3) ON CONFLICT(email) DO NOTHING")
-      .bind(crypto.randomUUID(), email, now).run();
+    await env.DB.prepare("INSERT INTO user (id, email, created_at, last_seen_at) SELECT ?1, ?2, ?3, ?3 WHERE (SELECT COUNT(*) FROM user) < ?4 ON CONFLICT(email) DO NOTHING")
+      .bind(crypto.randomUUID(), email, now, maxUsers(env.MAX_USERS)).run();
     u = await sel.first<UserRow>();
   }
   if (!u || u.deleted_at != null) return null;
   await touchUser(env, u, now);
-  return { id: u.id, email: u.email, createdAt: u.created_at, onboardingDoneAt: u.onboarding_done_at };
+  return userRowToAuth(u);
 }
 
-async function touchUser(env: Env, u: Pick<UserRow, "id" | "last_seen_at">, now: number) {
+export async function touchUser(env: Env, u: Pick<UserRow, "id" | "last_seen_at">, now: number) {
   if (u.last_seen_at != null && now - u.last_seen_at < LAST_SEEN_EVERY_MS) return;
   await env.DB.prepare("UPDATE user SET last_seen_at = ?2 WHERE id = ?1").bind(u.id, now).run();
 }
 
-export async function authenticateApi(req: Request, env: Env): Promise<AuthUser | null> {
+/** Quem está chamando /api: sessão própria → dev local → JWT do Access (transição). `setCookie` = sessão renovada. */
+export async function authenticateApi(req: Request, env: Env): Promise<{ user: AuthUser; setCookie?: string } | null> {
+  const s = await authenticateSession(req, env);
+  if (s) return s;
   const who = await verifyAccess(req, env);
-  return who ? userForEmail(env, who.email) : null;
+  const u = who ? await userForEmail(env, who.email) : null;
+  return u ? { user: { ...u, via: isLocalDev(req, env) ? "dev" : "access" } } : null;
 }
 
 // ---- tokens do Claude (MCP) ----
@@ -132,7 +142,7 @@ export async function authenticateMcp(req: Request, env: Env, now = Date.now()):
   const gotHash = await sha256Hex(got);
   const m = TOKEN_RE.exec(got);
   if (m) {
-    const row = await env.DB.prepare(`SELECT t.id AS token_id, t.hash, t.last_used_at, u.id, u.email, u.created_at, u.onboarding_done_at, u.last_seen_at, u.deleted_at
+    const row = await env.DB.prepare(`SELECT t.id AS token_id, t.hash, t.last_used_at, u.id, u.email, u.name, u.role, u.created_at, u.onboarding_done_at, u.last_seen_at, u.deleted_at
       FROM mcp_token t JOIN user u ON u.id = t.user_id WHERE t.id = ?1 AND t.revoked_at IS NULL`).bind(m[1])
       .first<UserRow & { token_id: string; hash: string; last_used_at: number | null }>();
     const ok = timingSafeEqualHex(gotHash, row?.hash ?? DUMMY_HASH);
@@ -141,7 +151,7 @@ export async function authenticateMcp(req: Request, env: Env, now = Date.now()):
       await env.DB.prepare("UPDATE mcp_token SET last_used_at = ?2 WHERE id = ?1").bind(row.token_id, now).run();
     }
     await touchUser(env, row, now);
-    return { id: row.id, email: row.email, createdAt: row.created_at, onboardingDoneAt: row.onboarding_done_at };
+    return { ...userRowToAuth(row), via: "mcp" };
   }
   // Bootstrap local: MCP_TOKEN global → usuário de dev padrão. Nunca fora de localhost com DEV_NO_AUTH=1.
   if (isLocalDev(req, env) && env.MCP_TOKEN && env.MCP_TOKEN.length >= 32) {

@@ -70,7 +70,8 @@ export function makeEnv(extra: Record<string, unknown> = {}) {
 const worker = (await import("../src/index.ts")).default as { fetch(r: Request, e: unknown): Promise<Response> };
 export async function call(env: unknown, method: string, path: string, o: { user?: string; body?: unknown; raw?: Uint8Array; ct?: string; bearer?: string; host?: string; headers?: Record<string, string> } = {}) {
   const h: Record<string, string> = { ...(o.headers ?? {}) };
-  if (o.user) h["x-dev-user"] = o.user;
+  // user com "=" é um cookie de sessão (#54: "__Host-ciclo=…"); senão é o usuário de dev (só localhost + DEV_NO_AUTH)
+  if (o.user) { if (o.user.includes("=")) h.Cookie = h.Cookie ? `${h.Cookie}; ${o.user}` : o.user; else h["x-dev-user"] = o.user; }
   if (o.bearer) h.Authorization = `Bearer ${o.bearer}`;
   let body: BodyInit | undefined;
   if (o.raw) { body = o.raw; h["Content-Type"] = o.ct!; h["Content-Length"] = String(o.raw.length); }

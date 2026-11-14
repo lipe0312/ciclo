@@ -21,8 +21,17 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
     body: raw ?? (body ? JSON.stringify(body) : undefined),
   });
   const data = r.headers.get("Content-Type")?.includes("json") ? await r.json() : null;
+  // #54: sessão ausente/vencida em /api → tela #entrar (volta para a rota de origem depois do login)
+  if (r.status === 401 && data?.code === "entrar") paraEntrar();
   if (!r.ok) throw new HttpError(data?.error || `HTTP ${r.status}`, r.status, data);
   return data as T;
+}
+
+/** Vai para #entrar guardando a rota atual em ?volta= (não repete se já está lá). */
+export function paraEntrar() {
+  if (location.hash.startsWith("#entrar")) return;
+  const volta = location.hash && location.hash !== "#" ? location.hash : "#hoje";
+  location.hash = "#entrar?volta=" + encodeURIComponent(volta);
 }
 
 let onHttpError: (msg: string) => void = () => {};
