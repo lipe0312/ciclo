@@ -2,7 +2,6 @@
 // Sem numeração. Academias, Corpo (dor) e Comida têm tela própria; aqui só atalhos. Cada bloco abre em #perfil/<bloco>.
 import { C, S, commit } from "../../lib/store/index.ts";
 import { EXB, ensureBaseline, mName, profileChanged } from "../../lib/store/regras.ts";
-import { SERVER } from "../../lib/api/index.ts";
 import type { Route } from "../../lib/roteador/index.ts";
 import { Card, Chip, Icon, Seg, Stepper, toast } from "../../lib/ui/index.tsx";
 import { SeletorPrioridades, escolherObjetivo } from "../../lib/prioridades/index.tsx";
@@ -99,7 +98,7 @@ function Chat() {
     <div style="margin-top:16px"><span class="f">Modelo por tipo de pedido (economia × qualidade)</span>{CATS.map((c) => <div class="prefrow" key={c}><span class="small"><b>{c}</b></span><PSeg k={`tiers.${c}`} label={`Modelo de ${c}`} opts={[["haiku", "Haiku"], ["sonnet", "Sonnet"], ["opus", "Opus"]]} /></div>)}
       <p class="tiny sub" style="margin-top:8px">Haiku: registro e trocas simples · Sonnet: reorganizar o dia/semana · Opus: dor, revisão e novo bloco. Cada pedido pode trocar o modelo antes de enviar.</p></div>
     <div class="row wrapx" style="gap:16px;margin-top:16px"><div><span class="f">Tom</span><PSeg k="tone" label="Tom" opts={[["direto", "direto"], ["motivador", "motivador"], ["tecnico", "técnico"]]} /></div><div><span class="f">Revisão semanal</span><PSeg k="reviewTime" label="Revisão semanal" opts={[["dom20", "dom 20h"], ["seg7", "seg 7h"]]} /></div></div>
-    <div class="note" style="margin-top:16px"><Icon id="info" /><span>{SERVER ? <>Connector: claude.ai → Personalizar → Connectors → URL <code>/mcp</code> + token. Funciona no app do Chat no celular. Em <a class="link44" href="#conta">Conta</a> você gera o token.</> : "Na versão online, o Chat conversa com este app pelo connector do claude.ai (sem API, na sua assinatura)."}</span></div></>;
+    <div class="note" style="margin-top:16px"><Icon id="info" /><span>Para ligar o Chat ao app, siga o passo a passo em <a class="link44" href="#conta">Conta → Conectar meu Chat</a>.</span></div></>;
 }
 
 function Comida() {
