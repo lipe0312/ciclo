@@ -433,3 +433,26 @@ a.sec{color:inherit;text-decoration:none}
 .est-line{min-height:20px}
 .tpl-chip.manage{border-color:var(--bad);color:var(--bad)}
 .stepper span{white-space:nowrap}
+
+/* #54 entrar e conta */
+.entrar-app .main{margin:0 auto;max-width:480px;padding:32px 16px}
+.entrar{display:flex;flex-direction:column;gap:12px}
+.entrar form{display:flex;flex-direction:column;gap:12px}
+.entrar form .f{margin-bottom:-6px}
+.entrar-brand{margin-bottom:12px}
+.entrar-links{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.entrar .btn.ghost{color:var(--sub)}
+.entrar-erro{color:var(--bad)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em}
+.codigos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0;padding:0;list-style:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+.codigos li{padding:10px;border-radius:10px;background:var(--sup-2);text-align:center;font-weight:700}
+.conta{display:flex;flex-direction:column;gap:14px}
+.conta h2{font-size:17px;margin:0 0 4px}
+.conta-sec{display:flex;flex-direction:column;gap:10px}
+.conta-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.conta-list li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--borda)}
+.conta-list li>div{min-width:0}
+.conta-list li .btn{flex:none}
+.conta-form{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.conta-convite{align-items:flex-start}
+.conta-convite .mono{word-break:break-all}

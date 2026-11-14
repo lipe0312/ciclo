@@ -11,6 +11,7 @@ import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
 import { registerComida } from "./comida.ts";
 import { registerHome } from "./home.ts";
 import { registerClaude } from "./mcp-chat.ts";
+import { registerConta } from "./auth-conta.ts";
 import { createExam, deleteExam, getDiary, openDiary, putCheckout, saveDaysSummary, saveRecap, setReminder } from "./diario.ts";
 
 type Handler = (req: Request, env: Env, p: Record<string, string>, u: AuthUser) => Promise<Response>;
@@ -24,7 +25,7 @@ const MEDIA_MIME: Record<string, "foto" | "video"> = { "image/jpeg": "foto", "im
 const MAX_MEDIA = MEDIA_MAX_BYTES;
 const MAX_TOKENS = 10;
 
-const account = (u: AuthUser) => ({ email: u.email, createdAt: u.createdAt, onboardingDoneAt: u.onboardingDoneAt });
+const account = (u: AuthUser) => ({ email: u.email.endsWith("@passkey.invalid") ? null : u.email, name: u.name, role: u.role, via: u.via ?? null, createdAt: u.createdAt, onboardingDoneAt: u.onboardingDoneAt });
 const onboarding = (u: AuthUser) => (u.onboardingDoneAt ? "concluido" : "pendente");
 
 on("GET", "/api/state", async (req, env, _p, u) => {
@@ -70,6 +71,9 @@ on("GET", "/api/account/export", async (_req, env, _p, u) =>
 on("DELETE", "/api/account", async (req, env, _p, u) => {
   const b = await readJson<Record<string, unknown>>(req, 1024);
   if (b.confirm !== "APAGAR") throw new HttpError(400, 'confirme com {"confirm":"APAGAR"}');
+  // #54: a dona não apaga a própria conta enquanto houver outras (ninguém mais administraria convites e resets)
+  if (u.role === "owner" && ((await env.DB.prepare("SELECT COUNT(*) AS n FROM user").first<{ n: number }>())?.n ?? 0) > 1)
+    throw new HttpError(409, "apague ou passe as outras contas antes: a dona não sai enquanto houver outras pessoas", "dona_com_contas");
   await deleteAccount(env, u.id);
   return json({ ok: true });
 });
@@ -473,6 +477,8 @@ registerComida(on);
 registerHome(on);
 // Claude no app (#30): status da fila e memória do Claude: ver mcp-chat.ts
 registerClaude(on);
+// Conta própria (#54): aparelhos, sair de todos, passkeys, códigos de recuperação, pessoas e convites: ver auth-conta.ts
+registerConta(on);
 
 // Mídia do SEU aparelho → R2 privado, sob o prefixo da conta. Upload passa pelo Worker (simples, valida tipo e tamanho).
 // Mídia de aparelho (equipmentId) exige o lugar (gymId) e o lugar tem que ser desta conta.

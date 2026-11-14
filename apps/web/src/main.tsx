@@ -5,7 +5,7 @@ import "./app.css";
 import { App } from "./app.tsx";
 import { C, S, commit, loadLocal, loadServer, seedDemo, today } from "./lib/store/index.ts";
 import { defaultGymFor } from "./lib/store/regras.ts";
-import { SERVER, setHttpErrorHandler } from "./lib/api/index.ts";
+import { SERVER, paraEntrar, setHttpErrorHandler } from "./lib/api/index.ts";
 import { showFaixa } from "./lib/faixa/index.tsx";
 import { toast } from "./lib/ui/index.tsx";
 import { setVozAI } from "./lib/voz/index.tsx";
@@ -19,7 +19,7 @@ async function boot() {
     loadLocal();
     try { await loadServer(); }
     catch (e: any) {
-      if (e?.status === 401) showFaixa({ id: "auth", tone: "bad", text: "Sessão expirada — recarregue para entrar.", action: { label: "Recarregar", onClick: () => location.reload() } });
+      if (e?.status === 401) paraEntrar(); // #54: sem faixa; a tela #entrar faz o login e volta
       else showFaixa({ id: "boot", tone: "warn", text: "Sem conexão: usando o que está no aparelho." });
     }
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

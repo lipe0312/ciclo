@@ -3,6 +3,8 @@
 DEV_NO_AUTH=1
 # Token de bootstrap LOCAL do MCP (vira o usuário de dev "dev"). Ignorado em produção. Gere com: openssl rand -hex 32
 MCP_TOKEN=troque-por-um-token-de-64-caracteres-hex-gerado-com-openssl-rand
+# #54 conta própria (opcional local): código do 1º acesso para testar a tela #entrar → "Primeiro acesso" (≥ 16 caracteres)
+# OWNER_SETUP_CODE=troque-por-um-codigo-local
 # Web Push local (opcional): node scripts/gen-vapid.mjs
 # VAPID_PUBLIC_KEY=
 # VAPID_PRIVATE_KEY=
@@ -12,3 +14,4 @@ MCP_TOKEN=troque-por-um-token-de-64-caracteres-hex-gerado-com-openssl-rand
 # ACCESS_TEAM_DOMAIN=suaconta.cloudflareaccess.com
 # ACCESS_AUD=tag-aud-do-app
 # ALLOWED_EMAILS=voce@exemplo.com,outra@exemplo.com
+# OWNER_SETUP_CODE=…   (#54: 1ª conta/owner; ACCESS_* só durante a transição — docs/05-deploy-gratis.md, passo 3b)

@@ -13,11 +13,11 @@ const MIG_RE = /^(\d{4})_[a-z0-9_]+\.sql$/;
 export function staticProblems(cfg, migrations) {
   const p = [];
   const vars = cfg.vars ?? {};
-  for (const k of ["DEV_NO_AUTH", "MCP_TOKEN", "VAPID_PRIVATE_KEY", "ACCESS_AUD", "ALLOWED_EMAILS"]) if (k in vars) p.push(`wrangler.jsonc: "${k}" não pode estar em vars (dev ou segredo; use wrangler secret put)`);
+  for (const k of ["DEV_NO_AUTH", "MCP_TOKEN", "VAPID_PRIVATE_KEY", "ACCESS_AUD", "ALLOWED_EMAILS", "OWNER_SETUP_CODE", "AUTH_PEPPER"]) if (k in vars) p.push(`wrangler.jsonc: "${k}" não pode estar em vars (dev ou segredo; use wrangler secret put)`);
   if (cfg.workers_dev !== true) p.push("wrangler.jsonc: workers_dev precisa ser true (o app mora em *.workers.dev)");
   if (cfg.preview_urls !== false) p.push("wrangler.jsonc: preview_urls precisa ser false (URL de preview ficaria fora do Access)");
   const first = cfg.assets?.run_worker_first ?? [];
-  for (const r of ["/api/*", "/mcp", "/mcp/*"]) if (!first.includes(r)) p.push(`wrangler.jsonc: assets.run_worker_first sem "${r}"`);
+  for (const r of ["/api/*", "/auth/*", "/mcp", "/mcp/*"]) if (!first.includes(r)) p.push(`wrangler.jsonc: assets.run_worker_first sem "${r}"`);
   const db = (cfg.d1_databases ?? []).find((d) => d.binding === "DB");
   if (!db || db.database_name !== "ciclo-db" || db.migrations_dir !== "migrations") p.push("wrangler.jsonc: binding DB (ciclo-db, migrations) ausente");
   if (!(cfg.r2_buckets ?? []).some((b) => b.binding === "MEDIA")) p.push("wrangler.jsonc: binding MEDIA (R2) ausente");
@@ -44,5 +44,5 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (!soEstatico && (!db || /^0{8}-/.test(db.database_id ?? ""))) p.push("database_id ainda é o de exemplo: rode `npx wrangler login` e `npm run cf:setup`");
   if (process.argv.includes("--with-build") && !existsSync(`${ROOT}apps/web/dist/index.html`)) p.push("apps/web/dist ausente: rode `npm run build`");
   if (p.length) { console.error("✖ Antes do deploy:\n  - " + p.join("\n  - ")); process.exit(1); }
-  console.log(`✔ pré-deploy ok (D1 ${(db?.database_id ?? "?").slice(0, 8)}…, ${readMigrations().length} migrations). Secrets esperados: ACCESS_TEAM_DOMAIN, ACCESS_AUD, ALLOWED_EMAILS (e VAPID_* opcional) → \`npx wrangler secret list --cwd apps/worker\``);
+  console.log(`✔ pré-deploy ok (D1 ${(db?.database_id ?? "?").slice(0, 8)}…, ${readMigrations().length} migrations). Secrets esperados: OWNER_SETUP_CODE (1º acesso; apague depois), ACCESS_* + ALLOWED_EMAILS só na transição (e VAPID_* opcional) → \`npx wrangler secret list --cwd apps/worker\``);
 }

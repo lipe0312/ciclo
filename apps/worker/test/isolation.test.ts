@@ -6,6 +6,7 @@ import { EQUIPMENT } from "@ciclo/core";
 import { routeSignatures } from "../src/api.ts";
 import { toolNames } from "../src/mcp.ts";
 import { call, makeEnv, mcp } from "./fakes.ts";
+import { contaPorConvite, dono, envConta } from "./conta-helpers.ts";
 
 const D = "2026-11-05", ALL = EQUIPMENT.map((e) => e.id), PNG = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
 // uma sessão por conta; a B guarda cargas marcadas (77.5 kg) que NUNCA podem aparecer em respostas da A
@@ -39,7 +40,7 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   await ok(c("PUT", "/api/food-items/ovo", { nome: `${tag} ovo`, kcal: 150, prot: 13, carb: 1, gord: 10, unidades: [{ nome: "ovo", g: 55 }] }));
   const media = (await ok(call(env, "POST", `/api/media?note=${tag}`, { user, raw: PNG, ct: "image/png" }))).data.id;
   // #26: lugar só desta conta (nome, endereço e ponto no mapa com a marca) e mídia de aparelho dentro dele
-  const lug = `lug_${user}`;
+  const lug = `lug_${tag.slice(-1).toLowerCase()}`;
   await ok(c("PUT", `/api/gyms/${lug}`, { name: `${tag} lugar`, kind: "hotel", address: `${tag} rua`, lat: tag === "MARCA_B" ? -10.123 : -30.5, lng: tag === "MARCA_B" ? -20.456 : -50.5, equipment: ["halteres"], weekdays: ["sab"] }));
   const mediaLug = (await ok(call(env, "POST", `/api/media?gymId=${lug}&equipmentId=halteres&note=${tag}`, { user, raw: PNG, ct: "image/png" }))).data.id;
   await ok(c("GET", `/api/week?date=${D}`));
@@ -59,19 +60,19 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   await ok(c("PUT", "/api/checkin/2026-09-10", { sleepH: 7, energy: 2, soreness: 1, stress: 2, food: 0, note: `${tag} joelho estalou` }));
   await ok(mcp(env, tok.token, "ciclo_chat_pendentes", { origem: "vigia" }));
   const exp = (await c("GET", "/api/account/export")).data;
-  return { mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
+  const dev = (await c("GET", "/api/account/devices")).data; // #54: sessão e passkey (só existem nas contas criadas por convite)
+  return { sessao: dev.sessions[0]?.id ?? "x1", passkey: dev.passkeys[0]?.id ?? "x1", mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
 }
 const snap = async (env: any, user: string) => {
   const e = (await call(env, "GET", "/api/account/export", { user })).data;
   delete e.exportadoEm; delete e.user.last_seen_at; return JSON.stringify(e);
 };
 
-test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas)", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => new Response("[]", { status: 200 })); // Nominatim (busca de endereço) não sai da máquina
-  const env = makeEnv();
-  const B = await seed(env, "bia", "MARCA_B", SID_B, MARK_KG);
-  const A = await seed(env, "ana", "MARCA_A", SID_A, 10);
-  const before = await snap(env, "bia");
+// Roda a matriz inteira com dois tipos de conta: usuário de dev (localhost) e conta criada por convite + passkey (#54, cookie).
+async function matriz(env: any, ana: string, bia: string) {
+  const B = await seed(env, bia, "MARCA_B", SID_B, MARK_KG);
+  const A = await seed(env, ana, "MARCA_A", SID_A, 10);
+  const before = await snap(env, bia);
   const r2Before = [...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length;
   const secrets = [B.mem, "MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, String(MARK_KG), "bia@"];
   const subsB = () => env.DB.raw.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE endpoint = ?1").get(B.endpoint).n;
@@ -79,7 +80,7 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
   const restBefore = restB();
   const noLeak = (label: string, text: string) => { for (const s of secrets) assert.ok(!text.includes(s), `${label} vazou ${s}`); };
 
-  const a = (m: string, p: string, body?: unknown) => call(env, m, p, { user: "ana", body });
+  const a = (m: string, p: string, body?: unknown) => call(env, m, p, { user: ana, body });
   const cases: [string, () => Promise<{ status: number; text: string }>, number?][] = [
     ["GET /api/state", () => a("GET", `/api/state?date=${D}`)],
     ["GET /api/account", () => a("GET", "/api/account")],
@@ -88,6 +89,15 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["GET /api/account/tokens", () => a("GET", "/api/account/tokens")],
     ["POST /api/account/tokens", () => a("POST", "/api/account/tokens", { label: "x" })],
     ["DELETE /api/account/tokens/:id", () => a("DELETE", `/api/account/tokens/${B.tokenId}`), 404],
+    // #54 conta própria: a A só vê e mexe nas próprias sessões/passkeys; rotas de dono → 403 (nenhuma das duas é dona)
+    ["GET /api/account/devices", () => a("GET", "/api/account/devices")],
+    ["DELETE /api/account/sessions/:id", () => a("DELETE", `/api/account/sessions/${B.sessao}`), 404],
+    ["DELETE /api/account/passkeys/:id", () => a("DELETE", `/api/account/passkeys/${B.passkey}`), 404],
+    ["POST /api/account/recovery-codes", () => a("POST", "/api/account/recovery-codes", {}), 201],
+    ["GET /api/account/people", () => a("GET", "/api/account/people"), 403],
+    ["POST /api/account/invites", () => a("POST", "/api/account/invites", {}), 403],
+    ["DELETE /api/account/invites/:id", () => a("DELETE", "/api/account/invites/x1"), 403],
+    ["POST /api/account/people/:id/reset", () => a("POST", `/api/account/people/${B.uid}/reset`, {}), 403],
     ["PUT /api/measurements/:date", () => a("PUT", `/api/measurements/${D}`, { armCm: 40 })],
     ["PUT /api/profile", () => a("PUT", "/api/profile", profile("A2"))],
     ["GET /api/gyms", () => a("GET", "/api/gyms")],
@@ -145,12 +155,12 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["GET /api/home", () => a("GET", `/api/home?date=${D}`)],
     ["GET /api/diet", () => a("GET", `/api/diet?date=${D}`)],
     ["POST /api/diet/adapt", () => a("POST", "/api/diet/adapt", { date: D })],
-    ["POST /api/transcribe", () => call(env, "POST", "/api/transcribe", { user: "ana", raw: PNG, ct: "audio/webm" })],
-    ["POST /api/media", () => call(env, "POST", "/api/media", { user: "ana", raw: PNG, ct: "image/png" })],
+    ["POST /api/transcribe", () => call(env, "POST", "/api/transcribe", { user: ana, raw: PNG, ct: "audio/webm" })],
+    ["POST /api/media", () => call(env, "POST", "/api/media", { user: ana, raw: PNG, ct: "image/png" })],
     ["GET /api/media", () => a("GET", "/api/media")],
     ["GET /api/media (lugar da B)", () => a("GET", `/api/media?gymId=${B.lug}&equipmentId=halteres`)],
-    ["POST /api/media (lugar da B)", () => call(env, "POST", `/api/media?gymId=${B.lug}&equipmentId=halteres`, { user: "ana", raw: PNG, ct: "image/png" }), 404],
-    ["POST /api/media (tipo errado)", () => call(env, "POST", "/api/media?gymId=acad1&equipmentId=halteres", { user: "ana", raw: PNG, ct: "text/html" }), 415],
+    ["POST /api/media (lugar da B)", () => call(env, "POST", `/api/media?gymId=${B.lug}&equipmentId=halteres`, { user: ana, raw: PNG, ct: "image/png" }), 404],
+    ["POST /api/media (tipo errado)", () => call(env, "POST", "/api/media?gymId=acad1&equipmentId=halteres", { user: ana, raw: PNG, ct: "text/html" }), 415],
     ["GET /api/media/:id", () => a("GET", `/api/media/${B.media}`), 404],
     ["GET /api/media/:id (mídia do lugar da B)", () => a("GET", `/api/media/${B.mediaLug}`), 404],
     ["GET /api/claude", () => a("GET", "/api/claude")],
@@ -170,7 +180,7 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
     ["ciclo_memoria_salvar", { fato: "A fato" }], ["ciclo_memoria_listar", {}],
     ["ciclo_exame_pendente", {}], ["ciclo_exame_concluir", { id: B.exam, resumo: { marcadores: [{ nome: "TSH", valor: 1, status: "dentro" }] } }, true],
   ];
-  assert.deepEqual([...new Set(cases.map((c) => c[0].replace(/ \(.*\)$/, "")))].concat("DELETE /api/account").sort(), routeSignatures().sort(), "toda rota precisa de caso de isolamento");
+  assert.deepEqual([...new Set(cases.map((c) => c[0].replace(/ \(.*\)$/, "")))].concat("DELETE /api/account", "POST /api/account/logout-all").sort(), routeSignatures().sort(), "toda rota precisa de caso de isolamento");
   assert.deepEqual(tools.map((t) => t[0]).sort(), [...toolNames].sort(), "toda ferramenta MCP precisa de caso");
 
   for (const [sig, run, status] of cases) {
@@ -195,9 +205,24 @@ test("conta A não lê nem altera dados da conta B (todas as rotas e ferramentas
   noLeak("export A", (await a("GET", "/api/account/export")).text);
 
   assert.equal((await a("DELETE", "/api/account", { confirm: "APAGAR" })).status, 200);
-  assert.equal(await snap(env, "bia"), before, "dados da B mudaram");
+  assert.equal(await snap(env, bia), before, "dados da B mudaram");
   assert.equal(subsB(), 1, "assinatura de push da B apagada pela A");
   assert.equal(restB(), restBefore, "descanso da B alterado pela A");
   assert.equal([...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length, r2Before);
   assert.equal((await mcp(env, B.token, "ciclo_estado")).status, 200);
+}
+
+test("conta A não lê nem altera dados da conta B (usuários de dev, todas as rotas e ferramentas)", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response("[]", { status: 200 })); // Nominatim (busca de endereço) não sai da máquina
+  await matriz(makeEnv(), "ana", "bia");
+});
+
+// "Sair de todos" fica fora da matriz (derrubaria a A no meio); o isolamento dele está em conta.test.ts.
+test("#54 duas contas criadas por convite (passkey + cookie) não veem nem alteram os dados uma da outra (rotas e MCP)", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response("[]", { status: 200 }));
+  const env = envConta();
+  const d = await dono(env);
+  const bia = await contaPorConvite(env, d.cookie, "Bia Fictícia");
+  const ana = await contaPorConvite(env, d.cookie, "Ana Fictícia", "RS256");
+  await matriz(env, ana.cookie, bia.cookie);
 });

@@ -26,6 +26,7 @@ import Vida from "./screens/vida/index.tsx";
 import Semana from "./screens/semana/index.tsx";
 import PrimeirosPassos from "./screens/primeiros-passos/index.tsx";
 import Mais from "./screens/mais/index.tsx";
+import Entrar from "./screens/entrar/index.tsx";
 
 const SCREENS: Record<string, FunctionComponent<{ route: Route }>> = {
   hoje: Hoje, treino: Treino, diario: Diario, comida: Comida, claude: Claude, corpo: Corpo, academias: Academias,
@@ -62,6 +63,8 @@ export function App() {
       action: { label: "Regenerar", onClick: () => { regeneratePlan(); commit(); toast("Treino regenerado com o perfil de hoje"); } } });
     else hideFaixa("treino-desatualizado");
   }, [stale]);
+  // #54: #entrar é tela cheia, sem navegação (não há conta ainda); some a faixa e a mini-barra.
+  if (route.screen === "entrar") return <div class="app focus entrar-app"><main class="main"><div class="wrap"><Entrar route={route} /></div></main><Toast /></div>;
   const Tela = SCREENS[screen];
   const route2: Route = screen === route.screen ? route : { screen, parts: [], query: {} };
   const cur = (id: string) => (id === screen || (id === "mais" && MAIS.some((d) => d.id === screen)) ? "page" : undefined);

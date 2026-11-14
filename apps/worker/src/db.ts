@@ -318,14 +318,14 @@ export async function takeGeocodeSlot(env: Env, now = Date.now()): Promise<numbe
 
 // ---- direitos da conta (LGPD) ----
 /** Tabelas de dado pessoal (todas têm user_id). Ordem de apagar: filhas antes das mães. */
-export const USER_TABLES = ["set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym_weekday", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat", "busca"] as const;
+export const USER_TABLES = ["set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym_weekday", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat", "busca", "auth_challenge", "recovery_codes", "sessions", "passkeys", "invites"] as const;
 
 /** Tudo da conta em JSON (mídia: só metadados; tokens: sem hash). */
 export async function exportAccount(env: Env, uid: string) {
   const q = (sql: string) => env.DB.prepare(sql).bind(uid);
-  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "gym_weekday", "mcp_token", "week_plan", "day_override", "cardio_log", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat"] as const;
+  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "gym_weekday", "mcp_token", "week_plan", "day_override", "cardio_log", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat", "passkeys", "sessions", "recovery_codes", "invites"] as const;
   const res = await env.DB.batch([
-    q("SELECT id, email, created_at, last_seen_at, onboarding_done_at FROM user WHERE id = ?1"),
+    q("SELECT id, email, name, role, created_at, last_seen_at, onboarding_done_at FROM user WHERE id = ?1"),
     q("SELECT data, updated_at FROM profile WHERE user_id = ?1"),
     q("SELECT data, created_at FROM profile_history WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT id, name, equipment, busy_hours, kind, lat, lng, address, sort, created_at, deleted_at FROM gym WHERE user_id = ?1 ORDER BY sort"),
@@ -354,6 +354,11 @@ export async function exportAccount(env: Env, uid: string) {
     q("SELECT key, name, kcal, protein, carb, fat, units, source, uses, last_used_at, updated_at FROM food_item WHERE user_id = ?1 ORDER BY key"),
     q("SELECT id, fact, source, created_at, updated_at, expires_at FROM claude_memory WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT origem, at FROM claude_heartbeat WHERE user_id = ?1 ORDER BY origem"),
+    // #54: credenciais sem segredo (nem hash): passkey só id/datas, sessão sem id_hash, código só a data de uso
+    q("SELECT id, alg, transports, synced, created_at, last_used_at FROM passkeys WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT id, created_at, expires_at, last_seen_at, user_agent, via FROM sessions WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT created_at, used_at FROM recovery_codes WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT id, email, created_at, expires_at, used_at, CASE WHEN user_id = ?1 THEN 'para_mim' ELSE 'criado_por_mim' END AS tipo FROM invites WHERE created_by = ?1 OR user_id = ?1 ORDER BY created_at"),
   ]);
   const out: Record<string, unknown> = { formato: "ciclo-export-1", exportadoEm: new Date().toISOString() };
   names.forEach((n, i) => { out[n] = n === "user" || n === "profile" ? res[i].results[0] ?? null : res[i].results; });
