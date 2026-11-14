@@ -372,15 +372,22 @@ export async function exportAccount(env: Env, uid: string) {
     q("SELECT id, alg, transports, synced, created_at, last_used_at FROM passkeys WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT id, created_at, expires_at, last_seen_at, user_agent, via FROM sessions WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT created_at, used_at FROM recovery_codes WHERE user_id = ?1 ORDER BY created_at"),
-    q("SELECT id, email, created_at, expires_at, used_at, CASE WHEN user_id = ?1 THEN 'para_mim' ELSE 'criado_por_mim' END AS tipo FROM invites WHERE created_by = ?1 OR user_id = ?1 ORDER BY created_at"),
+    // #55: o e-mail de um convite que eu criei é de outra pessoa: não sai no meu export
+    q("SELECT id, CASE WHEN user_id = ?1 THEN email END AS email, created_at, expires_at, used_at, CASE WHEN user_id = ?1 THEN 'para_mim' ELSE 'criado_por_mim' END AS tipo FROM invites WHERE created_by = ?1 OR user_id = ?1 ORDER BY created_at"),
   ]);
   const out: Record<string, unknown> = { formato: "ciclo-export-1", exportadoEm: new Date().toISOString() };
   names.forEach((n, i) => { out[n] = n === "user" || n === "profile" ? res[i].results[0] ?? null : res[i].results; });
   return out;
 }
 
-/** Apaga a conta inteira: objetos R2 (prefixo da conta + chaves registradas) e depois todas as linhas, numa transação. */
-export async function deleteAccount(env: Env, uid: string) {
+/** A dona com outras contas não sai (#54). Avaliada em cada DELETE do lote: como a linha do user some por último,
+ *  a condição é a mesma em todo o lote, e uma conta nova criada no meio faz o lote inteiro não apagar nada. */
+const DONA_COM_OUTRAS = "((SELECT role FROM user WHERE id = ?1) = 'owner' AND (SELECT COUNT(*) FROM user) > 1)";
+
+/** Apaga a conta inteira: objetos R2 (prefixo da conta + chaves registradas) e depois todas as linhas, numa transação.
+ *  Devolve false (sem apagar linha nenhuma) se a conta for a dona e houver outras. A API checa antes do R2; a condição
+ *  dentro do lote fecha a corrida (o R2 só sai depois da checagem da API, então na corrida restam só as linhas). */
+export async function deleteAccount(env: Env, uid: string): Promise<boolean> {
   if (env.MEDIA) {
     const { results } = await env.DB.prepare("SELECT r2_key FROM media WHERE user_id = ?1").bind(uid).all<{ r2_key: string }>();
     const keys = new Set(results.map((r) => r.r2_key));
@@ -393,10 +400,14 @@ export async function deleteAccount(env: Env, uid: string) {
     const all = [...keys];
     for (let i = 0; i < all.length; i += 1000) await env.MEDIA.delete(all.slice(i, i + 1000));
   }
-  await env.DB.batch([
-    ...USER_TABLES.map((t) => env.DB.prepare(`DELETE FROM ${t} WHERE user_id = ?1`).bind(uid)), // t é constante do código, não do usuário
-    env.DB.prepare("DELETE FROM user WHERE id = ?1").bind(uid),
+  const res = await env.DB.batch([
+    // t e DONA_COM_OUTRAS são constantes do código, não do usuário
+    ...USER_TABLES.map((t) => env.DB.prepare(`DELETE FROM ${t} WHERE user_id = ?1 AND NOT ${DONA_COM_OUTRAS}`).bind(uid)),
+    env.DB.prepare(`DELETE FROM invites WHERE created_by = ?1 AND NOT ${DONA_COM_OUTRAS}`).bind(uid), // convites que a conta criou
+    env.DB.prepare(`SELECT 1 AS x FROM user WHERE id = ?1 AND NOT ${DONA_COM_OUTRAS}`).bind(uid),
+    env.DB.prepare(`DELETE FROM user WHERE id = ?1 AND NOT ${DONA_COM_OUTRAS}`).bind(uid),
   ]);
+  return res[res.length - 2].results.length > 0;
 }
 
 export const mediaPrefix = (uid: string) => `u/${uid}/`;

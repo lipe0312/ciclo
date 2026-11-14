@@ -7,6 +7,7 @@ import { handleAuth, purgeAuth } from "./auth-conta.ts";
 import { handleMcp } from "./mcp.ts";
 import { closeStaleSessions, hitRateLimit, purgeTrash } from "./db.ts";
 import { sendDueRests } from "./push.ts";
+import { ambiente } from "./ambiente.ts";
 import { purgeExpiredExams } from "./diario.ts";
 import { purgeLimites } from "./limites.ts";
 
@@ -16,7 +17,7 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
 
-    if (url.pathname === "/api/health") return json({ ok: true, version: env.APP_VERSION });
+    if (url.pathname === "/api/health") return json({ ok: true, version: env.APP_VERSION, ambiente: ambiente(env) });
 
     if (url.pathname === "/mcp") {
       const u = await authenticateMcp(req, env);

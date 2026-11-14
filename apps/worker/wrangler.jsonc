@@ -28,7 +28,31 @@
   // Só valores públicos aqui. Segredos (ACCESS_*, ALLOWED_EMAILS, VAPID_*) vão por `wrangler secret put`;
   // DEV_NO_AUTH e MCP_TOKEN são só de .dev.vars (localhost) e NUNCA entram em produção (scripts/predeploy.mjs confere).
   // MAX_USERS: teto de contas (#54); o código nunca passa de 10. OWNER_SETUP_CODE é secret (wrangler secret put).
-  "vars": { "APP_VERSION": "0.1.0", "MAX_USERS": "10" },
+  "vars": { "APP_VERSION": "0.1.0", "MAX_USERS": "10", "PUBLIC_ORIGIN": "https://ciclo.ciclo-worker.workers.dev" },
+  // PUBLIC_ORIGIN (#58, não é segredo): origem https do WebAuthn em produção; o predeploy exige. Ajuste se o workers.dev da sua conta for outro.
   "observability": { "enabled": true },
-  "upload_source_maps": false
+  "upload_source_maps": false,
+  // #58 Ambiente de testes OPCIONAL (`npm run staging`): Worker, D1 e R2 próprios, nunca os de produção (teste em deploy.test.ts).
+  // Nada é herdado do topo: bindings e vars são redeclarados aqui. O database_id é gravado por `npm run staging`.
+  "env": {
+    "staging": {
+      "name": "ciclo-staging",
+      "workers_dev": true,
+      "preview_urls": false,
+      "assets": {
+        "directory": "../web/dist",
+        "binding": "ASSETS",
+        "run_worker_first": ["/api/*", "/auth/*", "/mcp", "/mcp/*"],
+        "not_found_handling": "single-page-application"
+      },
+      "d1_databases": [
+        { "binding": "DB", "database_name": "ciclo-db-staging", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
+      ],
+      "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "ciclo-media-staging" }],
+      "triggers": { "crons": ["*/15 * * * *"] },
+      "vars": { "APP_VERSION": "0.1.0", "MAX_USERS": "10", "ENVIRONMENT": "staging" },
+      "observability": { "enabled": true },
+      "upload_source_maps": false
+    }
+  }
 }

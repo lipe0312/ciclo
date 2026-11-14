@@ -457,3 +457,22 @@ a.sec{color:inherit;text-decoration:none}
 .conta-form{display:flex;flex-direction:column;gap:8px;margin-top:4px}
 .conta-convite{align-items:flex-start}
 .conta-convite .mono{word-break:break-all}
+/* #55 conectar meu Claude */
+.cn-passos{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column}
+.cn-passo{display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--borda)}
+.cn-passo:first-child{border-top:0;padding-top:4px}
+.cn-num{flex:none;width:28px;height:28px;border-radius:999px;display:grid;place-items:center;font-size:13px;font-weight:800;background:var(--sup-2);color:var(--sub);font-variant-numeric:tabular-nums}
+.cn-num svg{width:16px;height:16px}
+.cn-passo.atual .cn-num{background:var(--acc-bg);color:var(--acc-txt)}
+.cn-passo.feito .cn-num{color:var(--ok)}
+.cn-corpo{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.cn-passo.feito h3{color:var(--sub)}
+.cn-campo{display:flex;flex-direction:column;gap:4px}
+.cn-valor{display:flex;align-items:center;gap:8px;padding:4px 4px 4px 10px;border-radius:10px;background:var(--sup-2)}
+.cn-valor code{flex:1;min-width:0;font-size:12px;overflow-wrap:anywhere;word-break:break-all}
+.cn-valor .btn{flex:none}
+.cn-mock{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px;border:1px dashed var(--borda-ctrl);border-radius:10px}
+.cn-mock-l{display:flex;flex-direction:column}
+.cn-ok{display:flex;align-items:center;gap:8px;color:var(--ok);font-weight:700}
+.cn-rotulo{overflow-wrap:anywhere}
+.cn-corpo code.mono{font-size:12px}

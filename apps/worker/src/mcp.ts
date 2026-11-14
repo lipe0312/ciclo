@@ -27,7 +27,7 @@ const MODES = ["normal", "compensatorio", "expresso"] as const;
 const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
 const today = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10); // America/Sao_Paulo (UTC−3)
 
-const TOOLS: Tool[] = [
+export const TOOLS: Tool[] = [
   {
     name: "ciclo_estado", readOnly: true,
     description: "Resumo da semana: volume feito × alvo por músculo, frequência, presença, check-ins (com prontidão), dores ativas, pedidos pendentes. Use primeiro.",

@@ -17,6 +17,7 @@
     "setup": "node scripts/setup-local.mjs",
     "catalogo:imagens": "node scripts/catalogo-imagens.mjs",
     "dev": "node scripts/dev.mjs",
+    "dev:tunnel": "node scripts/dev-tunnel.mjs",
     "test": "node --no-warnings --test packages/core/test/*.test.ts apps/worker/test/*.test.ts",
     "typecheck": "tsc -p packages/core && tsc -p apps/web && npm run cf:types -w @ciclo/worker && tsc -p apps/worker",
     "check": "npm run typecheck && npm test && npm run build",
@@ -24,6 +25,7 @@
     "predeploy:check": "node scripts/predeploy.mjs",
     "deploy:dry": "npm run build && node scripts/predeploy.mjs --static && npm run deploy:dry -w @ciclo/worker",
     "deploy": "node scripts/predeploy.mjs && npm run build && node scripts/predeploy.mjs --with-build && npm run db:migrate:remote -w @ciclo/worker && npm run deploy -w @ciclo/worker",
+    "staging": "node scripts/staging.mjs",
     "e2e:local": "node scripts/e2e-local.mjs",
     "demo": "npm run dev -w @ciclo/web -- --open /?demo"
   },

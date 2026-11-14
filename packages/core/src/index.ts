@@ -27,3 +27,4 @@ export * from "./home.ts";
 export * from "./claude.ts";
 export * from "./conta.ts";
 export * from "./limites.ts";
+export * from "./conexao.ts";

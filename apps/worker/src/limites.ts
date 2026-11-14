@@ -9,15 +9,16 @@ import {
 import type { Falhas, Janela, NivelCota } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { HttpError } from "./http.ts";
+import { webauthnWhere } from "./ambiente.ts";
 
 const te = new TextEncoder();
 const hex = (u8: Uint8Array) => [...u8].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 const LOCAIS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const NAO_PROD = new Set(["development", "local", "test"]);
-/** Produção = `ENVIRONMENT` ausente ou de produção (staging conta como produção) e host que não é localhost. */
+/** Produção = `ENVIRONMENT` ausente ou de produção (staging conta como produção), fora do túnel de dev e de localhost. */
 export const ehProducao = (env: Env, req: Request) =>
-  !NAO_PROD.has(env.ENVIRONMENT ?? "") && !LOCAIS.has(new URL(req.url).hostname);
+  !NAO_PROD.has(env.ENVIRONMENT ?? "") && env.DEV_TUNNEL !== "1" && !LOCAIS.has(new URL(req.url).hostname);
 /** Pepper do HMAC do IP: em produção, só o secret AUTH_PEPPER (sem ele, falha fechado); local/teste usa um fixo. */
 function pepperOf(env: Env, req: Request) {
   if (env.AUTH_PEPPER) return env.AUTH_PEPPER;
@@ -84,7 +85,7 @@ export async function exigirTurnstile(env: Env, req: Request, token: unknown): P
     const body = new URLSearchParams({ secret: env.TURNSTILE_SECRET!, response: token, remoteip: ipDe(req) });
     const r = await fetch(SITEVERIFY, { method: "POST", body });
     const d = r.ok ? await r.json() as { success?: boolean; hostname?: string; action?: string } : null;
-    ok = d?.success === true && d.hostname === new URL(req.url).hostname && (d.action == null || d.action === "" || d.action === TURNSTILE_ACTION);
+    ok = d?.success === true && d.hostname === webauthnWhere(req, env).rpId && (d.action == null || d.action === "" || d.action === TURNSTILE_ACTION);
   } catch { ok = false; }
   if (!ok) throw new HttpError(403, "a verificação contra robôs falhou; tente de novo", "turnstile");
 }
