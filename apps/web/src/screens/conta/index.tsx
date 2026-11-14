@@ -1,11 +1,13 @@
 // Conta (#54): aparelhos e sessões ("Sair deste aparelho" / "Sair de todos"), passkeys, códigos de recuperação
 // e, para o dono, Pessoas (vagas, convites, resetar acesso). Nada de dado de saúde de outra conta passa por aqui.
-// O resto da Conta (exportar/apagar, conectar o Claude) é a #55.
+// #55: "Conectar meu Claude" (chave por pessoa, passo a passo, teste ✅) e Seus dados (exportar/apagar), também na demo.
 import { useEffect, useState } from "preact/hooks";
 import { SERVER, api } from "../../lib/api/index.ts";
 import { Icon, toast } from "../../lib/ui/index.tsx";
 import { Codigos } from "../entrar/codigos.tsx";
 import { criarPasskey, erroPasskey, temPasskey } from "../entrar/webauthn.ts";
+import { Conectar } from "./conectar.tsx";
+import { SeusDados } from "./dados.tsx";
 
 interface Sessao { id: string; aparelho: string; createdAt: number; lastSeenAt: number | null; via: string; atual: boolean }
 interface Passkey { id: string; createdAt: number; lastUsedAt: number | null; sincronizada: boolean }
@@ -41,8 +43,9 @@ export default function Conta() {
     try { await f(); } catch (e) { setErro(erroPasskey(e)); } finally { setBusy(""); }
   };
 
-  if (!SERVER) return <><p class="kicker">Conta</p><h1>Conta</h1>
-    <div class="note" style="margin-top:12px"><Icon id="info" />Na demonstração não há conta: os dados ficam só neste navegador.</div></>;
+  if (!SERVER) return <div class="conta"><p class="kicker">Conta</p><h1>Conta</h1>
+    <div class="note"><Icon id="info" />Na demonstração não há conta: os dados ficam só neste navegador.</div>
+    <Conectar demo /></div>;
 
   return <div class="conta">
     <p class="kicker">Conta</p>
@@ -51,6 +54,8 @@ export default function Conta() {
     {erro && <div class="note entrar-erro" role="alert"><Icon id="warn" />{erro}</div>}
 
     {codigos.length > 0 && <Codigos codigos={codigos} onOk={() => setCodigos([])} />}
+
+    {acc && <Conectar demo={false} viaAccess={acc.via === "access"} />}
 
     <section class="card conta-sec" aria-labelledby="ct-ap">
       <h2 id="ct-ap">Aparelhos</h2>
@@ -129,5 +134,7 @@ export default function Conta() {
         <button type="submit" class="btn pri full" disabled={!!busy || ppl.vagas.cheio}><Icon id="plus" />{ppl.vagas.cheio ? "Sem vagas" : "Criar convite"}</button>
       </form>
     </section>}
+
+    {acc && <SeusDados donaComOutras={acc.role === "owner" && (ppl?.people.length ?? 1) > 1} />}
   </div>;
 }

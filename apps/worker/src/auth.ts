@@ -5,7 +5,7 @@
 // - /mcp e /mcp/media: token do Claude POR USUÁRIO (tabela mcp_token, só o hash SHA-256), comparação em tempo constante.
 // - Local: DEV_NO_AUTH=1 só em localhost/127.0.0.1; usuário de dev pelo cabeçalho x-dev-user ou cookie ciclo_dev_user.
 //   O MCP_TOKEN global vale só aí, como bootstrap do usuário de dev "dev".
-import { maxUsers } from "@ciclo/core";
+import { maxUsers, tokenValido } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { authenticateSession } from "./auth-conta.ts";
 
@@ -142,11 +142,13 @@ export async function authenticateMcp(req: Request, env: Env, now = Date.now()):
   const gotHash = await sha256Hex(got);
   const m = TOKEN_RE.exec(got);
   if (m) {
-    const row = await env.DB.prepare(`SELECT t.id AS token_id, t.hash, t.last_used_at, u.id, u.email, u.name, u.role, u.created_at, u.onboarding_done_at, u.last_seen_at, u.deleted_at
+    const row = await env.DB.prepare(`SELECT t.id AS token_id, t.hash, t.created_at AS token_created_at, t.last_used_at, u.id, u.email, u.name, u.role, u.created_at, u.onboarding_done_at, u.last_seen_at, u.deleted_at
       FROM mcp_token t JOIN user u ON u.id = t.user_id WHERE t.id = ?1 AND t.revoked_at IS NULL`).bind(m[1])
-      .first<UserRow & { token_id: string; hash: string; last_used_at: number | null }>();
+      .first<UserRow & { token_id: string; hash: string; token_created_at: number; last_used_at: number | null }>();
     const ok = timingSafeEqualHex(gotHash, row?.hash ?? DUMMY_HASH);
     if (!row || !ok || row.deleted_at != null) return null;
+    // #55: token sem uso há 90 dias expira (regra no core); revogado já ficou fora do SELECT
+    if (!tokenValido({ createdAt: row.token_created_at, lastUsedAt: row.last_used_at, revokedAt: null }, now)) return null;
     if (row.last_used_at == null || now - row.last_used_at >= 60_000) {
       await env.DB.prepare("UPDATE mcp_token SET last_used_at = ?2 WHERE id = ?1").bind(row.token_id, now).run();
     }
