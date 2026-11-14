@@ -6,6 +6,7 @@ import { call, makeEnv } from "./fakes.ts";
 import { TRASH_MS, purgeTrash } from "../src/db.ts";
 
 const PNG = new Uint8Array([137, 80, 78, 71, 1, 2, 3, 4, 5, 6]);
+const MP4 = new Uint8Array([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
 const NO_DAYS = Object.fromEntries(["seg", "ter", "qua", "qui", "sex", "sab", "dom"].map((d) => [d, null])); // o perfil padrão já traz dias; os testes começam limpos
 const profile = { data: { dayGym: NO_DAYS, level: 1, priorities: ["ombro"], minutes: 60, daysTarget: 4, daysUsual: ["seg", "ter", "qua", "qui"], prefs: {}, pinned: {}, avoid: [], goal: { statement: "x" } } };
 const ok = async (p: Promise<{ status: number; text: string; data: any }>, st = 200) => { const r = await p; assert.ok(r.status >= st && r.status < st + 100, `${r.status} ${r.text}`); return r; };
@@ -157,8 +158,10 @@ test("mídia do aparelho: tipo errado → 415 (nada vai ao R2); aparelho exige l
   assert.equal((await call(env, "GET", `/api/media/${good.data.id}`, { user: "bia" })).status, 404);
   assert.equal((await call(env, "GET", "/api/media?gymId=a", { user: "bia" })).data.media.length, 0);
   // acima de 20 MB → 413
-  const big = await call(env, "POST", "/api/media?gymId=a&equipmentId=halteres", { user: "ana", raw: PNG, ct: "video/mp4", headers: {} });
-  assert.equal(big.status, 201);
+  const mp4 = await call(env, "POST", "/api/media?gymId=a&equipmentId=halteres", { user: "ana", raw: MP4, ct: "video/mp4", headers: {} });
+  assert.equal(mp4.status, 201);
+  // #56: PNG dizendo ser MP4 → 415 (tipo pelo conteúdo)
+  assert.equal((await call(env, "POST", "/api/media?gymId=a&equipmentId=halteres", { user: "ana", raw: PNG, ct: "video/mp4" })).status, 415);
   const huge = new Request("http://localhost:8791/api/media", { method: "POST", headers: { "Content-Type": "video/mp4", "Content-Length": String(21 * 1024 * 1024), "x-dev-user": "ana" }, body: PNG });
   const w = (await import("../src/index.ts")).default as any;
   assert.equal((await w.fetch(huge, env)).status, 413);
@@ -168,6 +171,7 @@ test("mídia: Range devolve 206 com o pedaço certo (Safari só toca vídeo assi
   const env = makeEnv();
   await ok(put(env, "ana", "a", { name: "A" }));
   const bytes = new Uint8Array(Array.from({ length: 100 }, (_, i) => i));
+  bytes.set([0x66, 0x74, 0x79, 0x70], 4); // "ftyp": MP4 de verdade pelo conteúdo (#56, magic bytes)
   const id = (await ok(upload(env, "ana", "gymId=a&equipmentId=halteres", bytes, "video/mp4"), 201)).data.id;
   const get = (range?: string) => (import("../src/index.ts") as Promise<any>).then((m) => m.default.fetch(new Request(`http://localhost:8791/api/media/${id}`, { headers: { "x-dev-user": "ana", ...(range ? { Range: range } : {}) } }), env));
   const full = await get(); assert.equal(full.status, 200); assert.equal(full.headers.get("Accept-Ranges"), "bytes");

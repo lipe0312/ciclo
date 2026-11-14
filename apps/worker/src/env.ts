@@ -10,8 +10,10 @@ export interface Env {
   ALLOWED_EMAILS?: string;     // produção: e-mails (vírgula) que podem criar/usar conta. Vazio = ninguém (falha fechada)
   OWNER_SETUP_CODE?: string;   // #54: código de uso único da PRIMEIRA conta (owner), ≥ 16 caracteres — `wrangler secret put`. Pode apagar depois.
   AUTH_PEPPER?: string;        // #54: segredo do HMAC do IP no limite de /auth/* (opcional, recomendado) — `wrangler secret put`
+  TURNSTILE_SITE_KEY?: string; // #56: chave pública do Turnstile (vars). Sem ela e sem o secret, o Turnstile fica desligado (dev e testes).
+  TURNSTILE_SECRET?: string;   // #56: secret do Turnstile (`wrangler secret put`), validado no servidor (siteverify)
   MAX_USERS?: string;          // #54: teto de contas (padrão 10; nunca passa de 10)
-  ENVIRONMENT?: string;        // #58: "staging" só no env.staging do wrangler.jsonc (a faixa "AMBIENTE DE TESTES"); ausente em produção
+  ENVIRONMENT?: string;        // #58: "staging" só no env.staging do wrangler.jsonc (a faixa "AMBIENTE DE TESTES"); ausente em produção. #56: só "development" | "local" | "test" relaxam AUTH_PEPPER e CF-Connecting-IP
   DEV_TUNNEL?: string;         // #58: "1" só no `npm run dev:tunnel` (túnel https temporário; WebAuthn usa o host do túnel)
   PUBLIC_ORIGIN?: string;      // #58: opcional, origem https fixa do WebAuthn (padrão: o host da requisição)
   DEV_NO_AUTH?: string;        // "1" só em .dev.vars (localhost)

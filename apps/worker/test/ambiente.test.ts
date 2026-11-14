@@ -51,7 +51,9 @@ test("staging falha fechado sem AUTH_PEPPER e OWNER_SETUP_CODE; produção não 
   assert.equal((await post(makeEnv({ ENVIRONMENT: "staging", DEV_NO_AUTH: undefined }))).status, 503);
   assert.equal((await post(makeEnv({ ENVIRONMENT: "staging", DEV_NO_AUTH: undefined, AUTH_PEPPER: "p".repeat(32) }))).status, 503);
   assert.notEqual((await post(makeEnv({ ENVIRONMENT: "staging", DEV_NO_AUTH: undefined, AUTH_PEPPER: "p".repeat(32), OWNER_SETUP_CODE: "o".repeat(20) }))).status, 503);
-  assert.notEqual((await post(makeEnv({ DEV_NO_AUTH: undefined }))).status, 503);
+  // #56: produção também falha fechado sem AUTH_PEPPER (hash do IP nos limites); com ele e o IP da Cloudflare, responde
+  assert.equal((await post(makeEnv({ DEV_NO_AUTH: undefined }))).status, 503);
+  assert.notEqual((await call(makeEnv({ DEV_NO_AUTH: undefined, AUTH_PEPPER: "p".repeat(32) }), "POST", "/auth/login/options", { host: "ciclo.exemplo.workers.dev", body: {}, headers: { "CF-Connecting-IP": "203.0.113.5" } })).status, 503);
 });
 
 test("config de produção exige PUBLIC_ORIGIN https e proíbe DEV_TUNNEL; staging sem cron por minuto", () => {

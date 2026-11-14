@@ -8,7 +8,7 @@ import { toolNames } from "../src/mcp.ts";
 import { USER_TABLES } from "../src/db.ts";
 import { call, makeEnv, mcp } from "./fakes.ts";
 // script JS (sem tipos): a mesma checagem roda no `npm run deploy`
-import { readMigrations, readWrangler, staticProblems } from "../../../scripts/predeploy.mjs";
+import { readMigrations, readWrangler, secretProblems, staticProblems } from "../../../scripts/predeploy.mjs";
 
 const PROD = "ciclo.exemplo.workers.dev";
 const sample = (p: string) => p.replace(/:(\w+)/g, (_m, k) => (k === "date" ? "2026-11-05" : k === "setNo" ? "1" : "x1"));
@@ -21,16 +21,17 @@ test("config de produção: sem variável de dev, sem preview, bindings e migrat
   assert.deepEqual(gatilho, [], "BEGIN de gatilho não é transação");
 });
 
-test("CSP do app: só 'self' e os tiles do OSM (ADR-0010); sem inline/eval nem terceiros", () => {
+test("CSP do app: só 'self', os tiles do OSM (ADR-0010) e o Turnstile (ADR-0012); sem inline/eval nem outros terceiros", () => {
   const h = readFileSync(new URL("../../web/public/_headers", import.meta.url), "utf8");
   const csp = /Content-Security-Policy: (.+)/.exec(h)![1];
   const dir = Object.fromEntries(csp.split(";").map((d) => d.trim().split(/\s+/)).map(([k, ...v]) => [k, v]));
-  assert.deepEqual(dir["script-src"], ["'self'"]);
+  assert.deepEqual(dir["script-src"], ["'self'", "https://challenges.cloudflare.com"]);
+  assert.deepEqual(dir["frame-src"], ["https://challenges.cloudflare.com"]);
   assert.deepEqual(dir["connect-src"], ["'self'"]);
   assert.deepEqual(dir["frame-ancestors"], ["'none'"]);
   assert.deepEqual(dir["object-src"], ["'none'"]);
   const hosts = csp.match(/https?:\/\/[^\s;]+/g) ?? [];
-  assert.deepEqual([...new Set(hosts)], ["https://tile.openstreetmap.org"]);
+  assert.deepEqual([...new Set(hosts)].sort(), ["https://challenges.cloudflare.com", "https://tile.openstreetmap.org"]);
   assert.ok(!/unsafe-eval|\*/.test(csp));
   assert.match(h, /Strict-Transport-Security/); assert.match(h, /Permissions-Policy/);
   const html = readFileSync(new URL("../../web/index.html", import.meta.url), "utf8");
@@ -82,4 +83,14 @@ test("nada de dado real versionado: migrations não semeiam pessoas nem e-mails"
     for (const i of ins) assert.match(i, /geocode_gate|busca/i, `${name}: seed inesperado (${i})`);
     assert.ok(!/@[a-z0-9-]+\.(com|br|net|org)/i.test(sql), `${name}: e-mail no SQL`);
   }
+});
+
+test("#56 predeploy: AUTH_PEPPER obrigatório, Turnstile com as duas chaves ou nenhuma, secret do Turnstile fora de vars", () => {
+  assert.deepEqual(secretProblems(["AUTH_PEPPER"]), []);
+  assert.deepEqual(secretProblems(["AUTH_PEPPER", "TURNSTILE_SITE_KEY", "TURNSTILE_SECRET"]), []);
+  assert.match(secretProblems([]).join(), /AUTH_PEPPER/);
+  assert.match(secretProblems(["AUTH_PEPPER", "TURNSTILE_SECRET"]).join(), /Turnstile pela metade/);
+  assert.match(secretProblems(["AUTH_PEPPER"], { TURNSTILE_SITE_KEY: "x" }).join(), /Turnstile pela metade/);
+  const cfg = readWrangler();
+  assert.ok(staticProblems({ ...cfg, vars: { ...cfg.vars, TURNSTILE_SECRET: "x" } }, []).some((x: string) => /TURNSTILE_SECRET/.test(x)));
 });

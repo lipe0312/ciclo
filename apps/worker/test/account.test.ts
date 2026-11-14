@@ -71,7 +71,7 @@ test("exportar e apagar a conta: linhas e objetos R2 somem", async () => {
   const env = makeEnv();
   await call(env, "PUT", "/api/gyms/g", { user: "z", body: { name: "G", equipment: [] } });
   await call(env, "POST", "/api/pains", { user: "z", body: { region: "cervical", intensity: 1 } });
-  await call(env, "POST", "/api/media", { user: "z", raw: new Uint8Array([1, 2]), ct: "image/png" });
+  await call(env, "POST", "/api/media", { user: "z", raw: new Uint8Array([137, 80, 78, 71, 1, 2]), ct: "image/png" });
   await call(env, "POST", "/api/account/tokens", { user: "z", body: {} });
   await call(env, "GET", "/api/state?date=2026-11-05", { user: "outro" });
   const e = (await call(env, "GET", "/api/account/export", { user: "z" })).data;

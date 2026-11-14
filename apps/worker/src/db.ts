@@ -4,6 +4,8 @@ import { DEFAULT_PROFILE, DOWS, MAX_SESSION_MS, assignWeekdays, reassignDays, MU
 import { HttpError, int, oneOf, str } from "./http.ts";
 import type { DayInput, Group, Mode, MuscleId, Pain, SetLog } from "@ciclo/core";
 import type { Env } from "./env.ts";
+import { somarEscrita } from "./limites.ts";
+import { COTA_ESCRITAS_DIA } from "@ciclo/core";
 
 export interface Profile {
   level: 0 | 1 | 2 | 3; priorities: MuscleId[]; minutes: number; daysTarget: number;
@@ -293,17 +295,29 @@ export async function upsertPain(env: Env, uid: string, b: Record<string, unknow
 }
 
 // ---- limite de requisições por usuário (janela fixa no D1; ver ADR-0007) ----
-export const RATE_LIMITS = { write: { max: 120, windowMs: 60_000 }, upload: { max: 20, windowMs: 10 * 60_000 }, geocode: { max: 1, windowMs: 1000 } } as const; // geocode: 1 req/s (política do Nominatim)
-export type RateBucket = keyof typeof RATE_LIMITS;
+export const RATE_LIMITS = {
+  write: { max: 120, windowMs: 60_000 }, upload: { max: 20, windowMs: 10 * 60_000 }, geocode: { max: 1, windowMs: 1000 }, // geocode: 1 req/s (política do Nominatim)
+  dia: { max: COTA_ESCRITAS_DIA, windowMs: 86_400_000 }, // #56: escritas + uploads por pessoa por dia UTC
+} as const;
+export type RateBucket = Exclude<keyof typeof RATE_LIMITS, "dia">;
 
-/** Conta +1 na janela atual e devolve quantos segundos esperar se passou do limite (0 = liberado). */
-export async function hitRateLimit(env: Env, uid: string, bucket: RateBucket, now = Date.now()): Promise<number> {
-  const { max, windowMs } = RATE_LIMITS[bucket];
-  const w = now - (now % windowMs);
+const contarBalde = async (env: Env, uid: string, bucket: keyof typeof RATE_LIMITS, now: number) => {
+  const { max, windowMs } = RATE_LIMITS[bucket], w = now - (now % windowMs);
   const r = await env.DB.prepare(`INSERT INTO rate_limit (user_id, bucket, window_start, count) VALUES (?1, ?2, ?3, 1)
     ON CONFLICT(user_id, bucket) DO UPDATE SET count = CASE WHEN window_start = ?3 THEN count + 1 ELSE 1 END, window_start = ?3
     RETURNING count`).bind(uid, bucket, w).first<{ count: number }>();
   return (r?.count ?? 0) > max ? Math.ceil((w + windowMs - now) / 1000) : 0;
+};
+
+/** Conta +1 na janela atual e devolve quantos segundos esperar se passou do limite (0 = liberado).
+ *  Escrita e upload também contam na cota diária da pessoa (2.000) e, só se aceitos, no uso do app inteiro (cota global). */
+export async function hitRateLimit(env: Env, uid: string, bucket: RateBucket, now = Date.now()): Promise<number> {
+  const wait = await contarBalde(env, uid, bucket, now);
+  if (wait || bucket === "geocode") return wait;
+  const dia = await contarBalde(env, uid, "dia", now);
+  if (dia) return dia;
+  await somarEscrita(env, now).run(); // rejeitada não soma: uma conta não esgota a cota global com 429
+  return 0;
 }
 
 export const GEOCODE_GAP_MS = 1000;

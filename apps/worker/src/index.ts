@@ -9,6 +9,7 @@ import { closeStaleSessions, hitRateLimit, purgeTrash } from "./db.ts";
 import { sendDueRests } from "./push.ts";
 import { ambiente } from "./ambiente.ts";
 import { purgeExpiredExams } from "./diario.ts";
+import { purgeLimites } from "./limites.ts";
 
 const unauthorized = () => json({ error: "não autorizado" }, 401, { "WWW-Authenticate": 'Bearer realm="ciclo"' });
 
@@ -81,6 +82,7 @@ export default {
     if (new Date(c.scheduledTime).getUTCMinutes() === 0) {
       ctx.waitUntil(purgeTrash(env).catch(() => null)); // lixeira de 30 dias (#26)
       ctx.waitUntil(purgeAuth(env, c.scheduledTime).catch(() => null)); // sessões vencidas, desafios e convites velhos (#54)
+      ctx.waitUntil(purgeLimites(env, c.scheduledTime).catch(() => null)); // falhas de login e uso diário antigos (#56)
     }
   },
 } satisfies ExportedHandler<Env>;
