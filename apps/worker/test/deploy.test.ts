@@ -67,7 +67,7 @@ test("LGPD: toda tabela com user_id (lida do schema) é apagada com a conta; exp
   const comUser = env.DB.raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE '%user_id%' AND name NOT LIKE 'busca_%'").all().map((r: any) => r.name).sort();
   assert.deepEqual([...USER_TABLES].sort(), comUser, "deleteAccount (USER_TABLES) precisa cobrir toda tabela com user_id");
   // técnicas/derivadas: contador de limite, aparelho de push, descanso agendado e índice de busca (cópia de textos já exportados)
-  const TECNICAS = ["auth_challenge", "busca", "push_subscription", "rate_limit", "rest_timer"]; // #54: desafio WebAuthn de 5 min
+  const TECNICAS = ["auth_challenge", "busca", "oauth_code", "push_subscription", "rate_limit", "rest_timer"]; // #54: desafio WebAuthn de 5 min · #66: código OAuth de 5 min
   const tok = (await call(env, "POST", "/api/account/tokens", { user: "z", body: { label: "t" } })).data.token;
   assert.equal((await mcp(env, tok, "ciclo_estado")).status, 200);
   const exp = (await call(env, "GET", "/api/account/export", { user: "z" })).data;

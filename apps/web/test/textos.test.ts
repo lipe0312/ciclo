@@ -1,12 +1,13 @@
 // #64 "Claude" vira "Chat" em toda a UI. Varre as strings do front (sem comentários) atrás da palavra "Claude".
-// Exceção: o passo a passo de conexão (Conta → Conectar meu Chat), onde o nome é necessário para a pessoa achar o app certo.
+// Exceção: o passo a passo de conexão (Conta → Conectar meu Chat e a folha Como conectar), onde o nome é necessário para a pessoa achar o app certo.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const WEB = join(import.meta.dirname, "..");
-const PERMITIDOS = new Set(["src/screens/conta/conectar.tsx"]);
+// #66: + a folha "Como conectar o seu Claude" (o modal do passo a passo de conexão)
+const PERMITIDOS = new Set(["src/screens/conta/conectar.tsx", "src/screens/claude/conectar.tsx"]);
 
 function arquivos(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {

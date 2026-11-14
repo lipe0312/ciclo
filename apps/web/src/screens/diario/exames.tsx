@@ -37,8 +37,11 @@ export function Exames() {
     const err = C.checkExamFile({ size: f.size, type: f.type });
     if (err) { setMsg(err); return; }
     setBusy(true); setMsg("Lendo o PDF aqui no aparelho…");
+    let mod: typeof import("./pdf.ts");
+    try { mod = await import("./pdf.ts"); } // pdf.js só carrega aqui (ADR-0009)
+    catch { setBusy(false); setMsg("O app foi atualizado: feche e abra o Ciclo de novo para ler o PDF (ou cole o texto)."); return; }
     try {
-      const { pdfText } = await import("./pdf.ts"); // pdf.js só carrega aqui (ADR-0009)
+      const { pdfText } = mod;
       const r = await pdfText(f, C.EXAM_MAX_TEXT);
       if (!r.text) { setMsg("Não achei texto no PDF (é foto/escaneado?). Cole o texto do laudo."); return; }
       setText(r.text); if (!label) setLabel(f.name.replace(/\.pdf$/i, "").slice(0, 80));

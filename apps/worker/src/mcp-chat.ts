@@ -2,7 +2,7 @@
 // e busca no histórico (FTS5), mais as rotas do app para status e memória. Todo SQL com bind e filtrado por user_id;
 // texto do usuário (pedido, nota, memória) sai marcado como DADO. Não existe ferramenta MCP que apague: apagar memória
 // é só no app (atrás do login).
-import { MEMORIA, ftsQuery, pedidoDaAcao, statusClaude, validarMemoria } from "@ciclo/core";
+import { MEMORIA, configOpenai, ftsQuery, pedidoDaAcao, statusClaude, validarMemoria } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import type { Handler } from "./comida.ts";
 import { HttpError, date, id, json, oneOf, readJson, str } from "./http.ts";
@@ -96,7 +96,8 @@ export function registerClaude(on: (method: string, path: string, h: Handler) =>
     ]);
     const at = (o: string) => beats.results.find((b) => b.origem === o)?.at ?? null;
     const pendentes = pend?.n ?? 0;
-    return json({ status: statusClaude({ agora: Date.now(), vigiaEm: at("vigia"), rotinaEm: at("rotina"), connectorEm: tok?.at ?? at("manual"), pendentes }), pendentes, memoria: mem, limite: MEMORIA.max });
+    // #66 openai: o dono ligou a IA de reserva (dados de treino e saúde vão para a OpenAI): a tela avisa
+    return json({ status: statusClaude({ agora: Date.now(), vigiaEm: at("vigia"), rotinaEm: at("rotina"), connectorEm: tok?.at ?? at("manual"), pendentes }), pendentes, memoria: mem, limite: MEMORIA.max, openai: configOpenai(env).ligado });
   });
   on("POST", "/api/claude/memoria", async (req, env, _p, u) => json(await salvarFato(env, u.id, await readJson(req, 4 * 1024), "app"), 201));
   on("PUT", "/api/claude/memoria/:id", async (req, env, p, u) => {

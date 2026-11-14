@@ -2,6 +2,7 @@
 // - App e /api: sessão própria (cookie __Host-ciclo, criada por passkey ou código de recuperação; auth-conta.ts).
 //   #62: o caminho do Cloudflare Access (JWT) saiu; não existe outra porta além de #entrar.
 // - /mcp e /mcp/media: token do Claude POR USUÁRIO (tabela mcp_token, só o hash SHA-256), comparação em tempo constante.
+//   #66: a chave manual (#55) ou o token de acesso OAuth (1 h, expires_at; oauth.ts), no mesmo formato.
 // - Local: DEV_NO_AUTH=1 só em localhost/127.0.0.1; usuário de dev pelo cabeçalho x-dev-user ou cookie ciclo_dev_user.
 //   O MCP_TOKEN global vale só aí, como bootstrap do usuário de dev "dev".
 import { CONSENT_DOCS, CONSENT_VERSAO, maxUsers, tokenValido } from "@ciclo/core";
@@ -100,7 +101,7 @@ export async function authenticateMcp(req: Request, env: Env, now = Date.now()):
   const m = TOKEN_RE.exec(got);
   if (m) {
     const row = await env.DB.prepare(`SELECT t.id AS token_id, t.hash, t.created_at AS token_created_at, t.last_used_at, u.id, u.email, u.name, u.role, u.created_at, u.onboarding_done_at, u.last_seen_at, u.deleted_at
-      FROM mcp_token t JOIN user u ON u.id = t.user_id WHERE t.id = ?1 AND t.revoked_at IS NULL`).bind(m[1])
+      FROM mcp_token t JOIN user u ON u.id = t.user_id WHERE t.id = ?1 AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > ?2)`).bind(m[1], now)
       .first<UserRow & { token_id: string; hash: string; token_created_at: number; last_used_at: number | null }>();
     const ok = timingSafeEqualHex(gotHash, row?.hash ?? DUMMY_HASH);
     if (!row || !ok || row.deleted_at != null) return null;

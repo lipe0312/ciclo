@@ -2,12 +2,15 @@
 // (import dinâmico → chunk próprio). Nada vai para terceiros; o arquivo não sai do aparelho, só o texto extraído.
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
 import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
+import { lerTudo, textoDosItens } from "@ciclo/core";
 
 GlobalWorkerOptions.workerSrc = workerUrl; // mesma origem (CSP worker-src 'self')
 
 const MAX_PAGES = 40;
 
-/** Texto do PDF (até 40 páginas e `maxChars`). Sem fontes, sem WebAssembly e sem rede: só a camada de texto. */
+/** Texto do PDF (até 40 páginas e `maxChars`). Sem fontes, sem WebAssembly e sem rede: só a camada de texto.
+ *  #66: NÃO usar page.getTextContent(): ele faz `for await` num ReadableStream, que o Safari (iOS e macOS) não tem,
+ *  e a leitura falhava só no iPhone ("Não consegui ler este PDF"). Lemos o stream pelo getReader() (core/pdf-texto.ts). */
 export async function pdfText(file: File, maxChars: number): Promise<{ text: string; pages: number; truncated: boolean }> {
   const data = new Uint8Array(await file.arrayBuffer());
   // isEvalSupported: o pdf.js 6.x já não compila funções com eval (e a CSP bloqueia); passamos false mesmo assim,
@@ -20,8 +23,8 @@ export async function pdfText(file: File, maxChars: number): Promise<{ text: str
     let len = 0, truncated = doc.numPages > MAX_PAGES;
     for (let n = 1; n <= Math.min(doc.numPages, MAX_PAGES); n++) {
       const page = await doc.getPage(n);
-      const tc = await page.getTextContent();
-      const line = tc.items.map((it) => ("str" in it ? it.str + (it.hasEOL ? "\n" : " ") : "")).join("").replace(/[ \t]+/g, " ").trim();
+      const partes = await lerTudo(page.streamTextContent().getReader() as ReadableStreamDefaultReader<{ items: unknown[] }>);
+      const line = textoDosItens(partes.flatMap((p) => p.items));
       if (len + line.length > maxChars) { out.push(line.slice(0, maxChars - len)); truncated = true; break; }
       out.push(line); len += line.length + 2;
     }

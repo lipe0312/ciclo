@@ -1,0 +1,21 @@
+/* #66 Folha "Como conectar o seu Claude". Só tokens de app.css. Celular primeiro; a ilustração some abaixo de 360 px. */
+.cx-passos{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:12px}
+.cx-passo{display:grid;grid-template-columns:32px 1fr 96px;gap:10px;align-items:start;padding:12px;border:1px solid var(--borda);border-radius:var(--r);background:var(--sup)}
+.cx-n{width:28px;height:28px;border-radius:999px;background:var(--acc-bg);color:var(--acc-txt);display:grid;place-items:center;font-weight:800;font-size:14px}
+.cx-corpo{min-width:0;display:grid;gap:6px}
+.cx-url{display:block;padding:8px 10px;border-radius:8px;background:var(--sup-2);font-size:12px;overflow-wrap:anywhere;user-select:all}
+.cx-copiar{margin-top:2px}
+.cx-mock{width:96px;height:auto}
+.cx-moldura{fill:var(--sup-2);stroke:var(--borda)}
+.cx-linha{fill:var(--borda-ctrl)}
+.cx-bloco{fill:var(--sup-3)}
+.cx-campo{fill:var(--sup);stroke:var(--borda-ctrl)}
+.cx-acc{fill:var(--acc-bg)}
+.cx-traco{fill:none;stroke:var(--txt);stroke-width:2;stroke-linecap:round}
+.cx-mais{margin-top:12px;border:1px solid var(--borda);border-radius:var(--r);padding:0 12px}
+.cx-mais summary{min-height:44px;display:flex;align-items:center;font-weight:600;cursor:pointer}
+.cx-mais[open]{padding-bottom:12px;display:block}
+.cx-mais[open]>*+*{margin-top:8px}
+.cx-rodape{margin-top:12px}
+@media (max-width:359px){ .cx-passo{grid-template-columns:32px 1fr} .cx-mock{display:none} }
+@media (min-width:960px){ .cx-passo{grid-template-columns:32px 1fr 120px} .cx-mock{width:120px} }

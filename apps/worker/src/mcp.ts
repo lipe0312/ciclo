@@ -108,7 +108,7 @@ export const TOOLS: Tool[] = [
       if (!own) throw new HttpError(404, "pedido não encontrado");
       let change: unknown = null;
       if (Array.isArray(a.itens) && a.itens.length) change = await saveCompact(env, uid, { ...a, motivo: a.motivo ?? a.resposta });
-      await env.DB.prepare("UPDATE inbox SET status = 'respondido', response = ?2, change = ?3, answered_at = ?4 WHERE id = ?1 AND user_id = ?5")
+      await env.DB.prepare("UPDATE inbox SET status = 'respondido', response = ?2, change = ?3, answered_at = ?4, cerebro = 'claude-assinatura' WHERE id = ?1 AND user_id = ?5")
         .bind(iid, resposta, change ? JSON.stringify(change) : null, Date.now(), uid).run();
       return { ok: true, change };
     },
@@ -243,7 +243,7 @@ export const TOOLS: Tool[] = [
   ...TOOLS_CHAT,
 ];
 
-async function saveCompact(env: Env, uid: string, a: Args) {
+export async function saveCompact(env: Env, uid: string, a: Args) {
   const d = a.date ? date(a.date) : today();
   if (!Array.isArray(a.itens) || a.itens.length > 16) throw new HttpError(400, "itens inválidos");
   const bi = await buildDayInput(env, uid, { date: d, daysLeft: int(a.daysLeft, "daysLeft", 1, 7, false) ?? 2, gymId: str(a.gymId, "gymId", 40, false) ?? undefined });

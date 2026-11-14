@@ -10,9 +10,12 @@ import { sendDueRests } from "./push.ts";
 import { ambiente } from "./ambiente.ts";
 import { purgeExpiredExams } from "./diario.ts";
 import { purgeLimites } from "./limites.ts";
+import { handleOauth, purgeOauth } from "./oauth.ts";
+import { wwwAuthenticate } from "@ciclo/core";
 
 const LIVRE_SEM_ACEITE = new Set(["GET /api/account", "POST /api/account/consent", "GET /api/account/export", "DELETE /api/account", "POST /api/account/logout-all"]);
-const unauthorized = () => json({ error: "não autorizado" }, 401, { "WWW-Authenticate": 'Bearer realm="ciclo"' });
+// #66: o 401 diz onde está a metadata OAuth (RFC 9728): o claude.ai descobre o login sozinho a partir da URL do /mcp.
+const unauthorized = (req: Request) => json({ error: "não autorizado" }, 401, { "WWW-Authenticate": wwwAuthenticate(new URL(req.url).origin) });
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -20,9 +23,15 @@ export default {
 
     if (url.pathname === "/api/health") return json({ ok: true, version: env.APP_VERSION, ambiente: ambiente(env) });
 
+    // #66 OAuth 2.1 do MCP: metadata, registro dinâmico, authorize, token, revoke e a decisão da tela /autorizar.
+    if (url.pathname.startsWith("/.well-known/") || url.pathname.startsWith("/oauth/")) {
+      const r = await handleOauth(req, env, async (r2, e) => (await authenticateApi(r2, e).catch(() => null))?.user ?? null);
+      if (r) return r;
+    }
+
     if (url.pathname === "/mcp") {
       const u = await authenticateMcp(req, env);
-      if (!u) return unauthorized();
+      if (!u) return unauthorized(req);
       if (u.aceitePendente) return json({ error: "aceite os termos e a privacidade atualizados no app do Ciclo antes de usar pelo Claude", code: "aceite" }, 403); // #62
       return handleMcp(req, env, u);
     }
@@ -30,7 +39,7 @@ export default {
     // Upload de mídia pelo Claude Code (apps/mcp-local), protegido pelo mesmo token do MCP (da conta)
     if (url.pathname === "/mcp/media" && req.method === "POST") {
       const u = await authenticateMcp(req, env);
-      if (!u) return unauthorized();
+      if (!u) return unauthorized(req);
       if (u.aceitePendente) return json({ error: "aceite os termos e a privacidade atualizados no app", code: "aceite" }, 403); // #62
       try {
         const wait = await hitRateLimit(env, u.id, "upload");
@@ -90,6 +99,7 @@ export default {
       ctx.waitUntil(purgeTrash(env).catch(() => null)); // lixeira de 30 dias (#26)
       ctx.waitUntil(purgeAuth(env, c.scheduledTime).catch(() => null)); // sessões vencidas, desafios e convites velhos (#54)
       ctx.waitUntil(purgeLimites(env, c.scheduledTime).catch(() => null)); // falhas de login e uso diário antigos (#56)
+      ctx.waitUntil(purgeOauth(env, c.scheduledTime).catch(() => null)); // pedidos/códigos OAuth vencidos e clientes ociosos (#66)
     }
   },
 } satisfies ExportedHandler<Env>;

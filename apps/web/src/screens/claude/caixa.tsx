@@ -67,7 +67,14 @@ export async function sendInbox(text: string, promptId?: string) {
   const cls = C.classify(text);
   const m: any = { id: uid(), created_at: Date.now(), text, action: preset?.action ?? cls.action, tier: S.ui.tierOverride ?? preset?.tier ?? cls.tier, status: "pendente" };
   S.inbox.unshift(m); S.ui.inboxDraft = ""; S.ui.tierOverride = null; commit();
-  if (SERVER) { const r = await send<{ id: string }>("POST", "/api/inbox", { text, promptId, tier: m.tier }).catch(() => null); if (r) m.id = r.id; toast(`Na fila · ${C.TIER_INFO[m.tier as Tier].nm}`); loadClaude(); return; }
+  if (SERVER) {
+    // #66: a regra (ou a API paga, se ligada) pode responder na hora; senão fica na fila para a rotina/conexão
+    const r = await send<{ id: string; status?: string; response?: string; change?: unknown; cerebro?: string }>("POST", "/api/inbox", { text, promptId, tier: m.tier, date: today }).catch(() => null);
+    if (r) m.id = r.id;
+    if (r?.status === "respondido") { Object.assign(m, { status: "respondido", response: r.response, change: r.change ?? null, cerebro: r.cerebro }); commit(); toast("Respondido"); }
+    else toast(`Na fila · ${C.TIER_INFO[m.tier as Tier].nm}`);
+    loadClaude(); return;
+  }
   setTimeout(() => { const a = demoAnswer(m); m.response = a.response; m.change = a.change ? { ...a.change, diff: previewDiff(a.change) } : null; m.status = a.change ? "respondido" : "aplicado"; commit(); }, 900);
 }
 
@@ -86,7 +93,7 @@ export const Continuar = ({ m }: { m: { text: string; action?: string; tier?: st
 export function InboxItem({ m }: { m: any }) {
   const diff: { minus?: string; plus?: string }[] | null = m.change?.diff ?? (m.change?.itens ? m.change.itens.map((t: string) => ({ plus: t })) : null);
   return <div><div class="msg me small"><b>Você</b> <span class={`tier ${m.tier}`}>{C.TIER_INFO[m.tier as Tier]?.nm ?? m.tier}</span><br />{m.text}</div>
-    {m.response ? <div class="msg small" style="margin-top:6px"><b>Chat:</b> {m.response}
+    {m.response ? <div class="msg small" style="margin-top:6px"><b>{m.cerebro === "regra" ? "Ciclo (regra, sem IA):" : m.cerebro === "openai-api" ? "IA de reserva:" : "Chat:"}</b> {m.response}
       {!!diff?.length && <div class="diff">{diff.map((d, i) => <div key={i}>{d.minus && <div class="minus">− {d.minus}</div>}{d.plus && <div class="plus">+ {d.plus}</div>}</div>)}</div>}
       {m.status === "respondido" && m.change && <div class="row" style="margin-top:8px;gap:6px"><button type="button" class="btn pri sm" onClick={() => applyInbox(m)}><Icon id="check" />Aplicar</button><button type="button" class="btn sm" onClick={() => dropInbox(m)}>Descartar</button></div>}
       {m.status === "aplicado" && <p class="tiny sub" style="margin-top:6px"><Icon id="check" style="width:12px;height:12px" /> aplicado</p>}

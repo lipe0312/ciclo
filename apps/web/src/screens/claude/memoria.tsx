@@ -4,9 +4,10 @@ import { useEffect, useState } from "preact/hooks";
 import { C } from "../../lib/store/index.ts";
 import { SERVER, api, send } from "../../lib/api/index.ts";
 import { Card, Icon, toast } from "../../lib/ui/index.tsx";
+import { abrirComoConectar } from "./conectar.tsx";
 
 export interface Fato { id: string; fato: string; fonte: string; criadoEm: number; expiraEm: number | null }
-export interface ClaudeInfo { status: { modo: C.ModoClaude; texto: string; checklist: { connector: boolean; rotina: boolean; vigia: boolean } }; pendentes: number; memoria: Fato[]; limite: number }
+export interface ClaudeInfo { status: { modo: C.ModoClaude; texto: string; checklist: { connector: boolean; rotina: boolean; vigia: boolean } }; pendentes: number; memoria: Fato[]; limite: number; openai?: boolean }
 
 const DEMO: ClaudeInfo = {
   status: C.statusClaude({ agora: Date.now(), rotinaEm: Date.now() - 150 * 60e3, connectorEm: Date.now() - 3600e3, pendentes: 1 }),
@@ -41,12 +42,15 @@ export function ClaudeLigado({ info }: { info: ClaudeInfo | null }) {
   const linha = (on: boolean | undefined, nm: string, dica: string) => <li class="row start" style="gap:8px;padding:6px 0">
     <Icon id={on ? "check" : "warn"} style={`width:16px;height:16px;flex:none;color:var(${on ? "--ok" : "--warn"})`} />
     <div><b class="small">{nm}: {on ? "ok" : "não"}</b><div class="tiny sub">{dica}</div></div></li>;
+  // #66: conexão pela URL + Face ID (folha "Como conectar"); a rotina na nuvem responde sem computador; o vigia é opcional.
   return <Card><h2>Chat ligado</h2>
     <ul style="list-style:none;padding:0;margin:8px 0 0">
-      {linha(c?.connector, "Connector responde", "token pessoal em Conta, colado no claude.ai como connector")}
-      {linha(c?.rotina, "Rotina rodou nas últimas 3 h", "rotina agendada na nuvem (/schedule) com /processar-caixa")}
-      {linha(c?.vigia, "Vigia do Mac online", "responde em segundos com o Mac ligado (vigia.sh)")}
-    </ul></Card>;
+      {linha(c?.connector, "Conexão responde", "URL do Ciclo + Face ID, em Como conectar (a chave manual em Conta é o plano B)")}
+      {linha(c?.rotina, "Rotina rodou nas últimas 3 h", "rotina na nuvem: responde os pedidos com o celular e o computador desligados")}
+      {linha(c?.vigia, "Vigia no computador (opcional)", "responde em segundos, só se você quiser deixar um computador ligado")}
+    </ul>
+    {info?.openai && <p class="small" role="note" style="margin-top:8px;color:var(--warn)"><Icon id="warn" style="width:14px;height:14px;vertical-align:-2px" /> IA de reserva (OpenAI) ligada pelo dono do app: pedidos para gerar ou ajustar treino enviam dados de treino e saúde à OpenAI.</p>}
+    <button type="button" class="btn full" style="margin-top:8px" onClick={abrirComoConectar}><Icon id="key" />Como conectar</button></Card>;
 }
 
 function FatoItem({ f, onSave, onDel }: { f: Fato; onSave: (t: string) => void; onDel: () => void }) {
