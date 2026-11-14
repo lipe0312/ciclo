@@ -19,6 +19,7 @@ export interface Env {
   DEV_NO_AUTH?: string;        // "1" só em .dev.vars (localhost)
   VAPID_PUBLIC_KEY?: string;   // Web Push (descanso com a tela bloqueada): chave pública, base64url (65 bytes). Sem as duas chaves, o push fica desligado.
   VAPID_PRIVATE_KEY?: string;  // chave privada, base64url (32 bytes) — `wrangler secret put`; gere com `node scripts/gen-vapid.mjs`
+  OAUTH_REDIRECT_HOSTS?: string; // #66: allowlist de redirect_uri do OAuth (https, vírgula; "/" no fim = prefixo). Vazia = callback oficial do Claude.
   OPENAI_API_KEY?: string;     // #66: OPCIONAL. Chave do dono (`wrangler secret put`) para o cérebro openai-api (só gerar/ajustar treino). Sem ela, desligado.
   OPENAI_MAX_USD?: string;     // #66: teto de gasto mensal em US$ (0 < teto ≤ 100), contado no D1 (cerebro_gasto). Sem ele, desligado.
   OPENAI_MODEL?: string;       // #66: opcional (padrão gpt-4.1-mini).

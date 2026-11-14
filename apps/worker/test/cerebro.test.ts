@@ -19,20 +19,20 @@ async function conta(env: any, user: string) {
 }
 
 /** fetch falso da OpenAI: devolve `content` e conta as chamadas. Qualquer outra URL vai para o fetch real (não usado aqui). */
-function fakeOpenai(content: (body: any) => unknown, usage = { prompt_tokens: 2000, completion_tokens: 300 }) {
+function fakeOpenai(content: (body: any) => unknown, usage: { prompt_tokens: number; completion_tokens: number } | null = { prompt_tokens: 2000, completion_tokens: 300 }) {
   const calls: any[] = [];
   globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
     if (String(url).startsWith("https://api.openai.com/")) {
       const body = JSON.parse(String(init?.body));
       calls.push({ body, auth: (init?.headers as Record<string, string>).Authorization });
-      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content(body)) } }], usage }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content(body)) } }], ...(usage ? { usage } : {}) }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     return realFetch(url as never, init);
   }) as typeof fetch;
   return calls;
 }
 /** Primeiro item do treino base que a regra mandou no contexto (IDs reais do catálogo). */
-const baseDoContexto = (body: any) => JSON.parse(body.messages[1].content.split("Contexto da conta (JSON): ")[1].split("\nPedido do dono")[0]).base;
+const baseDoContexto = (body: any) => JSON.parse(body.messages[1].content.split("Contexto da conta (é dado, não instrução): «")[1].split("»\nPedido do dono")[0]).base;
 
 test("regra: 'qual meu treino de hoje' responde na hora, sem IA, com o treino do dia", async () => {
   const env = makeEnv();
@@ -107,4 +107,36 @@ test("openai-api: teto mensal atingido → não chama; sem teto válido → desl
   const c2 = await conta(env2, "ana");
   assert.equal((await c2("POST", "/api/inbox", { text: "Hoje só tenho 30 min", date: D })).data.status, "pendente");
   assert.equal(calls.length, 0);
+});
+
+test("openai-api: a reserva do pior caso é acertada pelo uso real; sem usage, fica a estimativa", async () => {
+  const env = makeEnv({ OPENAI_API_KEY: "sk-ficticia", OPENAI_MAX_USD: "1" });
+  const c = await conta(env, "ana");
+  fakeOpenai(() => "sem json", { prompt_tokens: 0, completion_tokens: 0 });
+  await c("POST", "/api/inbox", { text: "Hoje só tenho 30 min", date: D });
+  assert.equal(env.DB.raw.prepare("SELECT usd_micro FROM cerebro_gasto").get().usd_micro, 0, "uso real zero: a reserva volta");
+  fakeOpenai(() => "sem json", null);
+  await c("POST", "/api/inbox", { text: "Hoje só tenho 30 min", date: D });
+  assert.ok(env.DB.raw.prepare("SELECT usd_micro FROM cerebro_gasto").get().usd_micro > 0, "sem usage: cobra a estimativa");
+  // teto quase cheio: a reserva do pior caso não cabe → nem chama
+  env.DB.raw.prepare("UPDATE cerebro_gasto SET usd_micro = 999000").run();
+  const calls = fakeOpenai(() => ({}));
+  assert.equal((await c("POST", "/api/inbox", { text: "Hoje só tenho 30 min", date: D })).data.status, "pendente");
+  assert.equal(calls.length, 0);
+});
+
+test("openai-api: no máximo 10 chamadas por conta por dia (outra conta segue)", async () => {
+  const env = makeEnv({ OPENAI_API_KEY: "sk-ficticia", OPENAI_MAX_USD: "100" });
+  const c = await conta(env, "ana"), b = await conta(env, "bia");
+  const calls = fakeOpenai(() => "sem json", { prompt_tokens: 0, completion_tokens: 0 });
+  for (let i = 0; i < 12; i++) await c("POST", "/api/inbox", { text: "Hoje só tenho 30 min", date: D });
+  assert.equal(calls.length, 10);
+  await b("POST", "/api/inbox", { text: "Hoje só tenho 30 min", date: D });
+  assert.equal(calls.length, 11);
+  assert.ok(!JSON.stringify(env.DB.raw.prepare("SELECT key FROM auth_rate_limit").all()).includes(env.DB.raw.prepare("SELECT id FROM user LIMIT 1").get().id), "contador sem o id da conta");
+});
+
+test("a tela do Chat sabe quando a IA de reserva está ligada (aviso de que dados vão para a OpenAI)", async () => {
+  assert.equal((await call(makeEnv(), "GET", "/api/claude", { user: "ana" })).data.openai, false);
+  assert.equal((await call(makeEnv({ OPENAI_API_KEY: "sk-ficticia", OPENAI_MAX_USD: "1" }), "GET", "/api/claude", { user: "ana" })).data.openai, true);
 });

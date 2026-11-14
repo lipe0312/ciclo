@@ -1,16 +1,19 @@
 // #66 Interface Cerebro: o mesmo cérebro para as duas interfaces (o conector no Claude e a aba Chat do app).
 // Provedores: regra (grátis, padrão), claude-assinatura (conector + rotina na nuvem; o pedido fica na fila) e
-// openai-api (OPCIONAL: só com OPENAI_API_KEY + OPENAI_MAX_USD, só gerar/ajustar treino, teto mensal contado no D1,
+// openai-api (OPCIONAL: só com OPENAI_API_KEY + OPENAI_MAX_USD, só gerar/ajustar treino, teto mensal reservado no D1
+// antes de cada chamada, 10 chamadas por conta por dia; com ela ligada, dados de treino e saúde vão para a OpenAI,
 // `fetch` direto, sem SDK). Toda saída de IA passa pelo validador do core (hydrate + validateItems via saveCompact);
 // fora das regras, é descartada e o pedido segue para o Claude. Todo SQL com bind e por user_id; nada de dado em log.
 import {
-  OPENAI_MAX_SAIDA, cabeNoTeto, configOpenai, custoUsd, escolherCerebro, estimarTokens, estimativaPiorUsd, intencaoRegra, lerSaidaOpenai,
+  OPENAI_COTA_DIA, OPENAI_MAX_SAIDA, configOpenai, custoUsd, escolherCerebro, estimarTokens, estimativaPiorUsd, intencaoRegra, lerSaidaOpenai,
   mensagensOpenai, mesUtc, parsePlanoSalvo, planDay, respostaTreinoHoje,
 } from "@ciclo/core";
 import type { Action, ProvedorId } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { buildDayInput, getProfile, weekState } from "./db.ts";
 import { ciclo_contexto } from "./mcp-contexto.ts";
+import { sha256Hex } from "./auth.ts";
+import { contarJanela } from "./limites.ts";
 import { saveCompact } from "./mcp.ts";
 
 export interface PedidoCaixa { id: string; texto: string; acao: Action; hoje: string }
@@ -57,8 +60,8 @@ export const openaiApi: Cerebro = {
   async responder(env, uid, p) {
     const cfg = configOpenai(env);
     if (!cfg.ligado) return null;
-    const mes = mesUtc(Date.now());
-    const gasto = ((await env.DB.prepare("SELECT usd_micro FROM cerebro_gasto WHERE mes = ?1").bind(mes).first<{ usd_micro: number }>())?.usd_micro ?? 0) / 1e6;
+    // cota diária por conta (além do teto mensal): a chave do contador é o hash do id, nunca o id
+    if (await contarJanela(env, `cerebro:${(await sha256Hex("cerebro:" + uid)).slice(0, 32)}`, { max: OPENAI_COTA_DIA, windowMs: 86_400_000 })) return null;
     // contexto: a fatia do pedido (a mesma do conector) + o treino base calculado pela regra, com IDs e alternativas
     const daysLeft = await diasRestantes(env, uid, p.hoje);
     const bi = await buildDayInput(env, uid, { date: p.hoje, daysLeft });
@@ -67,7 +70,15 @@ export const openaiApi: Cerebro = {
     const fatia = await ciclo_contexto({ pedido: PEDIDO_DA_ACAO[p.acao] ?? "gerar", date: p.hoje }, env, uid, p.hoje);
     const contexto = { fatia, base: base.items.map((i) => ({ id: i.exerciseId, nm: i.nm, sets: i.sets, reps: i.reps, alts: i.alts })) };
     const messages = mensagensOpenai({ texto: p.texto, acao: p.acao }, contexto);
-    if (!cabeNoTeto(gasto, cfg.maxUsd, estimativaPiorUsd(cfg.modelo, estimarTokens(JSON.stringify(messages)), OPENAI_MAX_SAIDA))) return null;
+    // reserva o pior caso ANTES de chamar, no próprio UPDATE (atômico: duas chamadas juntas não furam o teto)
+    const mes = mesUtc(Date.now());
+    const est = Math.ceil(estimativaPiorUsd(cfg.modelo, estimarTokens(JSON.stringify(messages)), OPENAI_MAX_SAIDA) * 1e6);
+    const teto = Math.floor(cfg.maxUsd * 1e6);
+    const [, reserva] = await env.DB.batch([
+      env.DB.prepare("INSERT INTO cerebro_gasto (mes, usd_micro, chamadas) VALUES (?1, 0, 0) ON CONFLICT(mes) DO NOTHING").bind(mes),
+      env.DB.prepare("UPDATE cerebro_gasto SET usd_micro = usd_micro + ?2, chamadas = chamadas + 1 WHERE mes = ?1 AND usd_micro + ?2 <= ?3 RETURNING usd_micro").bind(mes, est, teto),
+    ]);
+    if (!reserva.results?.length) return null; // teto do mês: o pedido segue para o Claude
     let content: unknown = null;
     try {
       const r = await fetch(OPENAI_URL, {
@@ -76,14 +87,14 @@ export const openaiApi: Cerebro = {
         body: JSON.stringify({ model: cfg.modelo, messages, response_format: { type: "json_object" }, max_completion_tokens: OPENAI_MAX_SAIDA, temperature: 0.3 }),
       });
       const j = (await r.json().catch(() => null)) as { choices?: { message?: { content?: unknown } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } } | null;
-      // conta o gasto mesmo se a saída for descartada (a API cobrou)
+      // acerta a reserva pelo uso real; sem `usage` (ou com erro/timeout) fica cobrada a estimativa de pior caso
       if (j?.usage) {
-        await env.DB.prepare("INSERT INTO cerebro_gasto (mes, usd_micro, chamadas) VALUES (?1, ?2, 1) ON CONFLICT(mes) DO UPDATE SET usd_micro = usd_micro + ?2, chamadas = chamadas + 1")
-          .bind(mes, Math.ceil(custoUsd(cfg.modelo, j.usage) * 1e6)).run();
+        const real = Math.ceil(custoUsd(cfg.modelo, j.usage) * 1e6);
+        await env.DB.prepare("UPDATE cerebro_gasto SET usd_micro = MAX(0, usd_micro - ?2 + ?3) WHERE mes = ?1").bind(mes, est, real).run();
       }
       if (!r.ok) return null;
       content = j?.choices?.[0]?.message?.content ?? null;
-    } catch { return null; } // rede, tempo esgotado: o pedido segue para o Claude
+    } catch { return null; } // rede, tempo esgotado: a estimativa fica cobrada e o pedido segue para o Claude
     const saida = lerSaidaOpenai(content);
     if (!saida.ok) return null;
     const change = await saveCompact(env, uid, { itens: saida.value.itens, motivo: saida.value.resposta, date: p.hoje, daysLeft }) as { salvo?: boolean };

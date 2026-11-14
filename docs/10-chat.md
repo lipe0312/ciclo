@@ -14,7 +14,7 @@ As duas usam **as mesmas ferramentas MCP e o mesmo histórico** (a caixa `inbox`
 O app mostra estes passos em **Chat → Chat ligado → Como conectar**:
 1. Abra o claude.ai, ou o app Claude, em **Configurações → Conectores**.
 2. Adicione um **conector personalizado** com a URL `https://<seu-ciclo>/mcp`. O app tem um botão para copiar.
-3. Abre a tela do Ciclo **"Permitir que o Claude acesse seu Ciclo"**. Entre com o **Face ID** (passkey) e toque em **Permitir**.
+3. Abre a tela do Ciclo **"Permitir acesso ao seu Ciclo?"**, com o destino em destaque (`claude.ai`, "destino verificado"). Toque em **Permitir com Face ID**. O Face ID é pedido sempre, mesmo se você já estiver logado.
 4. Teste com: *"Use o Ciclo: qual é o meu treino de hoje?"*
 
 Por trás, é o **OAuth 2.1 da especificação de autorização do MCP** (versão 2026-07-28; ADR-0013):
@@ -22,6 +22,8 @@ Por trás, é o **OAuth 2.1 da especificação de autorização do MCP** (versã
 - `/.well-known/oauth-protected-resource` aponta para `/.well-known/oauth-authorization-server`;
 - o cliente se registra sozinho (registro dinâmico) e usa PKCE S256;
 - o token de acesso dura 1 h e o refresh gira a cada uso. A conexão expira com 90 dias sem uso.
+
+Só o callback oficial do Claude (`https://claude.ai/api/mcp/auth_callback`) é aceito como destino. Outro app que se registre com o nome "Claude" e um site próprio é recusado. A var `OAUTH_REDIRECT_HOSTS` troca a lista. Ferramentas locais (`http://localhost`) funcionam, mas a tela avisa "app não verificado".
 
 Cada conexão aparece em **Conta → Claude conectado** e pode ser revogada ali. São no máximo 3 conexões por pessoa; a mais antiga sai para caber a nova.
 
@@ -59,7 +61,8 @@ O app marca quem respondeu: "Ciclo (regra, sem IA)", "IA de reserva" ou "Claude"
 - **Sem SDK:** é um `fetch` direto para `api.openai.com/v1/chat/completions`.
 - **Ligar:** `wrangler secret put OPENAI_API_KEY` e `wrangler secret put OPENAI_MAX_USD` (ex.: `2`, em US$ por mês, até 100).
   - Opcional: `OPENAI_MODEL` (padrão `gpt-4.1-mini`). Modelo fora da tabela de preços conta com um preço alto, para errar do lado seguro.
-- **Teto:** o gasto do mês fica em `cerebro_gasto`, no D1. A API só é chamada se o gasto + o pior caso da chamada couberem no teto.
+- **Seus dados vão para a OpenAI.** Com ela ligada, a fatia do contexto do pedido (treino, volume, dores, médias de saúde) é enviada à OpenAI. Quem liga é o dono do app; a aba Chat avisa todas as contas enquanto estiver ligada.
+- **Teto:** o gasto do mês fica em `cerebro_gasto`, no D1. Antes de cada chamada, o pior caso é reservado de forma atômica; depois, a reserva é acertada pelo uso real (sem `usage` ou com timeout, fica a estimativa). Também há uma cota de 10 chamadas por conta por dia.
 - **Toda saída passa pelo validador** (`lerSaidaOpenai` + `hydrate`/`validateItems`). Fora das regras, a saída é descartada e o pedido segue para o Claude. A chamada descartada também conta no gasto.
 - **Nunca vai para a API:** dor, revisão, comida e explicações.
 - Nenhuma chave entra no repositório.

@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  OAUTH, grantsParaRevogar, metadataRecurso, metadataServidor, recursoValido, redirecionar, redirectUriValida, urlsOauth,
+  OAUTH, REDIRECTS_PADRAO, grantsParaRevogar, listaRedirects, redirectPermitido, metadataRecurso, metadataServidor, recursoValido, redirecionar, redirectUriValida, urlsOauth,
   validarPedidoAutorizacao, validarRegistro, verifierValido, wwwAuthenticate,
 } from "../src/index.ts";
 
@@ -42,35 +42,41 @@ test("redirect_uri: https sem fragmento nem usuário, ou http só no loopback", 
 });
 
 test("registro dinâmico: valida URIs, tipos e método de autenticação; nome curto", () => {
-  const ok = validarRegistro({ client_name: "Claude", redirect_uris: ["https://claude.ai/api/mcp/auth_callback"], grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: "none" });
+  const ok = validarRegistro({ client_name: "Claude", redirect_uris: ["https://claude.ai/api/mcp/auth_callback"], grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: "none" }, REDIRECTS_PADRAO);
   assert.ok(ok.ok); if (ok.ok) { assert.equal(ok.value.nome, "Claude"); assert.equal(ok.value.metodo, "none"); }
-  const semNome = validarRegistro({ redirect_uris: ["https://claude.ai/cb"] });
+  const semNome = validarRegistro({ redirect_uris: ["https://claude.ai/api/mcp/auth_callback"] }, REDIRECTS_PADRAO);
   assert.ok(semNome.ok); if (semNome.ok) { assert.equal(semNome.value.nome, "Cliente MCP"); assert.equal(semNome.value.metodo, "none"); }
-  const secreto = validarRegistro({ redirect_uris: ["https://claude.ai/cb"], token_endpoint_auth_method: "client_secret_post" });
+  const secreto = validarRegistro({ redirect_uris: ["http://localhost:6274/cb"], token_endpoint_auth_method: "client_secret_post" }, REDIRECTS_PADRAO);
   assert.ok(secreto.ok && secreto.value.metodo === "client_secret_post");
   for (const ruim of [
     {}, { redirect_uris: [] }, { redirect_uris: "https://claude.ai/cb" }, { redirect_uris: ["http://mal.example/cb"] },
-    { redirect_uris: Array(OAUTH.maxRedirects + 1).fill("https://claude.ai/cb") },
-    { redirect_uris: ["https://claude.ai/cb"], grant_types: ["client_credentials"] },
-    { redirect_uris: ["https://claude.ai/cb"], response_types: ["token"] },
-    { redirect_uris: ["https://claude.ai/cb"], token_endpoint_auth_method: "private_key_jwt" },
+    { redirect_uris: Array(OAUTH.maxRedirects + 1).fill("https://claude.ai/api/mcp/auth_callback") },
+    { redirect_uris: ["https://claude.ai/api/mcp/auth_callback"], grant_types: ["client_credentials"] },
+    { redirect_uris: ["https://claude.ai/api/mcp/auth_callback"], response_types: ["token"] },
+    { redirect_uris: ["https://claude.ai/api/mcp/auth_callback"], token_endpoint_auth_method: "private_key_jwt" },
+    { client_name: "Claude", redirect_uris: ["https://atacante.example/api/mcp/auth_callback"] },
+    { client_name: "Claude", redirect_uris: ["https://claude.ai.atacante.example/api/mcp/auth_callback"] },
+    { redirect_uris: ["https://claude.ai/outro/caminho"] },
   ]) {
-    const r = validarRegistro(ruim);
+    const r = validarRegistro(ruim, REDIRECTS_PADRAO);
     assert.equal(r.ok, false, JSON.stringify(ruim));
     if (!r.ok) assert.ok(["invalid_redirect_uri", "invalid_client_metadata"].includes(r.erro));
   }
-  const longo = validarRegistro({ client_name: "x".repeat(300), redirect_uris: ["https://claude.ai/cb"] });
+  const longo = validarRegistro({ client_name: "x".repeat(300), redirect_uris: ["https://claude.ai/api/mcp/auth_callback"] }, REDIRECTS_PADRAO);
   assert.ok(longo.ok && longo.value.nome.length <= OAUTH.nomeMax, "nome é cortado, não recusa");
 });
 
 test("pedido de autorização: exige code + PKCE S256; redirect_uri tem de ser uma das registradas", () => {
-  const cli = { redirectUris: ["https://claude.ai/api/mcp/auth_callback"] };
+  const cli = { redirectUris: ["https://claude.ai/api/mcp/auth_callback"], permitidos: REDIRECTS_PADRAO };
   const base = { response_type: "code", client_id: "c1", redirect_uri: cli.redirectUris[0], code_challenge: CH, code_challenge_method: "S256", state: "xyz", resource: O + "/mcp" };
   const ok = validarPedidoAutorizacao(base, cli, O);
   assert.ok(ok.ok); if (ok.ok) { assert.equal(ok.value.escopo, OAUTH.escopo); assert.equal(ok.value.state, "xyz"); }
   // redirect_uri desconhecida: NUNCA redireciona (open redirect)
   const fora = validarPedidoAutorizacao({ ...base, redirect_uri: "https://mal.example/cb" }, cli, O);
   assert.ok(!fora.ok && !fora.redirecionavel);
+  // cliente antigo com URI que saiu da allowlist: não redireciona
+  const saiu = validarPedidoAutorizacao(base, { ...cli, permitidos: ["https://claude.com/api/mcp/auth_callback"] }, O);
+  assert.ok(!saiu.ok && !saiu.redirecionavel);
   // sem redirect_uri e uma só registrada: usa a registrada
   const so = validarPedidoAutorizacao({ ...base, redirect_uri: undefined }, cli, O);
   assert.ok(so.ok && so.value.redirectUri === cli.redirectUris[0]);
@@ -120,4 +126,22 @@ test("teto de conexões OAuth por pessoa: a mais antiga sai para caber a nova", 
   assert.deepEqual(grantsParaRevogar([g("a", 1), g("b", 2), g("c", 3), g("d", 4)], 3), ["a", "b"]);
   assert.deepEqual(grantsParaRevogar([g("a", 5), g("b", 5), g("c", 5)], 3), ["a"], "empate: a ordem de criação decide");
   assert.equal(OAUTH.maxGrants, 3);
+});
+
+test("allowlist de redirect: caminho exato do Claude, prefixo com barra final, loopback só como não verificado", () => {
+  assert.deepEqual(REDIRECTS_PADRAO, ["https://claude.ai/api/mcp/auth_callback", "https://claude.com/api/mcp/auth_callback"]);
+  assert.equal(redirectPermitido("https://claude.ai/api/mcp/auth_callback", REDIRECTS_PADRAO), "verificado");
+  assert.equal(redirectPermitido("https://claude.com/api/mcp/auth_callback", REDIRECTS_PADRAO), "verificado");
+  assert.equal(redirectPermitido("http://localhost:3118/callback", REDIRECTS_PADRAO), "loopback");
+  assert.equal(redirectPermitido("http://127.0.0.1:9/cb", REDIRECTS_PADRAO), "loopback");
+  for (const ruim of ["https://atacante.example/api/mcp/auth_callback", "https://claude.ai/api/mcp/auth_callback/x", "https://claude.ai/api/mcp/auth_callback?x=1",
+    "https://claude.ai.atacante.example/api/mcp/auth_callback", "https://evil@claude.ai/api/mcp/auth_callback", "http://claude.ai/api/mcp/auth_callback"])
+    assert.equal(redirectPermitido(ruim, REDIRECTS_PADRAO), null, ruim);
+  // var OAUTH_REDIRECT_HOSTS: lista por vírgula; entrada terminada em "/" é prefixo do caminho no mesmo host
+  const l = listaRedirects(" https://claude.ai/api/mcp/auth_callback , https://app.exemplo.dev/oauth/ , http://inseguro.example/x, lixo ");
+  assert.deepEqual(l, ["https://claude.ai/api/mcp/auth_callback", "https://app.exemplo.dev/oauth/"], "só https vale; o resto é ignorado");
+  assert.equal(redirectPermitido("https://app.exemplo.dev/oauth/cb", l), "verificado");
+  assert.equal(redirectPermitido("https://app.exemplo.dev/outro", l), null);
+  assert.deepEqual(listaRedirects(undefined), REDIRECTS_PADRAO);
+  assert.deepEqual(listaRedirects(""), REDIRECTS_PADRAO);
 });

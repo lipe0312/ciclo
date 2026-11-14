@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { OAUTH } from "@ciclo/core";
 import { call, mcp } from "./fakes.ts";
-import { contaPorConvite, dono, envConta, ip } from "./conta-helpers.ts";
+import { contaPorConvite, dono, entrar, envConta, ip } from "./conta-helpers.ts";
 import { purgeOauth, s256 } from "../src/oauth.ts";
 
 const O = "http://localhost:8791";
@@ -30,7 +30,8 @@ async function autorizar(env: unknown, clientId: string, cookie: string, o: { pe
   assert.match(loc, /^\/autorizar\?req=[0-9a-f]{32}$/);
   const req = loc.split("=")[1];
   const info = await call(env, "GET", `/oauth/pedido/${req}`, { headers: { Cookie: cookie } });
-  assert.equal(info.status, 200); assert.equal(info.data.cliente, "Claude"); assert.equal(info.data.destino, "claude.ai");
+  assert.equal(info.status, 200); assert.equal(info.data.destino, "claude.ai"); assert.equal(info.data.verificado, true);
+  assert.equal(info.data.cliente, undefined, "o client_name não é identidade: a tela mostra o destino");
   const d = await call(env, "POST", "/oauth/decidir", { body: { req, permitir: o.permitir ?? true }, headers: { Cookie: cookie, Origin: O } });
   assert.equal(d.status, 200, d.text);
   return new URL(d.data.redirect);
@@ -109,6 +110,7 @@ test("authorize: cliente ou redirect desconhecido nunca redireciona; erro do ped
   assert.equal(mal.status, 400); assert.equal(mal.headers.get("location"), null);
   const plain = await call(env, "GET", `/oauth/authorize?${new URLSearchParams({ ...base, code_challenge_method: "plain" })}`, { headers: ip() });
   assert.equal(plain.status, 302);
+  assert.equal(plain.headers.get("cache-control"), "no-store"); assert.equal(plain.headers.get("referrer-policy"), "no-referrer");
   const u = new URL(plain.headers.get("location")!);
   assert.equal(u.searchParams.get("error"), "invalid_request"); assert.equal(u.searchParams.get("state"), "s1"); assert.equal(u.searchParams.get("iss"), O);
   // registro com redirect http fora do loopback é recusado
@@ -216,4 +218,76 @@ test("apagar a conta leva as conexões e códigos OAuth junto", async () => {
   assert.equal((await call(env, "DELETE", "/api/account", { body: { confirm: "APAGAR" }, headers: { Cookie: d.cookie, Origin: O } })).status, 200);
   assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM oauth_code").get().n, 0);
   assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM mcp_token").get().n, 0);
+});
+
+test("B1 phishing: redirect de atacante é recusado no registro e no authorize, mesmo com o nome \"Claude\"", async () => {
+  const env = envConta();
+  for (const uri of ["https://atacante.example/api/mcp/auth_callback", "https://claude.ai.atacante.example/api/mcp/auth_callback", "https://claude.ai/outro"]) {
+    const r = await call(env, "POST", "/oauth/register", { body: { client_name: "Claude", redirect_uris: [uri] }, headers: ip() });
+    assert.equal(r.status, 400, uri); assert.equal(r.data.error, "invalid_redirect_uri");
+  }
+  // cliente registrado quando a allowlist (OAUTH_REDIRECT_HOSTS) era outra: o authorize confere de novo e não redireciona
+  const largo = envConta({ OAUTH_REDIRECT_HOSTS: "https://atacante.example/" });
+  const c = await call(largo, "POST", "/oauth/register", { body: { client_name: "Claude", redirect_uris: ["https://atacante.example/cb"] }, headers: ip() });
+  assert.equal(c.status, 201);
+  largo.OAUTH_REDIRECT_HOSTS = undefined;
+  const q = new URLSearchParams({ response_type: "code", client_id: c.data.client_id, redirect_uri: "https://atacante.example/cb", code_challenge: await s256(VERIFIER), code_challenge_method: "S256" });
+  const a = await call(largo, "GET", `/oauth/authorize?${q}`, { headers: ip() });
+  assert.equal(a.status, 400); assert.equal(a.headers.get("location"), null);
+});
+
+test("loopback (dev/CLI) é aceito, mas a tela marca \"app não verificado\"", async () => {
+  const env = envConta();
+  const r = await call(env, "POST", "/oauth/register", { body: { client_name: "Claude", redirect_uris: ["http://localhost:3118/callback"] }, headers: ip() });
+  assert.equal(r.status, 201);
+  const q = new URLSearchParams({ response_type: "code", client_id: r.data.client_id, redirect_uri: "http://localhost:3118/callback", code_challenge: await s256(VERIFIER), code_challenge_method: "S256" });
+  const req = (await call(env, "GET", `/oauth/authorize?${q}`, { headers: ip() })).headers.get("location")!.split("=")[1];
+  const info = await call(env, "GET", `/oauth/pedido/${req}`);
+  assert.equal(info.data.verificado, false); assert.equal(info.data.destino, "localhost:3118");
+});
+
+test("consentir: falha fechada sem Origin/Sec-Fetch-Site da própria origem; pede Face ID na hora, mesmo com sessão", async () => {
+  const env = envConta();
+  const d = await dono(env);
+  const c = await registrarCliente(env);
+  const q = new URLSearchParams({ response_type: "code", client_id: c.client_id, redirect_uri: CB, code_challenge: await s256(VERIFIER), code_challenge_method: "S256" });
+  const req = (await call(env, "GET", `/oauth/authorize?${q}`, { headers: ip() })).headers.get("location")!.split("=")[1];
+  assert.equal((await call(env, "POST", "/oauth/decidir", { body: { req, permitir: true }, headers: { Cookie: d.cookie } })).status, 403, "sem Origin");
+  assert.equal((await call(env, "POST", "/oauth/decidir", { body: { req, permitir: true }, headers: { Cookie: d.cookie, "Sec-Fetch-Site": "cross-site" } })).status, 403);
+  // sessão antiga (passkey de 10 min atrás): pede o Face ID e NÃO consome o pedido
+  env.DB.raw.prepare("UPDATE sessions SET created_at = created_at - 600000").run();
+  const velha = await call(env, "POST", "/oauth/decidir", { body: { req, permitir: true }, headers: { Cookie: d.cookie, "Sec-Fetch-Site": "same-origin" } });
+  assert.equal(velha.status, 401); assert.equal(velha.data.code, "faceid");
+  // Face ID agora (login por passkey = sessão nova) → permite
+  const nova = await entrar(env, d.auth);
+  const ok = await call(env, "POST", "/oauth/decidir", { body: { req, permitir: true }, headers: { Cookie: nova.cookie, "Sec-Fetch-Site": "same-origin" } });
+  assert.equal(ok.status, 200, ok.text); assert.ok(new URL(ok.data.redirect).searchParams.get("code"));
+});
+
+test("conta apagada: refresh e access param de valer (deleted_at e exclusão)", async () => {
+  const env = envConta();
+  const d = await dono(env);
+  const c = await registrarCliente(env);
+  const t = (await trocar(env, c.client_id, (await autorizar(env, c.client_id, d.cookie)).searchParams.get("code")!)).data;
+  env.DB.raw.prepare("UPDATE user SET deleted_at = 1").run();
+  assert.equal((await post(env, "/oauth/token", { grant_type: "refresh_token", refresh_token: t.refresh_token, client_id: c.client_id })).data.error, "invalid_grant");
+  assert.equal((await mcp(env, t.access_token, "ciclo_memoria_listar")).status, 401);
+  env.DB.raw.prepare("UPDATE user SET deleted_at = NULL").run();
+  const t2 = (await trocar(env, c.client_id, (await autorizar(env, c.client_id, d.cookie)).searchParams.get("code")!)).data;
+  assert.equal((await call(env, "DELETE", "/api/account", { body: { confirm: "APAGAR" }, headers: { Cookie: d.cookie, Origin: O } })).status, 200);
+  assert.equal((await post(env, "/oauth/token", { grant_type: "refresh_token", refresh_token: t2.refresh_token, client_id: c.client_id })).data.error, "invalid_grant");
+  assert.equal((await mcp(env, t2.access_token, "ciclo_memoria_listar")).status, 401);
+});
+
+test("registro: cliente que nunca obteve token some em 1 h; o teto é atômico", async () => {
+  const env = envConta();
+  const a = await registrarCliente(env);
+  env.DB.raw.prepare("UPDATE oauth_client SET created_at = ?1").run(Date.now() - OAUTH.clienteSemUsoMs - 1000);
+  await registrarCliente(env);
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM oauth_client WHERE id = ?1").get(a.client_id).n, 0);
+  const ins = env.DB.raw.prepare("INSERT INTO oauth_client (id, name, redirect_uris, created_at) VALUES (?1, 'x', '[]', ?2)");
+  const n0 = env.DB.raw.prepare("SELECT COUNT(*) AS n FROM oauth_client").get().n;
+  for (let i = n0; i < 200; i++) ins.run(i.toString(16).padStart(32, "0"), Date.now());
+  const cheio = await call(env, "POST", "/oauth/register", { body: { redirect_uris: [CB] }, headers: ip() });
+  assert.equal(cheio.status, 503);
 });

@@ -4,7 +4,7 @@
 // A conexão vira uma linha de mcp_token (kind 'oauth'): mesma lista da Conta, revogável igual à chave manual (#55).
 // Todo SQL com bind; segredos só como SHA-256; nada de dado pessoal em log. Regras puras em packages/core/src/oauth.ts.
 import {
-  OAUTH, grantsParaRevogar, metadataRecurso, metadataServidor, recursoValido, redirecionar, tokenValido,
+  OAUTH, grantsParaRevogar, listaRedirects, metadataRecurso, redirectPermitido, metadataServidor, recursoValido, redirecionar, tokenValido,
   validarPedidoAutorizacao, validarRegistro, verifierValido,
 } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
@@ -30,6 +30,7 @@ const REFRESH_RE = /^ciclor_([0-9a-f]{16})_[0-9a-f]{64}$/;
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type, MCP-Protocol-Version", "Access-Control-Max-Age": "86400" };
 const cors = (r: Response) => { for (const [k, v] of Object.entries(CORS)) r.headers.set(k, v); return r; };
 const oErro = (error: string, descricao: string, status = 400, extra: Record<string, string> = {}) => json({ error, error_description: descricao }, status, extra);
+const ir = (location: string) => new Response(null, { status: 302, headers: { Location: location, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
 const texto = (msg: string, status = 400) => new Response(msg, { status, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'" } });
 
 type Quem = (req: Request, env: Env) => Promise<AuthUser | null>;
@@ -76,14 +77,17 @@ export async function handleOauth(req: Request, env: Env, quem: Quem, now = Date
 // ---- RFC 7591: registro dinâmico ----
 async function registrar(req: Request, env: Env, now: number): Promise<Response> {
   await limite(env, req, "register");
-  const v = validarRegistro(await readJson(req, 8 * 1024));
+  const v = validarRegistro(await readJson(req, 8 * 1024), listaRedirects(env.OAUTH_REDIRECT_HOSTS));
   if (!v.ok) return oErro(v.erro, v.descricao);
-  const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM oauth_client").first<{ n: number }>();
-  if ((n?.n ?? 0) >= OAUTH_MAX_CLIENTES) return oErro("temporarily_unavailable", "muitos clientes registrados; tente mais tarde", 503);
   const id = rnd(16);
   const secret = v.value.metodo === "none" ? null : rnd(32);
-  await env.DB.prepare("INSERT INTO oauth_client (id, name, redirect_uris, auth_method, secret_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
-    .bind(id, v.value.nome, JSON.stringify(v.value.redirectUris), v.value.metodo, secret ? await sha256Hex(secret) : null, now).run();
+  // clientes que nunca obtiveram token somem em 1 h; o teto vale no próprio INSERT (atômico, sem corrida)
+  const [, ins] = await env.DB.batch([
+    env.DB.prepare("DELETE FROM oauth_client WHERE last_used_at IS NULL AND created_at < ?1").bind(now - OAUTH.clienteSemUsoMs),
+    env.DB.prepare("INSERT INTO oauth_client (id, name, redirect_uris, auth_method, secret_hash, created_at) SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE (SELECT COUNT(*) FROM oauth_client) < ?7 RETURNING id")
+      .bind(id, v.value.nome, JSON.stringify(v.value.redirectUris), v.value.metodo, secret ? await sha256Hex(secret) : null, now, OAUTH_MAX_CLIENTES),
+  ]);
+  if (!ins.results?.length) return oErro("temporarily_unavailable", "muitos clientes registrados; tente mais tarde", 503);
   return json({
     client_id: id, client_id_issued_at: Math.floor(now / 1000), client_name: v.value.nome, redirect_uris: v.value.redirectUris,
     grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: v.value.metodo,
@@ -97,38 +101,52 @@ async function autorizar(req: Request, env: Env, url: URL, now: number): Promise
   const q = Object.fromEntries(url.searchParams);
   const c = await cliente(env, q.client_id);
   if (!c) return texto("Conexão inválida: este aplicativo não está registrado no Ciclo. Volte ao Claude e adicione o conector de novo.");
-  const v = validarPedidoAutorizacao(q, { redirectUris: JSON.parse(c.redirect_uris) as string[] }, url.origin);
+  const v = validarPedidoAutorizacao(q, { redirectUris: JSON.parse(c.redirect_uris) as string[], permitidos: listaRedirects(env.OAUTH_REDIRECT_HOSTS) }, url.origin);
   if (!v.ok) {
     if (!v.redirecionavel) return texto(`Conexão inválida: ${v.descricao}. Volte ao Claude e tente de novo.`);
-    return Response.redirect(redirecionar(v.redirectUri, { error: v.erro, error_description: v.descricao, state: v.state, iss: url.origin }), 302);
+    return ir(redirecionar(v.redirectUri, { error: v.erro, error_description: v.descricao, state: v.state, iss: url.origin }));
   }
   const rid = rnd(16);
   await env.DB.prepare("INSERT INTO oauth_request (id, client_id, redirect_uri, code_challenge, state, resource, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
     .bind(rid, c.id, v.value.redirectUri, v.value.challenge, v.value.state, v.value.resource, now + OAUTH.pedidoMs).run();
-  return new Response(null, { status: 302, headers: { Location: `/autorizar?req=${rid}`, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+  return ir(`/autorizar?req=${rid}`);
 }
 
 const pedidoId = (v: unknown) => (typeof v === "string" && /^[0-9a-f]{32}$/.test(v) ? v : null);
 
-/** Dados da tela de consentimento: nome do app, para onde volta e se já há sessão (sem segredo nenhum). */
+/** Dados da tela de consentimento: para onde volta (o host é a identidade; o client_name não, qualquer um escolhe),
+ *  se está na allowlist e se já há sessão. Sem segredo nenhum. */
 async function pedidoInfo(req: Request, env: Env, quem: Quem, id: string, now: number): Promise<Response> {
   const rid = pedidoId(id);
-  const r = rid ? await env.DB.prepare(`SELECT c.name, q.redirect_uri FROM oauth_request q JOIN oauth_client c ON c.id = q.client_id WHERE q.id = ?1 AND q.expires_at > ?2`).bind(rid, now)
-    .first<{ name: string; redirect_uri: string }>() : null;
+  const r = rid ? await env.DB.prepare("SELECT redirect_uri FROM oauth_request WHERE id = ?1 AND expires_at > ?2").bind(rid, now).first<{ redirect_uri: string }>() : null;
   if (!r) return json({ error: "pedido vencido ou inválido: volte ao Claude e tente de novo", code: "vencido" }, 404);
   const u = await quem(req, env).catch(() => null);
-  return json({ cliente: r.name, destino: new URL(r.redirect_uri).host, conta: u ? { nome: u.name } : null });
+  const verificado = redirectPermitido(r.redirect_uri, listaRedirects(env.OAUTH_REDIRECT_HOSTS)) === "verificado";
+  return json({ destino: new URL(r.redirect_uri).host, verificado, conta: u ? { nome: u.name } : null });
+}
+
+/** Face ID feito agora: a sessão do cookie nasceu de uma passkey há ≤ 2 min. Só o dev local (DEV_NO_AUTH) dispensa. */
+async function faceIdRecente(env: Env, u: AuthUser, now: number) {
+  if (u.via === "dev") return true;
+  if (u.via !== "sessao" || !u.sessionId) return false;
+  const s = await env.DB.prepare("SELECT created_at, via FROM sessions WHERE id = ?1 AND user_id = ?2").bind(u.sessionId, u.id).first<{ created_at: number; via: string }>();
+  return !!s && s.via === "passkey" && now - s.created_at <= OAUTH.faceIdMs;
 }
 
 /** POST /oauth/decidir {req, permitir}: só com sessão. Devolve para onde o navegador vai (o app do Claude). */
 async function decidir(req: Request, env: Env, quem: Quem, origin: string, now: number): Promise<Response> {
-  const o = req.headers.get("Origin");
-  if (o && o !== origin) return json({ error: "origem inválida" }, 403);
-  const u = await quem(req, env).catch(() => null);
-  if (!u) return json({ error: "entre com o Face ID primeiro", code: "entrar" }, 401);
+  // falha fechada: só a própria página (/autorizar) decide
+  if (req.headers.get("Origin") !== origin && req.headers.get("Sec-Fetch-Site") !== "same-origin") return json({ error: "origem inválida" }, 403);
   const b = await readJson<Record<string, unknown>>(req, 2 * 1024);
   const rid = pedidoId(b.req);
   if (!rid) throw new HttpError(400, "req inválido");
+  // negar não precisa de conta; permitir pede o Face ID agora, mesmo com sessão ativa
+  // (o pedido não é consumido: a tela faz a passkey e tenta de novo)
+  const u = b.permitir === true ? await quem(req, env).catch(() => null) : null;
+  if (b.permitir === true) {
+    if (!u) return json({ error: "entre com o Face ID primeiro", code: "entrar" }, 401);
+    if (!(await faceIdRecente(env, u, now))) return json({ error: "confirme com o Face ID", code: "faceid" }, 401);
+  }
   // uso único: o pedido sai na mesma leitura (não dá para permitir duas vezes)
   const r = await env.DB.prepare("DELETE FROM oauth_request WHERE id = ?1 RETURNING client_id, redirect_uri, code_challenge, state, resource, expires_at").bind(rid)
     .first<{ client_id: string; redirect_uri: string; code_challenge: string; state: string | null; resource: string | null; expires_at: number }>();
@@ -136,7 +154,7 @@ async function decidir(req: Request, env: Env, quem: Quem, origin: string, now: 
   if (b.permitir !== true) return json({ redirect: redirecionar(r.redirect_uri, { error: "access_denied", error_description: "a pessoa não permitiu", state: r.state, iss: origin }) });
   const code = rnd(32);
   await env.DB.prepare("INSERT INTO oauth_code (code_hash, user_id, client_id, redirect_uri, code_challenge, resource, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
-    .bind(await sha256Hex(code), u.id, r.client_id, r.redirect_uri, r.code_challenge, r.resource, now + OAUTH.codigoMs).run();
+    .bind(await sha256Hex(code), u!.id, r.client_id, r.redirect_uri, r.code_challenge, r.resource, now + OAUTH.codigoMs).run();
   return json({ redirect: redirecionar(r.redirect_uri, { code, state: r.state, iss: origin }) });
 }
 
@@ -194,9 +212,10 @@ async function token(req: Request, env: Env, origin: string, now: number): Promi
   if (f.grant_type === "refresh_token") {
     const m = REFRESH_RE.exec(f.refresh_token ?? "");
     if (!m) return oErro("invalid_grant", "refresh_token inválido");
-    const row = await env.DB.prepare("SELECT id, user_id, client_id, refresh_hash, created_at, last_used_at FROM mcp_token WHERE id = ?1 AND kind = 'oauth' AND revoked_at IS NULL").bind(m[1])
-      .first<{ id: string; user_id: string; client_id: string; refresh_hash: string | null; created_at: number; last_used_at: number | null }>();
-    if (!row || row.client_id !== c.id) return oErro("invalid_grant", "refresh_token inválido");
+    const row = await env.DB.prepare(`SELECT t.id, t.user_id, t.client_id, t.refresh_hash, t.created_at, t.last_used_at, u.deleted_at FROM mcp_token t JOIN user u ON u.id = t.user_id
+      WHERE t.id = ?1 AND t.kind = 'oauth' AND t.revoked_at IS NULL`).bind(m[1])
+      .first<{ id: string; user_id: string; client_id: string; refresh_hash: string | null; created_at: number; last_used_at: number | null; deleted_at: number | null }>();
+    if (!row || row.client_id !== c.id || row.deleted_at != null) return oErro("invalid_grant", "refresh_token inválido");
     const got = await sha256Hex(f.refresh_token);
     if (!row.refresh_hash || !timingSafeEqualHex(got, row.refresh_hash)) {
       // refresh já girado sendo reusado = possível roubo: derruba a conexão (OAuth 2.1 §4.3.1)
@@ -226,11 +245,12 @@ async function revogar(req: Request, env: Env, now: number): Promise<Response> {
   return new Response(null, { status: 200, headers: { "Cache-Control": "no-store" } });
 }
 
-/** Cron: pedidos e códigos vencidos; clientes sem conexão ativa há 30 dias. */
+/** Cron: pedidos e códigos vencidos; clientes sem token em 1 h; clientes sem conexão ativa há 30 dias. */
 export async function purgeOauth(env: Env, now = Date.now()) {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM oauth_request WHERE expires_at <= ?1").bind(now),
     env.DB.prepare("DELETE FROM oauth_code WHERE expires_at <= ?1").bind(now),
+    env.DB.prepare("DELETE FROM oauth_client WHERE last_used_at IS NULL AND created_at < ?1").bind(now - OAUTH.clienteSemUsoMs), // nunca obteve token: 1 h
     env.DB.prepare(`DELETE FROM oauth_client WHERE COALESCE(last_used_at, created_at) < ?1
       AND NOT EXISTS (SELECT 1 FROM mcp_token t WHERE t.client_id = oauth_client.id AND t.revoked_at IS NULL)`).bind(now - CLIENTE_OCIOSO_MS),
   ]);

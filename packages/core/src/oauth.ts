@@ -11,6 +11,10 @@ export const OAUTH = {
   pedidoMs: 10 * 60_000,
   /** token de acesso: 1 h (o refresh renova; a conexão some com 90 dias sem uso, regra da #55) */
   acessoS: 3600,
+  /** consentir exige Face ID (passkey) feito há no máximo 2 min, mesmo com sessão ativa */
+  faceIdMs: 2 * 60_000,
+  /** cliente registrado que nunca obteve token some em 1 h */
+  clienteSemUsoMs: 3600_000,
   /** conexões OAuth ativas por pessoa (a mais antiga sai para caber a nova) */
   maxGrants: 3,
   maxRedirects: 5,
@@ -77,16 +81,41 @@ export function redirectUriValida(v: unknown): v is string {
   return u.protocol === "http:" && LOOPBACK.has(u.hostname);
 }
 
+/** #66 (segurança): só o callback publicado pela Anthropic para os apps hospedados (claude.ai na web, Desktop, celular).
+ *  O claude.com é a mesma empresa (precaução, caso o domínio mude). O nome do cliente NUNCA é identidade: vale o destino. */
+export const REDIRECTS_PADRAO: readonly string[] = ["https://claude.ai/api/mcp/auth_callback", "https://claude.com/api/mcp/auth_callback"];
+
+/** Var OAUTH_REDIRECT_HOSTS: URLs https separadas por vírgula. Exata, ou prefixo de caminho se terminar em "/".
+ *  Vazia ou ausente → REDIRECTS_PADRAO. Entrada que não é https é ignorada. */
+export function listaRedirects(v: string | undefined | null): string[] {
+  const l = (v ?? "").split(",").map((x) => x.trim()).filter((x) => {
+    try { const u = new URL(x); return u.protocol === "https:" && !u.username && !u.password && !u.hash && !u.search; } catch { return false; }
+  });
+  return l.length ? l : [...REDIRECTS_PADRAO];
+}
+
+/** "verificado" = na allowlist; "loopback" = http no localhost (dev/CLI, a tela avisa "app não verificado"); null = recusado. */
+export function redirectPermitido(uri: unknown, permitidos: readonly string[]): "verificado" | "loopback" | null {
+  if (!redirectUriValida(uri)) return null;
+  const u = new URL(uri);
+  if (u.protocol === "http:") return "loopback";
+  for (const p of permitidos) {
+    if (p.endsWith("/")) { const b = new URL(p); if (u.origin === b.origin && u.pathname.startsWith(b.pathname) && !u.search) return "verificado"; }
+    else if (uri === p) return "verificado";
+  }
+  return null;
+}
+
 type Erro<E extends string> = { ok: false; erro: E; descricao: string };
 const strArr = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
 
 /** RFC 7591: valida o registro dinâmico. Cliente público por padrão (PKCE); secreto se pedir client_secret_*. */
-export function validarRegistro(b: unknown):
+export function validarRegistro(b: unknown, permitidos: readonly string[]):
   { ok: true; value: { nome: string; redirectUris: string[]; metodo: MetodoAuth } } | Erro<"invalid_redirect_uri" | "invalid_client_metadata"> {
   const o = (b && typeof b === "object" ? b : {}) as Record<string, unknown>;
   const uris = o.redirect_uris;
   if (!strArr(uris) || !uris.length || uris.length > OAUTH.maxRedirects) return { ok: false, erro: "invalid_redirect_uri", descricao: `redirect_uris: de 1 a ${OAUTH.maxRedirects} URIs` };
-  if (!uris.every(redirectUriValida)) return { ok: false, erro: "invalid_redirect_uri", descricao: "redirect_uri deve ser https (ou http no localhost), sem fragmento" };
+  if (!uris.every((x) => redirectPermitido(x, permitidos))) return { ok: false, erro: "invalid_redirect_uri", descricao: "redirect_uri fora da lista permitida (OAUTH_REDIRECT_HOSTS) ou não é http no localhost" };
   if (o.grant_types != null && (!strArr(o.grant_types) || !o.grant_types.every((g) => g === "authorization_code" || g === "refresh_token")))
     return { ok: false, erro: "invalid_client_metadata", descricao: "grant_types: authorization_code e refresh_token" };
   if (o.response_types != null && (!strArr(o.response_types) || !o.response_types.every((r) => r === "code")))
@@ -117,7 +146,7 @@ type ErroAut = "invalid_request" | "unsupported_response_type" | "invalid_scope"
 
 /** Valida o GET /oauth/authorize. `redirecionavel: false` = mostrar o erro na tela, NUNCA redirecionar (cliente ou URI
  *  desconhecidos: evita open redirect). Os outros erros voltam para o cliente pela redirect_uri, com state e iss. */
-export function validarPedidoAutorizacao(q: Record<string, unknown>, cliente: { redirectUris: string[] }, origin: string):
+export function validarPedidoAutorizacao(q: Record<string, unknown>, cliente: { redirectUris: string[]; permitidos: readonly string[] }, origin: string):
   { ok: true; value: PedidoAutorizacao } | { ok: false; redirecionavel: false; descricao: string } | { ok: false; redirecionavel: true; redirectUri: string; state: string | null; erro: ErroAut; descricao: string } {
   const pedida = q.redirect_uri;
   let redirectUri: string;
@@ -126,6 +155,8 @@ export function validarPedidoAutorizacao(q: Record<string, unknown>, cliente: { 
     redirectUri = cliente.redirectUris[0];
   } else if (typeof pedida === "string" && cliente.redirectUris.includes(pedida)) redirectUri = pedida;
   else return { ok: false, redirecionavel: false, descricao: "redirect_uri não registrada para este cliente" };
+  // a allowlist pode ter mudado depois do registro: confere de novo (e nunca redireciona para fora dela)
+  if (!redirectPermitido(redirectUri, cliente.permitidos)) return { ok: false, redirecionavel: false, descricao: "redirect_uri fora da lista permitida" };
   const st = typeof q.state === "string" ? q.state : null;
   const falha = (erro: ErroAut, descricao: string) => ({ ok: false as const, redirecionavel: true as const, redirectUri, state: st && st.length <= OAUTH.stateMax ? st : null, erro, descricao });
   if (q.state != null && (typeof q.state !== "string" || q.state.length > OAUTH.stateMax)) return falha("invalid_request", "state inválido");

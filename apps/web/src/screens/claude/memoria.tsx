@@ -7,7 +7,7 @@ import { Card, Icon, toast } from "../../lib/ui/index.tsx";
 import { abrirComoConectar } from "./conectar.tsx";
 
 export interface Fato { id: string; fato: string; fonte: string; criadoEm: number; expiraEm: number | null }
-export interface ClaudeInfo { status: { modo: C.ModoClaude; texto: string; checklist: { connector: boolean; rotina: boolean; vigia: boolean } }; pendentes: number; memoria: Fato[]; limite: number }
+export interface ClaudeInfo { status: { modo: C.ModoClaude; texto: string; checklist: { connector: boolean; rotina: boolean; vigia: boolean } }; pendentes: number; memoria: Fato[]; limite: number; openai?: boolean }
 
 const DEMO: ClaudeInfo = {
   status: C.statusClaude({ agora: Date.now(), rotinaEm: Date.now() - 150 * 60e3, connectorEm: Date.now() - 3600e3, pendentes: 1 }),
@@ -49,6 +49,7 @@ export function ClaudeLigado({ info }: { info: ClaudeInfo | null }) {
       {linha(c?.rotina, "Rotina rodou nas últimas 3 h", "rotina na nuvem: responde os pedidos com o celular e o computador desligados")}
       {linha(c?.vigia, "Vigia no computador (opcional)", "responde em segundos, só se você quiser deixar um computador ligado")}
     </ul>
+    {info?.openai && <p class="small" role="note" style="margin-top:8px;color:var(--warn)"><Icon id="warn" style="width:14px;height:14px;vertical-align:-2px" /> IA de reserva (OpenAI) ligada pelo dono do app: pedidos para gerar ou ajustar treino enviam dados de treino e saúde à OpenAI.</p>}
     <button type="button" class="btn full" style="margin-top:8px" onClick={abrirComoConectar}><Icon id="key" />Como conectar</button></Card>;
 }
 
