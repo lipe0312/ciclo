@@ -14,7 +14,7 @@ const MIG_RE = /^(\d{4})_[a-z0-9_]+\.sql$/;
 export function staticProblems(cfg, migrations) {
   const p = [];
   const vars = cfg.vars ?? {};
-  for (const k of ["DEV_NO_AUTH", "MCP_TOKEN", "VAPID_PRIVATE_KEY", "OWNER_EMAIL", "OWNER_SETUP_CODE", "AUTH_PEPPER", "DEV_TUNNEL", "TURNSTILE_SECRET"]) if (k in vars) p.push(`wrangler.jsonc: "${k}" não pode estar em vars (dev ou segredo; use wrangler secret put)`);
+  for (const k of ["DEV_NO_AUTH", "CENARIO_NOME", "CENARIO_CTRL", "MCP_TOKEN", "VAPID_PRIVATE_KEY", "OWNER_EMAIL", "OWNER_SETUP_CODE", "AUTH_PEPPER", "DEV_TUNNEL", "TURNSTILE_SECRET"]) if (k in vars) p.push(`wrangler.jsonc: "${k}" não pode estar em vars (dev ou segredo; use wrangler secret put)`);
   try { const o = new URL(vars.PUBLIC_ORIGIN ?? ""); if (o.protocol !== "https:" || o.pathname !== "/" || o.hostname === "localhost") throw 0; } catch { p.push('wrangler.jsonc: vars.PUBLIC_ORIGIN precisa ser a origem https de produção (ex.: "https://ciclo.<conta>.workers.dev"); é a origem do passkey'); }
   if (cfg.workers_dev !== true) p.push("wrangler.jsonc: workers_dev precisa ser true (o app mora em *.workers.dev)");
   if (cfg.preview_urls !== false) p.push("wrangler.jsonc: preview_urls precisa ser false (URL de preview ficaria fora da origem do passkey)");

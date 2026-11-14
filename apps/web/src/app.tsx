@@ -13,6 +13,7 @@ import { LembreteDiario } from "./lib/lembrete-diario/index.tsx";
 import { Icon, Toast, toast } from "./lib/ui/index.tsx";
 import { lsGet, lsSet } from "./lib/util.ts";
 import { MAIS, PRINCIPAL } from "./nav.ts";
+import { BotaoCenario } from "./lib/cenario/index.tsx";
 import { Voltar, useGestosVoltar } from "./lib/voltar/index.tsx";
 import { preloadNoOcio, telaLenta } from "./lib/tela-lenta/index.tsx";
 import Hoje from "./screens/hoje/index.tsx";
@@ -119,6 +120,7 @@ export function App() {
     <MiniBarra screen={screen} />
     <nav class="bottom" aria-label="Principal">{PRINCIPAL.map((d) => <a key={d.id} href={`#${d.id}`} aria-current={cur(d.id)}><Icon id={d.icon} />{d.nm}</a>)}</nav>
     <Folha tick={tick} />
+    <BotaoCenario />
     <Toast />
   </div>;
 }

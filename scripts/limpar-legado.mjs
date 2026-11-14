@@ -64,6 +64,11 @@ const render = (sql, args) => sql.replace(/\?(\d+)/g, (_m, n) => lit(args[Number
 
 export function wranglerEnv({ remote = false, persistTo } = {}) {
   const alvo = remote ? ["--remote"] : ["--local", ...(persistTo ? ["--persist-to", persistTo] : [])];
+  const ler = (sql) => {
+    // leitura (SELECT) por --command: no remoto o --file usa a API de import, que não devolve linhas
+    const out = execFileSync("npx", ["wrangler", "d1", "execute", "ciclo-db", ...alvo, "--json", "--yes", "--command", sql], { cwd: join(ROOT, "apps/worker"), encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+    return JSON.parse(out.slice(out.indexOf("[")));
+  };
   const run = (sql) => {
     // SQL num arquivo (--file): o lote inteiro vai de uma vez, sem depender de vários comandos num --command
     const dir = mkdtempSync(join(tmpdir(), "ciclo-legado-")), arq = join(dir, "lote.sql");
@@ -75,14 +80,16 @@ export function wranglerEnv({ remote = false, persistTo } = {}) {
   };
   const stmt = (sql, args = []) => ({
     sql, args, bind: (...a) => stmt(sql, a), text: () => render(sql, args),
-    all: async () => ({ results: run(render(sql, args))[0]?.results ?? [] }),
-    first: async () => run(render(sql, args))[0]?.results?.[0] ?? null,
+    all: async () => ({ results: ler(render(sql, args))[0]?.results ?? [] }),
+    first: async () => ler(render(sql, args))[0]?.results?.[0] ?? null,
     run: async () => { const r = run(render(sql, args))[0]; return { meta: { changes: r?.meta?.changes ?? 0 } }; },
   });
   const DB = {
     prepare: (sql) => stmt(sql),
     // um comando só = uma transação no D1 (o deleteAccount depende disso)
-    batch: async (sts) => run(sts.map((s) => s.text()).join(";\n")).map((r) => ({ results: r?.results ?? [] })),
+    batch: async (sts) => sts.every((s) => /^\s*SELECT/i.test(s.text()))
+      ? sts.map((s) => ({ results: ler(s.text())[0]?.results ?? [] })) // leituras do export: uma por uma, com linhas
+      : (run(sts.map((s) => s.text()).join(";\n")) ?? []).map((r) => ({ results: r?.results ?? [] })),
   };
   // R2: as chaves vêm da tabela media (o wrangler não lista objetos); cada uma é apagada pelo wrangler.
   const MEDIA = {

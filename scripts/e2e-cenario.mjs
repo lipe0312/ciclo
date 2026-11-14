@@ -1,0 +1,215 @@
+// #70 `npm run e2e -- <roteiro>` (ou e2e:primeiro-acesso, e2e:pular): roteiro de tela no Chrome headless, sem túnel, num cenário local.
+// Sobe `dev:cenario vazio` sozinho (porta 8793, banco próprio em .wrangler/cenarios/vazio) e o derruba no fim; com CICLO_URL=http://localhost:PORTA
+// usa um cenário vazio que você já subiu (e o reseta antes). Falha NO PRIMEIRO passo errado e diz qual.
+// PENDENTE_71: passos que dependem das correções da #71 (conta nova pré-marcada, nada salvo ao voltar, Pular quebrado). Ficam em
+// "↷ PENDENTE_71" (não rodam) até a #71 entrar; os erros de validação do perfil no console (RUIDO_71) também só são ignorados enquanto isso. Depois do merge: apague a constante abaixo (ou rode com CICLO_71=1 para já ver).
+// Só localhost. Roteiro manual equivalente: docs/11-testar-antes-de-subir.md
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { CENARIOS, PORTA_CTRL, urlAbertura } from "./cenarios/index.mjs";
+import { abrirChrome, sleep } from "./cenarios/cdp.mjs";
+
+const PENDENTE_71 = process.env.CICLO_71 !== "1";
+const PORTA = 8793;
+/** Erros que a #71 elimina (validação do perfil da conta nova); só ignorados enquanto PENDENTE_71. */
+const RUIDO_71 = /deve ser|escolha academia, casa ou os dois|^400 \/api\/profile$/m;
+const ROTEIROS = { "primeiro-acesso": primeiroAcesso, pular };
+const nome = process.argv[2];
+if (!ROTEIROS[nome]) { console.error(`✖ roteiro: ${Object.keys(ROTEIROS).join(" | ")}`); process.exit(2); }
+const BASE = (process.env.CICLO_URL ?? `http://localhost:${PORTA}`).replace(/\/$/, "");
+if (!["localhost", "127.0.0.1"].includes(new URL(BASE).hostname)) { console.error("✖ só roda em localhost"); process.exit(2); }
+
+let n = 0, ignoradas = 0;
+async function passo(titulo, fn, c) {
+  n++;
+  try { await fn(); } catch (e) { console.log(`✖ ${n}. ${titulo}\n    ${e.message}`); throw e; }
+  const erros = c.consola.filter((x) => !(PENDENTE_71 && RUIDO_71.test(x.texto)));
+  if (erros.length) { const m = `console com erro/aviso: ${erros[0].texto.slice(0, 200)}`; console.log(`✖ ${n}. ${titulo}\n    ${m}`); throw new Error(m); }
+  c.consola.length = 0;
+  console.log(`✔ ${n}. ${titulo}`);
+}
+/** Passo que depende da #71: pulado e marcado enquanto PENDENTE_71; depois roda como qualquer outro. */
+async function pend(titulo, fn, c) {
+  if (PENDENTE_71) { n++; ignoradas++; console.log(`↷ ${n}. PENDENTE_71 · ${titulo}`); return; }
+  await passo(titulo, fn, c);
+}
+const igual = (a, b, msg) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${msg}: veio ${JSON.stringify(a)}, esperado ${JSON.stringify(b)}`); };
+const ok = (cond, msg) => { if (!cond) throw new Error(msg); };
+
+async function subir() {
+  if (process.env.CICLO_URL) { // cenário vazio já no ar: reseta
+    const r = await fetch(`http://127.0.0.1:${PORTA_CTRL}/reset`, { method: "POST", headers: { "x-ciclo-cenario": "reset" } }).catch(() => null);
+    if (!r?.ok) throw new Error("não achei o dev:cenario vazio no ar (npm run dev:cenario -- vazio)");
+    return () => {};
+  }
+  const filho = spawn(process.execPath, [fileURLToPath(new URL("./dev-cenario.mjs", import.meta.url)), "vazio", "--sem-abrir", "--porta", String(PORTA)], { stdio: ["ignore", "pipe", "pipe"] });
+  let log = ""; filho.stdout.on("data", (d) => { log += d; }); filho.stderr.on("data", (d) => { log += d; });
+  const parar = () => { filho.kill("SIGTERM"); };
+  const fim = Date.now() + 180_000;
+  while (!log.includes("Resetar:") && Date.now() < fim && filho.exitCode === null) await sleep(300);
+  if (!log.includes("Resetar:")) { parar(); throw new Error(`o cenário vazio não subiu:\n${log.split("\n").slice(-15).join("\n")}`); }
+  return parar;
+}
+
+const marcados = (c, raiz = ".pp-body") => c.ev(`[...document.querySelectorAll('${raiz} [aria-pressed="true"]')].map((b) => b.textContent.replace(/\\s+/g, ' ').trim())`);
+const passoAtual = async (c) => Number((await c.hash()).split("/")[1]);
+const titulo = (c) => c.ev("document.querySelector('.pp-q')?.textContent ?? ''");
+async function escrever(c, seletor, valor) {
+  const r = await c.ev(`(() => { const el = document.querySelector(${JSON.stringify(seletor)}); if (!el) return false;
+    const set = Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set; set.call(el, ${JSON.stringify(valor)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+  return r;
+}
+const abrirNoCenario = async (c, tela) => { // 1 nova tentativa: a primeira navegação do Chrome recém-aberto às vezes perde o redirecionamento
+  for (let t = 0; t < 2; t++) {
+    await c.abrir(urlAbertura("vazio", tela, new URL(BASE).port));
+    if (await c.esperar(`location.hash === '#${tela}' && document.querySelector('.pp, .view.on')`)) return;
+  }
+};
+
+const OBJETIVO = "Braços e ombros maiores", FOCO = "Ombros largos para o verão (teste)";
+
+async function primeiroAcesso(c) {
+  await passo("abre direto em Primeiros passos, já logado na conta do cenário", async () => {
+    await abrirNoCenario(c, "primeiros-passos/0");
+    igual(await c.hash(), "#primeiros-passos/0", `tela (${await c.ev("location.href")} · ${(await c.texto()).replace(/\s+/g, " ").slice(0, 100)})`);
+    ok((await titulo(c)).includes("objetivo"), "não abriu o passo do objetivo");
+    const st = await c.ev("fetch('/api/account').then((r) => r.json())");
+    ok(st.account?.name === "Ana" && st.onboarding === "pendente", "a conta do cenário não é a logada");
+  }, c);
+  await pend("1. Objetivo: nada marcado ao abrir", async () => igual(await marcados(c), [], "objetivo pré-marcado"), c);
+  await passo("1. escolhe um objetivo; Continuar fica habilitado", async () => {
+    await c.clicar(OBJETIVO, ".pp-body");
+    ok((await marcados(c)).some((t) => t.includes(OBJETIVO)), "o objetivo não ficou marcado");
+    ok(await c.ev("!document.querySelector('.pp-cta .btn.pri').disabled"), "Continuar continua desabilitado");
+  }, c);
+  await pend("1. escreve o foco (campo de texto do passo Objetivo)", async () => {
+    ok(await escrever(c, ".pp-body input[type=text], .pp-body textarea", FOCO), "não há campo para escrever o foco");
+  }, c);
+  await passo("2. avança e volta: o passo anterior reabre", async () => {
+    await c.clicar("Continuar"); igual(await passoAtual(c), 1, "passo"); await c.clicar("Voltar uma pergunta"); igual(await passoAtual(c), 0, "passo");
+  }, c);
+  await pend("2. objetivo e foco continuam lá depois de voltar", async () => {
+    ok((await marcados(c)).some((t) => t.includes(OBJETIVO)), "objetivo se perdeu ao voltar");
+    igual(await c.ev("document.querySelector('.pp-body input[type=text], .pp-body textarea')?.value"), FOCO, "foco se perdeu ao voltar");
+  }, c);
+  await passo("3. recarrega no meio do fluxo: volta no mesmo passo", async () => {
+    await c.clicar("Continuar"); await c.recarregar(); await c.esperar("document.querySelector('.pp')");
+    igual(await passoAtual(c), 1, "passo depois de recarregar");
+  }, c);
+  await pend("3. as respostas continuam salvas depois de recarregar", async () => {
+    await c.clicar("Voltar uma pergunta");
+    ok((await marcados(c)).some((t) => t.includes(OBJETIVO)), "objetivo se perdeu ao recarregar");
+    await c.clicar("Continuar");
+  }, c);
+  await passo("3. se a recarga não guardou o objetivo, responde de novo para o roteiro seguir", async () => {
+    if (!(await marcados(c)).length && (await passoAtual(c)) === 1) {
+      await c.clicar("Voltar uma pergunta"); await c.clicar(OBJETIVO, ".pp-body"); await c.clicar("Continuar");
+    }
+    igual(await passoAtual(c), 1, "passo");
+  }, c);
+  await pend("4. Músculos: nada pré-marcado (a sugestão é só sugestão)", async () => igual(await marcados(c), [], "músculos pré-marcados"), c);
+  await passo("4. Músculos: marca 2 e a ordem fica na lista", async () => {
+    await c.clicar("Ombro", ".mc-lista"); await c.clicar("Bíceps", ".mc-lista");
+    igual(await c.ev("[...document.querySelectorAll('.prio-list .prio-nm')].map((e) => e.textContent)"), ["Ombro", "Bíceps"], "ordem das prioridades");
+  }, c);
+  await pend("4. a ordem dos músculos continua depois de recarregar", async () => {
+    await c.recarregar(); await c.esperar("document.querySelector('.prio-list')");
+    igual(await c.ev("[...document.querySelectorAll('.prio-list .prio-nm')].map((e) => e.textContent)"), ["Ombro", "Bíceps"], "ordem depois de recarregar");
+  }, c);
+
+  await passo("4. se a recarga não guardou os músculos, marca de novo para o roteiro seguir", async () => {
+    const lista = () => c.ev("[...document.querySelectorAll('.prio-list .prio-nm')].map((e) => e.textContent)");
+    if ((await lista()).length < 2) { for (const m of ["Ombro", "Bíceps"]) if (!(await lista()).includes(m)) await c.clicar(m, ".mc-lista"); }
+    igual(await lista(), ["Ombro", "Bíceps"], "ordem das prioridades");
+  }, c);
+
+  // Passos 5 a 9 da tela: cada um responde e segue. Nada pré-marcado é conferido (PENDENTE_71) ANTES de responder.
+  const etapas = [
+    ["Experiência", 2, async () => c.clicar("Menos de 1 ano", ".pp-body"), "Menos de 1 ano"],
+    ["Rotina", 3, async () => { for (const d of ["Seg", "Qua", "Sex"]) await c.clicar(d, ".pp-body"); await c.clicar("60 min", ".pp-body"); }, "Seg"],
+    ["Onde treina", 4, async () => c.clicar("Academia", ".pp-body"), "Academia"],
+    ["Dores", 5, async () => c.clicar("Nenhuma dor", ".pp-body"), "Nenhuma dor"],
+    ["Seus dados básicos", 6, async () => c.clicar("feminino", ".pp-body"), "feminino"],
+    ["Como você se vê", 7, async () => c.clicar("Normal", ".pp-body"), "Normal"],
+  ];
+  await passo("5. segue para Experiência", async () => { await c.clicar("Continuar"); igual(await passoAtual(c), 2, "passo"); }, c);
+  for (const [nomeEtapa, idx, responder, marca] of etapas) {
+    if (idx > 2) await passo(`5. segue para ${nomeEtapa}`, async () => { await c.clicar("Continuar"); igual(await passoAtual(c), idx, "passo"); }, c);
+    await pend(`5. ${nomeEtapa}: nada pré-marcado`, async () => igual(await marcados(c), [], `${nomeEtapa} pré-marcado`), c);
+    await passo(`5. ${nomeEtapa}: responde`, async () => { await responder(); ok((await marcados(c)).some((t) => t.includes(marca)), `"${marca}" não ficou marcado`); }, c);
+  }
+  await passo("6. Pular etapa: avança Como você se vê sem responder mais nada e não perde o que já respondeu", async () => {
+    await c.clicar("Continuar"); igual(await passoAtual(c), 8, "passo (Comida)");
+    await c.clicar("Voltar uma pergunta"); await c.clicar("Voltar uma pergunta"); await c.clicar("Voltar uma pergunta"); await c.clicar("Voltar uma pergunta"); await c.clicar("Voltar uma pergunta");
+    igual(await passoAtual(c), 3, "passo (Rotina)");
+    ok((await marcados(c)).some((t) => t.includes("Seg")), "a rotina respondida se perdeu");
+    for (let i = 0; i < 5; i++) await c.clicar("Continuar");
+    igual(await passoAtual(c), 8, "passo (Comida)");
+  }, c);
+  await pend("5. cada resposta continua depois de voltar e de recarregar (Comida)", async () => {
+    await c.clicar("Leve", ".pp-body"); await c.recarregar(); await c.esperar("document.querySelector('.pp')");
+    ok((await marcados(c)).some((t) => t.includes("Leve")), "Comida se perdeu ao recarregar");
+  }, c);
+  await passo("5. Comida: responde", async () => {
+    if (!(await marcados(c)).some((t) => t.includes("Leve"))) await c.clicar("Leve", ".pp-body");
+    await c.clicar("Continuar"); igual(await passoAtual(c), 9, "passo (Resumo)");
+  }, c);
+  await passo("7. Resumo: mostra 'Seu plano em uma frase' e a prévia do primeiro treino", async () => {
+    await c.esperar("document.querySelector('#app')?.textContent.includes('Seu plano em uma frase')");
+    const t = await c.texto();
+    ok(/seu plano em uma frase/i.test(t), `sem a frase do plano (tela: ${t.slice(0, 120).replace(/\s+/g, " ")})`);
+    ok(/primeiro treino/i.test(t), "sem a prévia do primeiro treino");
+  }, c);
+  await pend("7. Resumo: a frase mostra o objetivo escolhido (hoje a Meta sai vazia: 'Meta: .')", async () => {
+    const t = await c.texto();
+    ok(/braços e ombros maiores/i.test(t), `a frase não mostra o objetivo: ${t.replace(/\s+/g, " ").slice(0, 220)}`);
+  }, c);
+  await pend("7. Resumo: a frase mostra o foco escrito", async () => ok((await c.texto()).toLowerCase().includes(FOCO.toLowerCase()), "a frase não mostra o foco escrito"), c);
+  await pend("8. Gerar semana termina sem erro e o Hoje mostra o treino", async () => {
+    await c.clicar("Gerar minha semana e abrir o Hoje");
+    ok(await c.esperar("location.hash === '#hoje'", 15000), `não chegou no Hoje (tela: ${(await c.texto()).replace(/\s+/g, " ").slice(-140)} · console: ${c.consola.map((x) => x.texto.slice(0, 140)).join(" | ")})`);
+    const st = await c.ev("fetch('/api/state?date=' + new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())).then((r) => r.json())");
+    ok(st.onboarding === "concluido", "Primeiros passos não foi concluído");
+    ok(st.dayPlan?.plan?.items?.length > 0, "o servidor não tem o treino de hoje");
+    ok(!(await c.texto()).includes("Sua Home ainda está vazia"), "o Hoje continua vazio");
+  }, c);
+  await pend("10. menu ⋯ (Mais): cada item abre a tela que diz", async () => {
+    await c.clicar("Mais opções");
+    igual(await c.hash(), "#mais", "menu");
+    const itens = await c.ev("[...document.querySelectorAll('a.sec')].map((a) => [a.textContent.trim(), a.getAttribute('href')])");
+    ok(itens.length >= 4, `só ${itens.length} itens no Mais`);
+    for (const [nm, href] of itens) {
+      await c.abrir(`${BASE}/${href}`); await c.esperar("document.querySelector('.view.on')");
+      igual(await c.hash(), href, `${nm}: destino`);
+      ok((await c.esperar("document.querySelector('.view.on')?.innerText.trim().length > 10")), `${nm}: a tela abriu vazia`);
+      await c.abrir(`${BASE}/#mais`); await c.esperar("location.hash === '#mais'");
+    }
+  }, c);
+}
+
+async function pular(c) {
+  await passo("abre direto em Primeiros passos (passo 1), já logado", async () => {
+    await abrirNoCenario(c, "primeiros-passos/0");
+    igual(await c.hash(), "#primeiros-passos/0", "tela");
+    ok((await c.texto()).includes("Pular por agora"), "não há 'Pular por agora' no passo 1");
+  }, c);
+  await passo("toca em Pular por agora e o app continua de pé", async () => {
+    await c.clicar("Pular por agora"); await sleep(1500);
+    ok(await c.ev("!!document.querySelector('#app .app')"), "o app saiu do ar");
+  }, c);
+  await pend("vai para o Hoje (vazio), sem ficar preso nos Primeiros passos", async () => {
+    ok(await c.esperar("location.hash === '#hoje'", 8000), `ficou em ${await c.hash()}`);
+    const st = await c.ev("fetch('/api/account').then((r) => r.json())");
+    igual(st.onboarding, "concluido", "onboarding");
+  }, c);
+  await pend("Hoje mostra o cartão 'Complete o Perfil de treino'", async () => ok((await c.texto()).includes("Complete o Perfil de treino"), "sem o cartão"), c);
+}
+
+const parar = await subir();
+const chrome = await abrirChrome({ usuario: CENARIOS.vazio.slug });
+let falhou = false;
+try { await ROTEIROS[nome](chrome); }
+catch { falhou = true; }
+finally { await chrome.fechar(); parar(); }
+console.log(falhou ? `\n✖ ${nome}: falhou no passo ${n}` : `\n✔ ${nome}: ${n - ignoradas} passos ok${ignoradas ? ` · ${ignoradas} em PENDENTE_71 (ainda não rodam)` : ""}`);
+process.exit(falhou ? 1 : 0);
