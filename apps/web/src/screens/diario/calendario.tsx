@@ -19,13 +19,13 @@ export function Calendario() {
       {cov.days.map((x) => {
         const claude = D.checkouts[x.date]?.source === "claude";
         return <button type="button" key={x.date} class={`cal-dia st-${x.state}${x.date === D.sel ? " sel" : ""}${x.date === today ? " hoje" : ""}`} onClick={() => pick(x.date)}
-          aria-label={`${x.date.slice(8)}/${x.date.slice(5, 7)}: check-in ${x.checkin ? "feito" : "pendente"}, checkout ${x.checkout ? "feito" : "pendente"}${claude ? ", preenchido pelo Claude" : ""}`} aria-pressed={x.date === D.sel}>
+          aria-label={`${x.date.slice(8)}/${x.date.slice(5, 7)}: check-in ${x.checkin ? "feito" : "pendente"}, checkout ${x.checkout ? "feito" : "pendente"}${claude ? ", preenchido pelo Chat" : ""}`} aria-pressed={x.date === D.sel}>
           <span class="num">{Number(x.date.slice(8))}</span>
           <span class="cal-marcas" aria-hidden="true"><i class={x.checkin ? "on" : ""} /><i class={x.checkout ? "on" : ""} /></span>
           {claude && <span class="cal-claude" aria-hidden="true">C</span>}
         </button>;
       })}
     </div>
-    <p class="tiny sub" style="margin-top:10px">Cada dia: 1ª marca = check-in, 2ª = checkout. Borda tracejada = dia em branco; “C” = preenchido pelo Claude, confira. Toque para preencher depois.</p>
+    <p class="tiny sub" style="margin-top:10px">Cada dia: 1ª marca = check-in, 2ª = checkout. Borda tracejada = dia em branco; “C” = preenchido pelo Chat, confira. Toque para preencher depois.</p>
   </Card>;
 }

@@ -287,7 +287,7 @@ export function profileCompleteness(profile: Partial<ProfileData> | Record<strin
     rotina: ["Marque dias suficientes para a sua meta", "a semana distribui as séries nos dias que você realmente vai"],
     preferencias: ["Diga o que você prefere por músculo", "exercícios mais a sua cara e menos trocas"],
     objetivo: ["Escolha o objetivo principal", "tudo no app serve a ele"], voce: ["Complete seus dados básicos", "calibra o ritmo de ganho"],
-    mobilidade: ["Responda a mobilidade", "evita exercícios que doem"], claude: ["Ajuste como o Claude trabalha com você", "define o que ele muda sozinho"],
+    mobilidade: ["Responda a mobilidade", "evita exercícios que doem"], claude: ["Ajuste como o Chat trabalha com você", "define o que ele muda sozinho"],
   };
   const order: ProfileBlock[] = ["objetivo", "prioridades", "rotina", "experiencia", "preferencias", "voce", "mobilidade", "claude"];
   const pending = order.find((b) => !blocks[b]);

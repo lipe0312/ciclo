@@ -12,7 +12,7 @@ import { SheetHead, closeSheet, openSheet } from "../../lib/folha/index.tsx";
 import { addDays, fmt, longDate } from "../../lib/util.ts";
 
 const CONF: Record<string, string> = { alta: "alta", media: "média", baixa: "baixa" };
-const origem = (f: FoodRow) => (f.source === "claude" ? `Claude conferiu${f.confidence ? ` (confiança ${CONF[f.confidence] ?? f.confidence})` : ""}` : "estimativa do aparelho");
+const origem = (f: FoodRow) => (f.source === "claude" ? `Chat conferiu${f.confidence ? ` (confiança ${CONF[f.confidence] ?? f.confidence})` : ""}` : "estimativa do aparelho");
 const MEAL_OPTS: [Meal | null, string][] = [[null, "Automático"], ...MEALS.map((m): [Meal, string] => [m, MEAL_NM[m]])];
 const num = (s: string) => { const n = Number(s.replace(",", ".")); return s.trim() !== "" && Number.isFinite(n) && n >= 0 ? n : null; };
 
@@ -83,7 +83,7 @@ export function Registro({ dia }: { dia: string }) {
   const parteTxt = (p: (typeof parts)[number]) => p.texto + (p.fonte === "pessoal" ? " (sua base)" : "");
   const registrar = () => {
     const v = draft.trim(); if (!v) return toast("Fale ou escreva o que comeu");
-    addFood(v, meal ?? guessMeal(v, hourNow()), undefined, dia); S.ui.foodDraft = ""; setMeal(null); setStatus(""); commit(); toast("Registrado · o Claude confere");
+    addFood(v, meal ?? guessMeal(v, hourNow()), undefined, dia); S.ui.foodDraft = ""; setMeal(null); setStatus(""); commit(); toast("Registrado · o Chat confere");
   };
   const typical = (S.profile.diet.typical || "").trim();
   const igualAoTipico = () => {
@@ -98,7 +98,7 @@ export function Registro({ dia }: { dia: string }) {
       <textarea class="input" style="flex:1;min-width:0" rows={4} aria-label="O que você comeu" placeholder="café: 3 ovos e 2 pães · almoço: arroz, feijão e frango" value={draft}
         onInput={(e) => { S.ui.foodDraft = e.currentTarget.value; }} onBlur={() => commit()} />
     </div>
-    <p class="small est-line num" style="margin-top:8px" aria-live="polite">{draft.trim() ? (kcal ? <>~{fmt(kcal)} kcal · {fmt(prot)} g de proteína <span class="sub">({parts.map(parteTxt).join(" · ")})</span></> : <span class="sub">Não reconheci os alimentos; o Claude estima na conferência.</span>) : <span class="sub">A estimativa aparece aqui enquanto você fala.</span>}</p>
+    <p class="small est-line num" style="margin-top:8px" aria-live="polite">{draft.trim() ? (kcal ? <>~{fmt(kcal)} kcal · {fmt(prot)} g de proteína <span class="sub">({parts.map(parteTxt).join(" · ")})</span></> : <span class="sub">Não reconheci os alimentos; o Chat estima na conferência.</span>) : <span class="sub">A estimativa aparece aqui enquanto você fala.</span>}</p>
     <span class="f" style="margin-top:10px;display:block">Refeição</span>
     <MealChips value={meal} onPick={setMeal} label="Refeição do registro" />
     <div class="row wrapx" style="margin-top:12px;gap:8px">
@@ -151,6 +151,6 @@ export function DiaCard({ dia, setDia }: { dia: string; setDia: (d: string) => v
           : <button type="button" class="iconbtn" aria-label={`Apagar: ${f.text}`} onClick={() => { setApagar(f.id); setTimeout(() => setApagar((x) => (x === f.id ? null : x)), 3000); }}><Icon id="x" /></button>}
       </span>
     </div>)}
-    <p class="tiny sub" style="margin-top:8px">Estimativa rápida no aparelho; o Claude (Haiku) confere com a TACO quando processa.</p>
+    <p class="tiny sub" style="margin-top:8px">Estimativa rápida no aparelho; o Chat (Haiku) confere com a TACO quando processa.</p>
   </Card>;
 }

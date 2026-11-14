@@ -16,6 +16,7 @@ import { assistenteVisto } from "../../lib/mini-assistente/index.tsx";
 import { Mapa, linkMapa } from "./mapa.tsx";
 import { PaginaAparelho } from "./aparelho.tsx";
 import "./academias.css";
+import { Estado } from "../../lib/estado/index.tsx";
 
 export { PassoAPasso } from "./passos.tsx";
 
@@ -71,7 +72,7 @@ function Lugar({ g }: { g: Gym }) {
   const ponto = g.lat != null && g.lng != null ? { lat: g.lat, lng: g.lng } : null, d = dias(g.id);
   const eqs = C.EQUIPMENT.filter((e) => g.equipment.includes(e.id));
   return <>
-    <div class="row between" style="margin-bottom:10px"><a class="btn sm" href={href("academias")}><Icon id="back" />Academias</a>
+    <div class="row" style="margin-bottom:10px;justify-content:flex-end">
       <div class="row" style="gap:8px"><a class="btn sm" href={href("academias", [g.id, "editar"])}><Icon id="edit" />Editar</a>
         <button type="button" class="btn sm danger" onClick={() => abrirApagar(g)}><Icon id="x" />Apagar</button></div></div>
     <p class="kicker">{kindNm(g.kind)}</p><h1 style="margin:2px 0 4px">{g.name}</h1>
@@ -98,7 +99,7 @@ export default function Academias({ route }: { route?: Route }) {
   if (a === "novo") return <PassoAPasso key="novo" onDone={(g) => go(href("academias", [g.id]))} onCancel={() => go(href("academias"))} />;
   if (a) {
     const g = S.gyms.find((x) => x.id === a);
-    if (!g) return <><a class="btn sm" href={href("academias")}><Icon id="back" />Academias</a><p class="sub" style="margin-top:12px">Lugar não encontrado.</p></>;
+    if (!g) return <Estado tipo="vazio" titulo="Lugar não encontrado" acao={{ label: "Ver lugares", href: href("academias") }} />;
     if (b === "editar") return <PassoAPasso key={g.id} inicial={g} onDone={() => go(href("academias", [g.id]))} onCancel={() => go(href("academias", [g.id]))} />;
     if (b === "aparelho" && c) return <PaginaAparelho gym={g} eqId={c} />;
     return <Lugar g={g} />;

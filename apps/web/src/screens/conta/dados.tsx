@@ -1,5 +1,5 @@
 // #55 Seus dados (LGPD): exportar tudo em JSON e apagar a conta (digitando "apagar"; imediato e irreversível).
-// Apagar leva junto chaves do Claude, sessões, passkeys e arquivos (R2). Regra da #54: a dona não sai enquanto houver outras contas.
+// Apagar leva junto chaves do Chat, sessões, passkeys e arquivos (R2). Regra da #54: a dona não sai enquanto houver outras contas.
 import { useState } from "preact/hooks";
 import * as C from "@ciclo/core";
 import { HttpError, api } from "../../lib/api/index.ts";
@@ -36,7 +36,7 @@ export function SeusDados({ donaComOutras }: { donaComOutras: boolean }) {
     <a class="btn full" href="/api/account/export" download><Icon id="arrow" />Exportar meus dados</a>
 
     <h3 style="margin-top:8px">Apagar minha conta</h3>
-    <p class="small sub">Apaga agora, sem volta: todos os dados, fotos e vídeos, as chaves do Claude, os aparelhos e as passkeys.</p>
+    <p class="small sub">Apaga agora, sem volta: todos os dados, fotos e vídeos, as chaves do Chat, os aparelhos e as passkeys.</p>
     {donaComOutras
       ? <div class="note warn"><Icon id="warn" /><span>Você é a dona do app: apague ou passe as outras contas antes. Enquanto houver outras pessoas, ninguém mais administraria convites e resets.</span></div>
       : <form class="conta-form" onSubmit={(e) => { e.preventDefault(); apagar(); }}>

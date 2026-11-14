@@ -63,7 +63,7 @@ export function Conectar({ demo, viaAccess }: { demo: boolean; viaAccess?: boole
   };
 
   const gerar = () => act("gerar", async () => {
-    const r = await api<{ id: string; token: string }>("POST", "/api/account/tokens", { label: rotulo.trim() || "Claude" });
+    const r = await api<{ id: string; token: string }>("POST", "/api/account/tokens", { label: rotulo.trim() || "Chat" });
     setNova({ id: r.id, token: r.token }); await load();
   });
 
@@ -73,8 +73,8 @@ export function Conectar({ demo, viaAccess }: { demo: boolean; viaAccess?: boole
     const fim = Date.now() + POLL_MAX_MS;
     const tick = async () => {
       const l = await load().catch(() => null);
-      if (l && C.passoConectar({ temConta: true, tokens: l.tokens }, Date.now()) === 5) { setTestando(false); toast("Claude conectado"); return; }
-      if (Date.now() > fim) { setTestando(false); setErro("O Claude ainda não chamou. Confira a URL e o cabeçalho e tente de novo."); return; }
+      if (l && C.passoConectar({ temConta: true, tokens: l.tokens }, Date.now()) === 5) { setTestando(false); toast("Chat conectado"); return; }
+      if (Date.now() > fim) { setTestando(false); setErro("O Chat ainda não chamou. Confira a URL e o cabeçalho e tente de novo."); return; }
       timer.current = window.setTimeout(tick, POLL_MS);
     };
     tick();
@@ -83,16 +83,17 @@ export function Conectar({ demo, viaAccess }: { demo: boolean; viaAccess?: boole
   const revogar = (k: Chave) => act("r" + k.id, async () => {
     await api("DELETE", `/api/account/tokens/${encodeURIComponent(k.id)}`);
     if (nova?.id === k.id) setNova(null);
-    toast("Chave revogada: o Claude dela para na próxima chamada"); await load();
+    toast("Chave revogada: o Chat dela para na próxima chamada"); await load();
   });
 
   const visiveis = tokens.filter((k) => k.estado !== "revogado");
   const cheio = !!lista && lista.ativos >= lista.max;
 
   return <section class="card conta-sec" aria-labelledby="ct-cn">
-    <div class="row between wrapx"><h2 id="ct-cn">Conectar meu Claude</h2>
+    <div class="row between wrapx"><h2 id="ct-cn">Conectar meu Chat</h2>
       {demo ? <span class="badge warn">demonstração</span> : conectado ? <span class="badge ok" role="status"><Icon id="check" style="width:12px;height:12px" />conectado</span> : null}</div>
-    <p class="small sub">Cada pessoa liga o próprio Claude. A chave é sua: o Claude com ela só vê e altera os seus dados.</p>
+    <p class="small sub">Cada pessoa liga o próprio Chat. A chave é sua: o Chat com ela só vê e altera os seus dados.</p>
+    <p class="tiny sub">Funciona com o Claude, da Anthropic, na sua assinatura.</p>
     {demo && <div class="note warn"><Icon id="info" /><span>Na demonstração, a URL e a chave abaixo são <b>de exemplo</b> e não funcionam. Crie sua conta para gerar a sua.</span></div>}
     {erro && <div class="note entrar-erro" role="alert"><Icon id="warn" />{erro}</div>}
 
@@ -128,9 +129,9 @@ export function Conectar({ demo, viaAccess }: { demo: boolean; viaAccess?: boole
         <p class="small">No Claude (celular ou computador), peça:</p>
         <Campo rotulo="Pedido de teste" valor={PEDIDO_TESTE} oque="Pedido" />
         {conectado
-          ? <p class="small cn-ok" role="status"><Icon id="check" />O Claude chamou o Ciclo. Pronto!</p>
+          ? <p class="small cn-ok" role="status"><Icon id="check" />O Chat chamou o Ciclo. Pronto!</p>
           : <button type="button" class="btn full" disabled={testando || (!demo && passo < 3)} onClick={testar}>
-            <Icon id={testando ? "clock" : "check"} />{testando ? "Aguardando o Claude chamar…" : "Já pedi: conferir"}</button>}
+            <Icon id={testando ? "clock" : "check"} />{testando ? "Aguardando o Chat chamar…" : "Já pedi: conferir"}</button>}
         {testando && <p class="tiny sub" role="status" aria-live="polite">O app confere sozinho a cada 3 s por até 5 min.</p>}
       </Passo>
 
@@ -142,7 +143,7 @@ export function Conectar({ demo, viaAccess }: { demo: boolean; viaAccess?: boole
 
     {!demo && <>
       <div class="row between" style="margin-top:4px"><h3>Suas chaves</h3>{lista && <span class={`badge${cheio ? " warn" : ""}`}><span class="num">{lista.ativos}</span>de {lista.max}</span>}</div>
-      <p class="tiny sub">Chave sem uso há {C.TOKEN_IDLE_DAYS} dias expira sozinha. Revogar corta o Claude dela na hora.</p>
+      <p class="tiny sub">Chave sem uso há {C.TOKEN_IDLE_DAYS} dias expira sozinha. Revogar corta o Chat dela na hora.</p>
       {lista && !visiveis.length && <p class="small sub">Nenhuma chave ainda.</p>}
       <ul class="conta-list">{visiveis.map((k) => <li key={k.id}>
         <div><strong class="cn-rotulo">{k.label}</strong>

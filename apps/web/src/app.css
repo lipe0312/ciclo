@@ -476,3 +476,38 @@ a.sec{color:inherit;text-decoration:none}
 .cn-ok{display:flex;align-items:center;gap:8px;color:var(--ok);font-weight:700}
 .cn-rotulo{overflow-wrap:anywhere}
 .cn-corpo code.mono{font-size:12px}
+
+/* #64 navegação e acabamento iPhone: saída em toda tela, safe areas, motion de 150–250 ms, estados e esqueleto */
+:root{--dur-1:150ms;--dur-2:200ms;--dur-3:250ms;--ease:cubic-bezier(.2,.8,.2,1);--sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;--r-btn:10px;--r-chip:999px;--alvo:44px}
+html{overscroll-behavior-y:none}
+.main{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));padding-top:max(12px,env(safe-area-inset-top))}
+@media (min-width:960px){.main{padding-left:32px;padding-right:32px;padding-top:28px}}
+.bottom{padding-left:max(4px,env(safe-area-inset-left));padding-right:max(4px,env(safe-area-inset-right))}
+.sheet{overscroll-behavior:contain;transition:transform var(--dur-3) var(--ease)}
+.scrim.open{animation:esmaece var(--dur-2) ease-out}
+.top{min-height:var(--alvo)}
+.voltar{display:inline-flex;align-items:center;gap:4px;min-height:var(--alvo);min-width:var(--alvo);margin-left:-8px;padding:0 12px 0 6px;border-radius:var(--r-btn);color:var(--txt);text-decoration:none;font-weight:700;font-size:16px;max-width:60vw}
+.voltar span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.voltar svg{flex:none;width:22px;height:22px}
+.voltar:hover{background:var(--sup-2)}
+.view.on{animation:entra var(--dur-2) var(--ease)}
+@keyframes entra{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes esmaece{from{opacity:0}to{opacity:1}}
+.grabber{display:block;width:40px;height:5px;border-radius:999px;background:var(--sup-3);margin:-8px auto 10px}
+@media (min-width:720px){.grabber{display:none}}
+/* inputs com 16 px no celular: o iOS não dá zoom ao focar */
+@media (max-width:959px){.input,input,select,textarea{font-size:16px}}
+/* estado único: vazio, erro e offline */
+.estado{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--sp-2);padding:var(--sp-5) var(--sp-4);border:1px dashed var(--borda-ctrl);border-radius:var(--r);background:var(--sup)}
+.estado-ic{width:44px;height:44px;border-radius:999px;display:grid;place-items:center;background:var(--sup-2);color:var(--sub)}
+.estado-erro .estado-ic,.estado-offline .estado-ic{color:var(--warn)}
+.estado-t{font-weight:700}
+.estado-x{max-width:42ch}
+.estado .btn{margin-top:var(--sp-2)}
+/* esqueleto no lugar de spinner */
+.esq{display:grid;gap:var(--sp-3)}
+.esq i{display:block;border-radius:var(--r);background:var(--sup-2);animation:pisca 1.2s ease-in-out infinite}
+.esq-t{height:28px;width:45%}
+.esq-c{height:96px}
+@keyframes pisca{50%{opacity:.55}}
+@media (prefers-reduced-motion:reduce){.view.on,.esq i,.scrim.open{animation:none}}

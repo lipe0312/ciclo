@@ -66,7 +66,7 @@ export function statusClaude(s: { agora: number; vigiaEm?: number | null; rotina
     const n = Math.max(1, Math.ceil((s.intervaloRotinaMin ?? 180) - (s.agora - s.rotinaEm!) / 60e3));
     return { modo: "fila", texto: s.pendentes ? `na fila · responde em ~${fmtMin(n)}` : `rotina ativa · próxima em ~${fmtMin(n)}`, checklist };
   }
-  return { modo: "manual", texto: s.pendentes ? "na fila · responde quando você abrir o Claude" : "sem rotina ativa", checklist };
+  return { modo: "manual", texto: s.pendentes ? "na fila · responde quando você abrir o Chat" : "sem rotina ativa", checklist };
 }
 
 // ---------- Continuar no Claude ----------

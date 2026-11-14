@@ -13,25 +13,33 @@ import { LembreteDiario } from "./lib/lembrete-diario/index.tsx";
 import { Icon, Toast, toast } from "./lib/ui/index.tsx";
 import { lsGet, lsSet } from "./lib/util.ts";
 import { MAIS, PRINCIPAL } from "./nav.ts";
+import { Voltar, useGestosVoltar } from "./lib/voltar/index.tsx";
+import { preloadNoOcio, telaLenta } from "./lib/tela-lenta/index.tsx";
 import Hoje from "./screens/hoje/index.tsx";
 import Treino from "./screens/treino/index.tsx";
-import Diario from "./screens/diario/index.tsx";
-import Comida from "./screens/comida/index.tsx";
-import Claude from "./screens/claude/index.tsx";
-import Corpo from "./screens/corpo/index.tsx";
-import Academias from "./screens/academias/index.tsx";
-import Perfil from "./screens/perfil/index.tsx";
 import Conta from "./screens/conta/index.tsx";
-import Vida from "./screens/vida/index.tsx";
-import Semana from "./screens/semana/index.tsx";
-import PrimeirosPassos from "./screens/primeiros-passos/index.tsx";
 import Mais from "./screens/mais/index.tsx";
 import Entrar from "./screens/entrar/index.tsx";
 
+// #64 Hoje e Treino (a academia) vêm no pacote inicial; o resto baixa ao abrir ou no ócio (fica no service worker).
+type P = { route: Route };
+const Semana = telaLenta<P>(() => import("./screens/semana/index.tsx"));
+const Diario = telaLenta<P>(() => import("./screens/diario/index.tsx"));
+const Comida = telaLenta<P>(() => import("./screens/comida/index.tsx"));
+const Chat = telaLenta<P>(() => import("./screens/claude/index.tsx"));
+const Corpo = telaLenta<P>(() => import("./screens/corpo/index.tsx"));
+const Academias = telaLenta<P>(() => import("./screens/academias/index.tsx"));
+const Perfil = telaLenta<P>(() => import("./screens/perfil/index.tsx"));
+const Vida = telaLenta<P>(() => import("./screens/vida/index.tsx"));
+const PrimeirosPassos = telaLenta<P>(() => import("./screens/primeiros-passos/index.tsx"));
+const LENTAS = [Semana, Diario, Comida, Chat, Perfil, Corpo, Academias, PrimeirosPassos, Vida];
+
 const SCREENS: Record<string, FunctionComponent<{ route: Route }>> = {
-  hoje: Hoje, treino: Treino, diario: Diario, comida: Comida, claude: Claude, corpo: Corpo, academias: Academias,
+  hoje: Hoje, treino: Treino, diario: Diario, comida: Comida, chat: Chat, corpo: Corpo, academias: Academias,
   perfil: Perfil, conta: Conta, vida: Vida, semana: Semana, "primeiros-passos": PrimeirosPassos, mais: Mais,
 };
+/** Telas da barra inferior: na raiz, a saída é a própria barra (sem "voltar" no topo para não poluir). */
+const RAIZ = new Set(PRINCIPAL.map((d) => d.id));
 
 function pillText() { return !SERVER ? "Demonstração" : queue.length ? `Offline · ${queue.length} na fila` : navigator.onLine ? "Online" : "Offline"; }
 
@@ -41,6 +49,9 @@ function toggleTheme() {
   r.dataset.theme = dark ? "light" : "dark"; lsSet("ciclo:theme", r.dataset.theme);
 }
 const th = lsGet<string | null>("ciclo:theme", null); if (th) document.documentElement.dataset.theme = th;
+
+const route2Of = (route: Route, screen: string): Route =>
+  screen === route.screen ? route : screen === "chat" && route.screen === "claude" ? { ...route, screen } : { screen, parts: [], query: {} };
 
 export function App() {
   useStore();
@@ -56,13 +67,15 @@ export function App() {
     }).catch(() => {});
   }, []);
   useEffect(() => { closeSheet(); scrollTo(0, 0); }, [route.screen, route.parts.join("/")]);
+  useEffect(() => { preloadNoOcio(LENTAS); }, []);
   useEffect(() => {
     if (SERVER && (queue.length || !navigator.onLine)) showFaixa({ id: "offline", tone: "warn", text: `Sem conexão: usando o que está no aparelho${queue.length ? ` · ${queue.length} alteração(ões) na fila` : ""}.`, closable: false });
     else hideFaixa("offline");
   }, [tick]);
   // Conta nova: tudo cai nos Primeiros passos até terminar (Conta continua acessível).
   const pendente = SERVER && S.onboarding === "pendente";
-  const wanted = SCREENS[route.screen] ? route.screen : "hoje";
+  const pedida = route.screen === "claude" ? "chat" : route.screen; // #64: a aba virou Chat; #claude antigo continua abrindo
+  const wanted = SCREENS[pedida] ? pedida : "hoje";
   const screen = pendente && wanted !== "conta" ? "primeiros-passos" : wanted;
   // Perfil mudou depois de o treino ser gerado: avisa e oferece regenerar (nunca regenera sozinho).
   const stale = planIsStale() && !pendente;
@@ -71,10 +84,12 @@ export function App() {
       action: { label: "Regenerar", onClick: () => { regeneratePlan(); commit(); toast("Treino regenerado com o perfil de hoje"); } } });
     else hideFaixa("treino-desatualizado");
   }, [stale]);
+  const comVoltar = !pendente && !(RAIZ.has(screen) && route.parts.length === 0) && screen !== "hoje";
+  useGestosVoltar(route2Of(route, screen), !pendente && route.screen !== "entrar");
   // #54: #entrar é tela cheia, sem navegação (não há conta ainda); some a faixa e a mini-barra.
   if (route.screen === "entrar") return <div class="app focus entrar-app"><main class="main"><div class="wrap"><Faixa /><Entrar route={route} /></div></main><Toast /></div>;
   const Tela = SCREENS[screen];
-  const route2: Route = screen === route.screen ? route : { screen, parts: [], query: {} };
+  const route2 = route2Of(route, screen);
   const cur = (id: string) => (id === screen || (id === "mais" && MAIS.some((d) => d.id === screen)) ? "page" : undefined);
   void S;
   return <div class={`app${screen === "primeiros-passos" ? " focus" : ""}`}>
@@ -88,14 +103,14 @@ export function App() {
     <main class="main">
       <div class="wrap">
         <div class="top">
-          <div class="brand"><span class="logo"><Icon id="cycle" /></span>Ciclo</div>
+          {comVoltar ? <Voltar route={route2} /> : <div class="brand"><span class="logo"><Icon id="cycle" /></span>Ciclo</div>}
           <div class="row" style="gap:8px"><span class="status-pill">{pillText()}</span>
             <button type="button" class="iconbtn" onClick={toggleTheme} aria-label="Alternar tema"><Icon id="moon" /></button>
             <a class="iconbtn only-mobile" href="#mais" aria-label="Mais opções" aria-current={cur("mais")}><Icon id="more" /></a></div>
         </div>
         <Faixa />
         <LembreteDiario hidden={screen === "primeiros-passos"} />
-        <section class="view on" aria-label={screen}><Tela route={route2} /></section>
+        <section key={screen} class="view on" aria-label={screen}><Tela route={route2} /></section>
       </div>
     </main>
     <MiniBarra screen={screen} />

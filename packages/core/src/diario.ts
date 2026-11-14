@@ -119,7 +119,7 @@ export function healthText(h: HealthWeek, m: { suggest: boolean; reasons: string
 export const EXAM_MAX_PDF_BYTES = 5 * 1024 * 1024;
 export const EXAM_MAX_TEXT = 60_000;
 export const EXAM_TTL_MS = 7 * DAY;
-export const EXAM_AVISO = "Resumo do Claude a partir do seu laudo: não é diagnóstico. Converse com seu médico antes de mudar suplemento ou remédio.";
+export const EXAM_AVISO = "Resumo do Chat a partir do seu laudo: não é diagnóstico. Converse com seu médico antes de mudar suplemento ou remédio.";
 export const examExpiresAt = (createdAt: number) => createdAt + EXAM_TTL_MS;
 /** O PDF é lido no aparelho: só PDF e até 5 MB. Devolve a mensagem de erro ou null. */
 export function checkExamFile(f: { size: number; type: string }): string | null {
