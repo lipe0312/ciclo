@@ -1,6 +1,6 @@
 // Ponte entre o estado e o core: o que o app pergunta ao core (plano do dia, sugestão de carga) e
 // gravações compartilhadas entre telas (perfil, academia, dor, comida).
-import { C, S, commit, today } from "./index.ts";
+import { C, S, calc, commit, today } from "./index.ts";
 import { SERVER, api, flush, send } from "../api/index.ts";
 import { DOW, TZ, addDays, dowIdx, lsGet, lsSet, uid } from "../util.ts";
 
@@ -18,7 +18,7 @@ export function lastGroup(): C.Group | "full" | null {
   return g.length === 2 ? "full" : g[0] ?? null;
 }
 export function dayInput(ui = S.ui, extraPains: any[] = []): C.DayInput {
-  const p = S.profile, gym = gymById(ui.gymId);
+  const p = calc(), gym = gymById(ui.gymId);
   return {
     targets: C.weeklyTargets(p.level, p.priorities, false, C.fatorRampa(p, today)), done: S.week.done, freq: S.week.freq, priorities: p.priorities,
     daysLeft: ui.daysLeft, minutes: ui.minutes, lastGroup: lastGroup(), mode: ui.mode, focus: ui.focus.length ? ui.focus : null,
@@ -122,12 +122,12 @@ export function voltarAlimento(key: string) {
 export const estimarTexto = (text: string) => C.estimarComBase(text, FOODBASE.itens);
 /** "Faltam X g / ~Y kcal" do dia e até 2 sugestões dos alimentos que a pessoa já come. */
 export function faltaDoDia(d: string) {
-  const t = foodTotals(d), diet = S.profile.diet;
+  const t = foodTotals(d), diet = calc().diet;
   return C.faltaHoje({ kcal: diet.kcal, protein: diet.protein }, t, FOODBASE.itens);
 }
 /** Painel: média dos últimos 7 dias contra a meta, e a semana anterior para a tendência. */
 export function foodPanel() {
-  const d = S.profile.diet, targets = { kcal: d.kcal, protein: d.protein };
+  const d = calc().diet, targets = { kcal: d.kcal, protein: d.protein };
   const cur = C.foodAverages(entries(), today, targets), prev = C.foodAverages(entries(), addDays(today, -7), targets);
   const week = foodRows().filter((f) => f.date >= cur.from && f.date <= today);
   return { cur, prev, top: C.topProteinFoods(week as unknown as C.FoodEntry[]), targets, semana: C.semanaComida(entries(), today, targets) };
@@ -228,9 +228,9 @@ function demoDiet() {
   if (!DIET.templates.length) DIET.templates = [{ id: "t1", name: "Marmita", meal: "almoco", text: "arroz, feijão e frango", kcal: 590, prot: 58 }, { id: "t2", name: "Café padrão", meal: "cafe", text: "3 ovos, 2 pães e 1 whey", kcal: 610, prot: 51 }];
   DIET.history = lsGet<DietHist[]>(DEMO_HIST, []);
   if (!DIET.history.length) {
-    const r = C.adaptiveTarget({ weights: DIET.weights, intake: C.foodAverages(entries(), addDays(today, -1), { kcal: 1, protein: 1 }, 21).days.filter((d) => d.logged), currentKcal: S.profile.diet.kcal, pace: S.profile.diet.pace, end: addDays(today, -1) });
+    const r = C.adaptiveTarget({ weights: DIET.weights, intake: C.foodAverages(entries(), addDays(today, -1), { kcal: 1, protein: 1 }, 21).days.filter((d) => d.logged), currentKcal: calc().diet.kcal, pace: calc().diet.pace, end: addDays(today, -1) });
     if (r.code !== "sem_dados") {
-      DIET.history = [{ date: today, before: S.profile.diet.kcal, after: r.kcal, adjust: r.adjust, tdee: r.tdee, trendKgWeek: r.trendKgWeek, code: r.code, reason: r.reason }];
+      DIET.history = [{ date: today, before: calc().diet.kcal, after: r.kcal, adjust: r.adjust, tdee: r.tdee, trendKgWeek: r.trendKgWeek, code: r.code, reason: r.reason }];
       S.profile.diet.kcal = r.kcal; lsSet(DEMO_HIST, DIET.history);
     }
   }

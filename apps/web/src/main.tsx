@@ -3,7 +3,7 @@
 import { render } from "preact";
 import "./app.css";
 import { App } from "./app.tsx";
-import { C, S, commit, loadLocal, loadServer, seedDemo, today } from "./lib/store/index.ts";
+import { C, S, calc, commit, loadLocal, loadServer, seedDemo, today } from "./lib/store/index.ts";
 import { defaultGymFor } from "./lib/store/regras.ts";
 import { SERVER, paraEntrar, setHttpErrorHandler } from "./lib/api/index.ts";
 import { showFaixa } from "./lib/faixa/index.tsx";
@@ -37,7 +37,7 @@ async function boot() {
   }
   setVozAI(!!S.features.ai);
   S.ui.gymId = S.ui.gymId && S.gyms.some((g) => g.id === S.ui.gymId) ? S.ui.gymId : defaultGymFor(today);
-  if (!S.ui.minutesSet) { S.ui.minutes = S.profile.minutes; S.ui.minutesSet = true; S.ui.format = S.profile.dynamics; }
+  if (!S.ui.minutesSet) { S.ui.minutes = calc().minutes; S.ui.minutesSet = true; S.ui.format = calc().dynamics; }
   if (S.session && !S.session.finishedAt && C.resolveSession(S.session, Date.now()).status === "fechado_auto") autoClose();
   render(<App />, document.getElementById("app")!);
 }

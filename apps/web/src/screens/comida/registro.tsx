@@ -2,7 +2,7 @@
 import { useState } from "preact/hooks";
 import { MEALS, MEAL_NM, guessMeal } from "@ciclo/core";
 import type { Meal } from "@ciclo/core";
-import { S, commit, today } from "../../lib/store/index.ts";
+import { S, calc, commit, today } from "../../lib/store/index.ts";
 import { DIET, addFood, deleteFood, deleteTemplate, editFood, estimarTexto, faltaDoDia, foodRows, foodTotals, hourNow, saveTemplate } from "../../lib/store/regras.ts";
 import type { FoodRow } from "../../lib/store/regras.ts";
 import { Card, Chip, Icon, toast } from "../../lib/ui/index.tsx";
@@ -118,7 +118,7 @@ export function Registro({ dia }: { dia: string }) {
 
 /** "Faltam X g de proteína e ~Y kcal" e até 2 sugestões dos alimentos que a pessoa já come (core: faltaHoje). */
 function Falta({ dia }: { dia: string }) {
-  const f = faltaDoDia(dia), d = S.profile.diet, t = foodTotals(dia);
+  const f = faltaDoDia(dia), d = calc().diet, t = foodTotals(dia);
   if (!f.sugestoes.length) return <p class="small" style="margin-top:10px"><b>Proteína batida{f.kcal ? `; faltam ~${fmt(f.kcal)} kcal para a meta` : ""}.</b> O resto é livre.</p>;
   return <div style="margin-top:10px">
     <p class="small num"><b>Faltam {fmt(f.prot)} g de proteína{f.kcal ? <> e ~{fmt(f.kcal)} kcal</> : ""}.</b> <span class="sub">({fmt(t.prot)} de {fmt(d.protein)} g · {fmt(t.kcal)} de {fmt(d.kcal)} kcal)</span></p>
@@ -128,7 +128,7 @@ function Falta({ dia }: { dia: string }) {
 
 /** O dia escolhido (hoje por padrão): totais contra a meta, registros com editar e apagar, e navegação pelos últimos dias. */
 export function DiaCard({ dia, setDia }: { dia: string; setDia: (d: string) => void }) {
-  const d = S.profile.diet, t = foodTotals(dia), rows = foodRows().filter((f) => f.date === dia);
+  const d = calc().diet, t = foodTotals(dia), rows = foodRows().filter((f) => f.date === dia);
   const [apagar, setApagar] = useState<string | null>(null);
   const min = addDays(today, -13);
   return <Card>

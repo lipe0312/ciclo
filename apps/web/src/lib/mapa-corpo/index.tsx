@@ -4,7 +4,7 @@
 // As subdivisões de cada grupo vêm do core (priorityGroups); o detalhe por subparte fica no Perfil (modo avançado).
 import { useState } from "preact/hooks";
 import { C, S } from "../store/index.ts";
-import { Icon, Seg, toast } from "../ui/index.tsx";
+import { Icon, toast } from "../ui/index.tsx";
 import { COSTAS, FRENTE, MIRROR, SIL } from "../mapa-musculos/index.tsx";
 import type { Shapes } from "../mapa-musculos/index.tsx";
 import { setSubPriorities } from "../prioridades/index.tsx";
@@ -72,7 +72,9 @@ export function SeletorGrupos({ onChange }: { onChange: () => void }) {
   return <div class="mc">
     <div class="mc-topo">
       <p class={`mc-cont num ${cheio ? "cheio" : ""}`} role="status" aria-live="polite"><b>{sel.length} de {C.MAX_PRIORITIES}</b> prioridades{cheio ? " · máximo" : ""}</p>
-      <Seg opts={[["frente", "Frente"], ["costas", "Costas"]]} value={vista} onPick={setVista} label="Lado do corpo" cls="mc-seg" />
+      {/* #71 trocar o lado do desenho é vista (aba), não resposta: aria-selected, para nada parecer "marcado" */}
+      <div class="seg mc-seg" role="tablist" aria-label="Lado do corpo">{([["frente", "Frente"], ["costas", "Costas"]] as [Vista, string][]).map(([v, nm]) =>
+        <button type="button" key={v} role="tab" aria-selected={vista === v} onClick={() => setVista(v)}>{nm}</button>)}</div>
     </div>
     <div class="mc-corpo">
       <div class={`mc-figs ver-${vista}`}><Figura vista="frente" sel={sel} onToggle={toggle} /><Figura vista="costas" sel={sel} onToggle={toggle} /></div>

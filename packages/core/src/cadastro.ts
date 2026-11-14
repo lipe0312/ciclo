@@ -1,8 +1,8 @@
 // #62 Cadastro por convite e dados da conta: nome, sobrenome, sexo (obrigatório, com "prefiro não dizer"), nascimento
 // opcional, aceite LGPD versionado, Face ID de novo (ausência longa e ações sensíveis), conta nova vazia e iniciais
 // do avatar. Regras puras: o Worker valida com elas e o app mostra com elas.
-import { DEFAULT_PROFILE } from "./perfil.ts";
-import type { ProfileData } from "./perfil.ts";
+import { perfilVazio } from "./perfil.ts";
+import type { PerfilApp, PerfilRascunho } from "./perfil.ts";
 import { nomeValido } from "./conta.ts";
 
 const DIA = 86_400_000;
@@ -108,17 +108,33 @@ export function contaNovaVazia(contagem: Record<string, number>, permitidas: rea
   return Object.keys(contagem).filter((t) => contagem[t] > 0 && !permitidas.includes(t)).sort();
 }
 
-/** Ponto de partida do perfil de treino de uma conta nova: nada marcado (objetivo, prioridades, dias, lugares e academia
- *  por dia em branco). Sexo, idade, altura e peso vêm do cadastro quando a pessoa informou; o resto é o formato do core. */
-export function perfilContaNova(conta: { sexo?: string | null; nascimento?: string | null; alturaCm?: number | null; pesoKg?: number | null }, hoje: string): ProfileData {
-  const p: ProfileData = JSON.parse(JSON.stringify(DEFAULT_PROFILE));
-  p.goal = { ...p.goal, id: "", statement: "" };
-  p.priorities = []; p.subPriorities = []; p.daysUsual = []; p.places = []; p.dayGym = {};
+/** #71 O que o cadastro já sabe para o perfil de treino (sexo, idade, altura, peso), quando a pessoa informou. Nada do DEFAULT_PROFILE.
+ *  Nos Primeiros passos isto aparece como SUGESTÃO ("Usar do cadastro"), nunca como resposta já marcada. */
+export function perfilContaNova(conta: { sexo?: string | null; nascimento?: string | null; alturaCm?: number | null; pesoKg?: number | null }, hoje: string): PerfilRascunho {
+  const p: PerfilRascunho = {};
   if (conta.sexo === "feminino") p.sex = "f"; else if (conta.sexo === "masculino") p.sex = "m";
   if (conta.nascimento && nascimentoValido(conta.nascimento, hoje).ok) p.age = idade(conta.nascimento, hoje);
   if (conta.alturaCm) p.heightCm = conta.alturaCm;
   if (conta.pesoKg) p.weightKg = conta.pesoKg;
   return p;
+}
+
+const obj = (v: unknown): Record<string, any> => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, any>) : {});
+/**
+ * #71 O perfil que o app usa: vazio (sem resposta marcada) + o que está salvo no servidor. Substitui o `{ ...DEFAULT_PROFILE, ...salvo }`
+ * antigo, que misturava o padrão do dono com os dados da pessoa. O cadastro não entra aqui (é sugestão: `perfilContaNova`).
+ */
+export function montarPerfilApp(salvo: Record<string, unknown> | null | undefined): PerfilApp {
+  const base = perfilVazio() as Record<string, any>;
+  const s = obj(salvo);
+  for (const k of Object.keys(s)) {
+    if (s[k] == null || !(k in base)) continue;
+    if (k === "goal") base.goal = { ...base.goal, ...obj(s.goal), metrics: { ...base.goal.metrics, ...obj(obj(s.goal).metrics) } };
+    else if (["diet", "mobility", "meta", "prefs", "pinned", "dayGym", "tiers"].includes(k)) base[k] = { ...base[k], ...obj(s[k]) };
+    else if (Array.isArray(base[k]) !== Array.isArray(s[k])) continue;
+    else base[k] = structuredClone(s[k]);
+  }
+  return base as PerfilApp;
 }
 
 /** Iniciais do avatar: primeira letra do nome e do sobrenome (ou das duas primeiras palavras do nome). */

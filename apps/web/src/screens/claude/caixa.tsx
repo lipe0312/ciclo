@@ -1,5 +1,5 @@
 // Caixa de pedidos ao Chat (connector MCP). No demo, respostas ilustrativas; no servidor, o Chat responde ao processar a caixa.
-import { C, S, commit, today, loadServer } from "../../lib/store/index.ts";
+import { C, S, calc, commit, today, loadServer } from "../../lib/store/index.ts";
 import { FOCUS, EXB, activePlan, addFood, addPain, computePlan, dayInput, estimateFood, foodTotals, mName } from "../../lib/store/regras.ts";
 import { SERVER, send } from "../../lib/api/index.ts";
 import { Card, Chip, Icon, Seg, toast } from "../../lib/ui/index.tsx";
@@ -26,7 +26,7 @@ function demoAnswer(m: any): { response: string; change?: any } {
     case "nao_gostei": return { response: "Virei em superséries (pares de músculos diferentes, 15 s entre eles). Mesmo volume, menos tempo parado.", change: { format: "superserie" } };
     case "dor": { const region = /escápula|escapula/.test(t) ? (/direit/.test(t) ? "escapula_d" : "escapula_e") : /lombar/.test(t) ? "lombar" : /joelho/.test(t) ? "joelho_d" : "ombro_d";
       return { response: `Registrei dor (${C.REGION_BY_ID[region].nm}, média). Saem os exercícios que forçam a região e entra fortalecimento no aquecimento. Se persistir por mais de 1–2 semanas ou for forte, procure um fisioterapeuta.`, change: { pain: { region, intensity: 2 } } }; }
-    case "registrar_comida": { const tot = estimateFood(m.text); return { response: tot.kcal ? `Estimativa: ~${fmt(tot.kcal)} kcal e ${fmt(tot.prot)} g de proteína. Faltam ~${fmt(Math.max(0, S.profile.diet.protein - foodTotals(today).prot - tot.prot))} g de proteína hoje.` : "Me diga o que comeu e eu estimo pela tabela TACO.", change: tot.kcal ? { food: m.text } : null }; }
+    case "registrar_comida": { const tot = estimateFood(m.text); return { response: tot.kcal ? `Estimativa: ~${fmt(tot.kcal)} kcal e ${fmt(tot.prot)} g de proteína. Faltam ~${fmt(Math.max(0, calc().diet.protein - foodTotals(today).prot - tot.prot))} g de proteína hoje.` : "Me diga o que comeu e eu estimo pela tabela TACO.", change: tot.kcal ? { food: m.text } : null }; }
     case "registrar_treino": return { response: "Registrado no treino de hoje.", change: null };
     case "explicar": { const it = plan.items[0]; return { response: `${it.nm}: ${EXB[it.exerciseId]?.stretch ? "trabalha o músculo alongado, o que tende a dar mais hipertrofia; " : ""}é prioridade (${mName(it.muscle)}) e cabe nos aparelhos de hoje.`, change: null }; }
     case "revisao_semana": return { response: `Semana em ${plan.weekClosePct}%: ${C.MUSCLE_IDS.filter((x) => (S.week.freq[x] ?? 0) >= 2).length} músculos com 2×. Sono abaixo de 7 h em ${Object.values(S.week.checkins).filter((c: any) => c.sleepH < 7).length} dia(s). Sugestões: 1) manter +1 série de tríceps (pouca dor, progrediu); 2) proteína: 1 whey extra nos dias sem almoço com carne.`, change: null };

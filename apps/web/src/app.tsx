@@ -1,7 +1,7 @@
 // Casca do app: navegação, faixa de avisos, mini-barra, folha e toast. Cada tela vive em screens/<tela>/.
 import type { FunctionComponent } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { S, commit, useStore } from "./lib/store/index.ts";
+import { C, S, commit, useStore } from "./lib/store/index.ts";
 import { planIsStale, regeneratePlan } from "./lib/store/regras.ts";
 import { SERVER, onQueue, queue } from "./lib/api/index.ts";
 import { useRoute } from "./lib/roteador/index.ts";
@@ -73,11 +73,11 @@ export function App() {
     if (SERVER && (queue.length || !navigator.onLine)) showFaixa({ id: "offline", tone: "warn", text: `Sem conexão: usando o que está no aparelho${queue.length ? ` · ${queue.length} alteração(ões) na fila` : ""}.`, closable: false });
     else hideFaixa("offline");
   }, [tick]);
-  // Conta nova: tudo cai nos Primeiros passos até terminar (Conta continua acessível).
+  // Conta nova: tudo cai nos Primeiros passos até terminar (Conta e o menu ⋯ continuam acessíveis; #71: antes o ⋯ caía de volta aqui).
   const pendente = SERVER && S.onboarding === "pendente";
   const pedida = route.screen === "claude" ? "chat" : route.screen; // #64: a aba virou Chat; #claude antigo continua abrindo
   const wanted = SCREENS[pedida] ? pedida : "hoje";
-  const screen = pendente && wanted !== "conta" ? "primeiros-passos" : wanted;
+  const screen = C.telaComCheckupPendente(wanted, !!pendente);
   // Perfil mudou depois de o treino ser gerado: avisa e oferece regenerar (nunca regenera sozinho).
   const stale = planIsStale() && !pendente;
   useEffect(() => {

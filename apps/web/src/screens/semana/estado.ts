@@ -1,7 +1,7 @@
 // Estado da semana planejada (#24). Servidor: /api/week (versões no D1). Demonstração: o mesmo core roda no navegador
 // com dados fictícios e as versões ficam no localStorage. Hoje lê daqui o treino do dia e os dias que restam.
 import * as C from "@ciclo/core";
-import { S, commit, monday, today } from "../../lib/store/index.ts";
+import { S, calc, commit, monday, today } from "../../lib/store/index.ts";
 import { SERVER, api } from "../../lib/api/index.ts";
 import { toast } from "../../lib/ui/index.tsx";
 import { lsGet, lsSet } from "../../lib/util.ts";
@@ -86,7 +86,7 @@ const demo = (() => {
   const KEY = `ciclo:v1:demo:semana-versoes:${monday}`;
   const ok = { sleepH: 8, energy: 3, soreness: 0, stress: 1 } as const;
   const prog = () => C.weekProgression({
-    base: C.weeklyTargets(S.profile.level, S.profile.priorities), prevWeeks: [{ offsets: {} }], checkinsByWeek: [[ok, ok, ok, ok]],
+    base: C.weeklyTargets(calc().level, S.profile.priorities), prevWeeks: [{ offsets: {} }], checkinsByWeek: [[ok, ok, ok, ok]],
     pump: { ombro: [0, 1], triceps: [1, 2], biceps: [2, 2] }, freq: Object.fromEntries(C.MUSCLE_IDS.map((m) => [m, 2])),
     e1rm: [
       { exerciseId: "Cable_Rope_Overhead_Triceps_Extension", muscle: "triceps", week: 1, value: 26 }, { exerciseId: "Cable_Rope_Overhead_Triceps_Extension", muscle: "triceps", week: 0, value: 28 },
@@ -97,7 +97,7 @@ const demo = (() => {
     const sets: Record<string, C.Sets> = {};
     for (const ses of S.week.sessions as { date: string; groups?: C.Group[] }[])
       for (const m of C.MUSCLE_IDS) if (ses.groups?.includes(C.MUSCLES[m].group) && S.week.done[m]) (sets[ses.date] ??= {})[m] = S.week.done[m];
-    const p = S.profile;
+    const p = calc();
     return {
       weekStart: monday, today, sets, attendance: S.week.attendance as C.WeekInput["attendance"],
       profile: { daysUsual: p.daysUsual, daysTarget: p.daysTarget, minutes: p.minutes, priorities: p.priorities, dayGym: p.dayGym,

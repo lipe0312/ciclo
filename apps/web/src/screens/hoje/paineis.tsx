@@ -2,7 +2,7 @@
 // presença e cardio. SVG próprio (lib/grafico); o valor SEMPRE vem escrito e a cor nunca é o único sinal.
 // Cada painel tem 2 CTAs: um para alterar e um para ver o detalhe.
 import type { ComponentChildren } from "preact";
-import { C, S } from "../../lib/store/index.ts";
+import { C, S, calc } from "../../lib/store/index.ts";
 import { EXB, mName } from "../../lib/store/regras.ts";
 import { Card, Icon } from "../../lib/ui/index.tsx";
 import { Colunas, Linha } from "../../lib/grafico/index.tsx";
@@ -52,7 +52,7 @@ export function Objetivo({ view }: { view: C.HomeView }) {
 
 // ---------- volume ----------
 export function Volume({ view }: { view: C.HomeView }) {
-  const t = C.weeklyTargets(S.profile.level, S.profile.priorities);
+  const t = C.weeklyTargets(calc().level, S.profile.priorities);
   const ms = C.MUSCLE_IDS.filter((m) => view.series.volume[m]);
   const tem = ms.some((m) => view.series.volume[m]!.some((n) => n > 0));
   return <Painel titulo="Volume por músculo" resumo={<span class="small sub">últimas {PAINEL} semanas</span>} alterar={["Mudar prioridades", "#perfil/prioridades"]} detalhe={["Ver a semana", "#semana"]}>

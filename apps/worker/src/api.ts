@@ -125,11 +125,20 @@ on("PUT", "/api/measurements/:date", async (req, env, p, u) => {
   return json({ ok: true });
 });
 
-// O app manda o perfil inteiro; a mesma validação do core vale para o Claude (ciclo_salvar_perfil).
-on("PUT", "/api/profile", async (req, env, _p, u) => {
+// O app manda o perfil inteiro (Perfil); a mesma validação do core vale para o Claude (ciclo_salvar_perfil).
+// #71: rascunho vale (campo vazio = não respondido) e o erro volta com texto humano.
+const profileBody = async (req: Request) => {
   const b = await readJson<{ data: Record<string, unknown> }>(req, 32 * 1024);
-  if (!b.data || typeof b.data !== "object" || Array.isArray(b.data)) throw new HttpError(400, "data inválido");
-  await saveProfile(env, u.id, b.data, "replace");
+  if (!b.data || typeof b.data !== "object" || Array.isArray(b.data)) throw new HttpError(400, "Não deu para salvar agora. Tente de novo.");
+  return b.data;
+};
+on("PUT", "/api/profile", async (req, env, _p, u) => {
+  await saveProfile(env, u.id, await profileBody(req), "replace", {}, true);
+  return json({ ok: true });
+});
+// #71 Primeiros passos: cada Continuar manda só os campos daquele passo; mescla no que já está salvo.
+on("PATCH", "/api/profile", async (req, env, _p, u) => {
+  await saveProfile(env, u.id, await profileBody(req), "merge", {}, true);
   return json({ ok: true });
 });
 

@@ -1,7 +1,7 @@
 // Detalhe do exercício: 2 imagens, passo a passo, músculos no mapa, aparelho, faixa de reps, dicas, erros,
 // alternativas e a mídia do SEU aparelho (quando houver).
 import * as C from "@ciclo/core";
-import { S } from "../../lib/store/index.ts";
+import { S, calc } from "../../lib/store/index.ts";
 import { Card, Icon } from "../../lib/ui/index.tsx";
 import { Carrossel } from "../../lib/carrossel/index.tsx";
 import { DEFAULT_SUB, MapaMusculos } from "../../lib/mapa-musculos/index.tsx";
@@ -30,7 +30,7 @@ export function Detalhe({ id }: { id: string }) {
           <span>{it.eq.length ? it.eq.map((e) => C.EQUIPMENT_BY_ID[e]?.nm ?? e).join(" + ") : "sem aparelho"}</span></div></Card>
       <List title="Como fazer" items={it.howTo} empty="Passo a passo em revisão. Enquanto isso: movimento controlado, amplitude completa e sobrar 1–2 repetições." />
       <div class="grid g2"><List title="Dicas" items={it.tips} empty="Em breve." /><List title="Erros comuns" items={it.mistakes} empty="Em breve." /></div>
-      {it.type === "cardio" && <Card><h2>Intensidade</h2>{(Object.keys(C.INTENSITIES) as C.Intensity[]).map((k) => <div key={k} class="row between small" style="padding:6px 0"><span><b>{C.INTENSITIES[k].nm}</b> · {C.INTENSITIES[k].desc}</span><span class="num sub">~{C.cardioKcal(it, k, S.profile.weightKg, 30)} kcal/30 min</span></div>)}</Card>}
+      {it.type === "cardio" && <Card><h2>Intensidade</h2>{(Object.keys(C.INTENSITIES) as C.Intensity[]).map((k) => <div key={k} class="row between small" style="padding:6px 0"><span><b>{C.INTENSITIES[k].nm}</b> · {C.INTENSITIES[k].desc}</span><span class="num sub">~{C.cardioKcal(it, k, calc().weightKg, 30)} kcal/30 min</span></div>)}</Card>}
     </div><div class="stack">
       {primary.length > 0 && <Card><h2>Músculos</h2><MapaMusculos primary={primary} secondary={it.secondary} size="sm" /></Card>}
       {it.type === "forca" && <Card><h2>Seu aparelho</h2><MediaBox exId={it.id} grande /></Card>}

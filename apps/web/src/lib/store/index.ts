@@ -2,7 +2,7 @@
 // Telas leem `S` direto e chamam `commit()` depois de mudar algo. Campos novos do /api/state são tolerados.
 import { useEffect, useState } from "preact/hooks";
 import * as C from "@ciclo/core";
-import { SERVER, api } from "../api/index.ts";
+import { SERVER, api, queue } from "../api/index.ts";
 import { addDays, clone, isoDate, lsGet, lsSet } from "../util.ts";
 
 export { C };
@@ -11,9 +11,10 @@ export const today = SERVER ? realToday : addDays(C.mondayOf(realToday), 3); // 
 export const monday = C.mondayOf(today);
 export const dates = C.weekDates(monday);
 
-/** O perfil padrão e a validação vivem no core (o servidor usa a mesma regra). */
+/** O perfil padrão e a validação vivem no core (o servidor usa a mesma regra). O padrão é só da demonstração. */
 export const DEFAULT_PROFILE = C.DEFAULT_PROFILE;
-export type Profile = typeof DEFAULT_PROFILE;
+/** #71 No servidor, resposta não dada é `null`/`""`/lista vazia (C.perfilVazio); nunca o padrão de outra pessoa. */
+export type Profile = C.PerfilApp;
 export interface Gym { id: string; name: string; equipment: string[]; busyHours: string[]; kind?: C.PlaceKind; address?: string | null; lat?: number | null; lng?: number | null }
 /** Foto/vídeo da regulagem de um aparelho de um lugar (#26). `url` só existe depois de enviada (ou no demo, em memória). */
 export interface GymMedia { id: string; kind: "foto" | "video"; equipmentId: string; gymId: string; note: string | null; url?: string }
@@ -24,7 +25,8 @@ export const DEFAULT_GYMS: Gym[] = [
 ];
 
 export const S = {
-  profile: clone(DEFAULT_PROFILE), gyms: clone(DEFAULT_GYMS),
+  // #71 servidor: começa vazio (offline no 1º acesso não mostra o padrão do dono); demo: os dados fictícios de sempre
+  profile: (SERVER ? C.perfilVazio() : clone(DEFAULT_PROFILE)) as Profile, gyms: clone(DEFAULT_GYMS),
   week: { done: {} as Record<string, number>, freq: {} as Record<string, number>, attendance: {} as Record<string, string>, checkins: {} as Record<string, any>, sessions: [] as any[],
     /** cardio da semana (resumo: C.cardioWeekSummary) */ cardio: [] as C.CardioEntry[] },
   pains: [] as any[], inbox: [] as any[], food: [] as any[], media: {} as Record<string, any>, gymMedia: [] as GymMedia[], history: {} as Record<string, C.SetLog[]>,
@@ -45,6 +47,8 @@ export type State = typeof S;
 
 // ---------- re-render ----------
 const subs = new Set<() => void>();
+/** #71 Perfil para calcular (metas, volume, cardio): o não respondido vira valor técnico. Nunca para mostrar como resposta. */
+export const calc = () => C.perfilCalculo(S.profile);
 export function commit() { saveLocal(); subs.forEach((f) => f()); }
 export function useStore() {
   const [, set] = useState(0);
@@ -68,12 +72,34 @@ export function loadLocal() {
   return true;
 }
 
+// ---------- #71 rascunho dos Primeiros passos (no aparelho, por conta) ----------
+const RK = "ciclo:pp-rascunho";
+const contaId = (a: any) => String(a?.email ?? a?.createdAt ?? "?");
+/** Respostas ainda não confirmadas pelo servidor. Só vale para a mesma conta (aparelho compartilhado não mistura). */
+export const rascunhoPP = {
+  ler: (conta: unknown = S.account): Record<string, unknown> => { const r = lsGet<{ conta?: string; data?: Record<string, unknown> } | null>(RK, null); return r && r.conta === contaId(conta) && r.data ? r.data : {}; },
+  gravar: (patch: Record<string, unknown>) => { lsSet(RK, { conta: contaId(S.account), data: mesclarRascunho(rascunhoPP.ler(), patch) }); },
+  limpar: () => lsSet(RK, null),
+};
+
 // ---------- servidor ----------
+/** Um passo por cima do outro (objetos de 1 nível mesclam; o resto troca), como o PATCH do servidor. */
+export function mesclarRascunho(a: Record<string, unknown>, b: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    const cur = out[k];
+    out[k] = v && typeof v === "object" && !Array.isArray(v) && cur && typeof cur === "object" && !Array.isArray(cur) ? { ...cur, ...v } : v;
+  }
+  return out;
+}
 export async function loadServer() {
   const st = await api("GET", `/api/state?date=${today}`);
-  // #62: conta nova = vazia. Sem perfil salvo, nada vem marcado (objetivo, prioridades, dias, lugares) e não há academia de exemplo.
-  const vazio = !st.profile || !Object.keys(st.profile).length;
-  S.profile = { ...(vazio ? C.perfilContaNova(st.account ?? {}, today) : clone(DEFAULT_PROFILE)), ...(st.profile ?? {}) };
+  // #62/#71: conta nova = vazia. O perfil é o rascunho salvo sobre o vazio (+ o que veio do cadastro); nada do DEFAULT_PROFILE por baixo.
+  // Respostas ainda na fila offline (PATCH dos Primeiros passos) entram por cima, para recarregar sem sinal não "desfazer" o passo.
+  // Por cima de tudo, o rascunho do passo em andamento (gravado no aparelho a cada toque): recarregar no meio do passo não perde nada.
+  const pendentes = queue.filter((q) => q.method === "PATCH" && q.path === "/api/profile").map((q) => (q.body as { data?: Record<string, unknown> })?.data ?? {});
+  pendentes.push(rascunhoPP.ler(st.account));
+  S.profile = C.montarPerfilApp(pendentes.reduce((a, d) => mesclarRascunho(a, d), (st.profile ?? {}) as Record<string, unknown>));
   S.gyms = st.gyms ?? [];
   S.features = st.features ?? S.features;
   S.account = st.account ?? null; S.onboarding = st.onboarding ?? null;

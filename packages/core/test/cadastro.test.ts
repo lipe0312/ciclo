@@ -88,11 +88,10 @@ test("conta nova = vazia: só credenciais, sessão e aceite podem ter linhas", (
   assert.deepEqual(contaNovaVazia({ passkeys: 1, gym: 1, profile: 1, day_plan: 0 }), ["gym", "profile"]);
 });
 
-test("perfil de treino da conta nova: nenhum padrão marcado (objetivo, prioridades, dias, lugares, academia por dia)", () => {
+test("perfil de treino da conta nova: nenhum padrão marcado (#71: só o que veio do cadastro)", () => {
   const p = perfilContaNova({ sexo: "feminino", nascimento: "1996-11-15", alturaCm: 165, pesoKg: null }, HOJE);
-  assert.equal(p.goal.id, ""); assert.deepEqual(p.priorities, []); assert.deepEqual(p.subPriorities, []);
-  assert.deepEqual(p.daysUsual, []); assert.deepEqual(p.places, []); assert.deepEqual(p.dayGym, {});
-  assert.equal(p.sex, "f"); assert.equal(p.age, 29); assert.equal(p.heightCm, 165); assert.equal(p.weightKg, DEFAULT_PROFILE.weightKg);
+  assert.equal(p.goal, undefined); assert.equal(p.priorities, undefined); assert.equal(p.places, undefined); assert.equal(p.dayGym, undefined);
+  assert.equal(p.sex, "f"); assert.equal(p.age, 29); assert.equal(p.heightCm, 165); assert.equal(p.weightKg, undefined, "peso não informado não vira o do dono");
   assert.deepEqual(DEFAULT_PROFILE.priorities, ["ombro", "biceps", "triceps"], "o padrão do core não muda");
   assert.equal(perfilContaNova({ sexo: "masculino" }, HOJE).sex, "m");
 });

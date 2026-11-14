@@ -100,7 +100,7 @@ svg.i{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke
 hr{border:0;border-top:1px solid var(--borda);margin:14px 0}
 .seg{display:inline-flex;background:var(--sup-2);border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
 .seg button{min-height:44px;min-width:44px;padding:0 12px;border:0;border-radius:8px;background:transparent;font-weight:700;cursor:pointer;color:var(--sub)}
-.seg button[aria-pressed="true"]{background:var(--sup);color:var(--txt);box-shadow:0 0 0 1px var(--borda)}
+.seg button[aria-pressed="true"],.seg button[aria-selected="true"]{background:var(--sup);color:var(--txt);box-shadow:0 0 0 1px var(--borda)}
 label.f,.f{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
 .input{width:100%;min-height:44px;border-radius:10px;border:1px solid var(--borda-ctrl);background:var(--sup);padding:10px 12px}
 textarea.input{min-height:84px;resize:vertical}
@@ -394,6 +394,16 @@ a.altlink{color:inherit;text-decoration:none}
 .pp-cta{position:sticky;bottom:0;margin-top:20px;padding:12px 0 calc(12px + env(safe-area-inset-bottom));background:linear-gradient(to top,var(--bg) 78%,transparent)}
 .pp-prev{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}
 .pp-prev li{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+/* #71 Primeiros passos: "Salvo", sugestão (tracejada, nunca marcada), campos de número, Pular etapa e o que falta */
+.pp-salvo{min-height:18px;margin-top:6px;display:flex;align-items:center;gap:4px}
+.pp-salvo svg{width:14px;height:14px;color:var(--ok)}
+.pp-sug{margin-bottom:14px;padding:var(--sp-3);border:1.5px dashed var(--borda-ctrl);border-radius:var(--r)}
+.chip.sug{border-style:dashed;background:transparent;color:var(--sub);cursor:default}
+.pp-nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sp-3);margin-top:var(--sp-4)}
+.pp-num .input{text-align:center}
+.pp-pular{margin-top:var(--sp-2)}
+.pp-falta-l{margin:6px 0 0;padding-left:18px}
+.pp-falta-l li{font-size:14px}
 .prio-list{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px}
 .prio-list li{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border:1px solid var(--borda);border-radius:12px;background:var(--sup)}
 .prio-list .prio-empty{display:block;border-style:dashed;padding:12px}
