@@ -191,7 +191,8 @@ test("recuperação: código vale uma vez, só hash no banco; 2ª passkey e apag
   assert.equal((await as(env, ck, "DELETE", `/api/account/passkeys/${pks[0].id}`)).status, 200);
   assert.equal((await entrar(env, a.auth)).status, 401, "passkey apagada não entra");
   assert.equal((await registrar(env, {})).status, 401, "adicionar passkey exige estar logado");
-  // #62: ver códigos novos pede Face ID; a sessão do código de recuperação não teve Face ID
+  // #62: o código de recuperação vale como verificação recente por 5 min (para criar a passkey nova); depois, Face ID de novo
+  env.DB.raw.prepare("UPDATE sessions SET reauth_at = ?1 WHERE via = 'recuperacao'").run(Date.now() - 6 * 60_000);
   const semFace = await as(env, ck, "POST", "/api/account/recovery-codes", {});
   assert.equal(semFace.status, 403); assert.equal(semFace.data.code, "reauth");
   const comFace = (await entrar(env, mac.auth)).cookie;

@@ -23,6 +23,7 @@ export default {
     if (url.pathname === "/mcp") {
       const u = await authenticateMcp(req, env);
       if (!u) return unauthorized();
+      if (u.aceitePendente) return json({ error: "aceite os termos e a privacidade atualizados no app do Ciclo antes de usar pelo Claude", code: "aceite" }, 403); // #62
       return handleMcp(req, env, u);
     }
 
@@ -30,6 +31,7 @@ export default {
     if (url.pathname === "/mcp/media" && req.method === "POST") {
       const u = await authenticateMcp(req, env);
       if (!u) return unauthorized();
+      if (u.aceitePendente) return json({ error: "aceite os termos e a privacidade atualizados no app", code: "aceite" }, 403); // #62
       try {
         const wait = await hitRateLimit(env, u.id, "upload");
         if (wait) return json({ error: "muitas requisições; tente de novo em instantes" }, 429, { "Retry-After": String(wait) });

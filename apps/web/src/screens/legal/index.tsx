@@ -28,7 +28,7 @@ export function Privacidade({ controlador }: { controlador?: Legal["controlador"
   return <div class="legal-txt">
     <p class="tiny sub">Versão de {dataBR(C.CONSENT_VERSAO.privacidade)}</p>
     <h3>Controlador</h3>
-    <p>{nome}{controlador?.email ? <> · contato: <a class="link44" href={`mailto:${controlador.email}`}>{controlador.email}</a></> : null}</p>
+    <p>{nome}{controlador?.email ? <> · contato: <a class="link44" href={`mailto:${controlador.email}`}>{controlador.email}</a></> : <> · contato: fale com quem te convidou.</>}</p>
     <h3>Dados coletados</h3>
     <ul>
       <li><b>Cadastro:</b> nome, sobrenome, e-mail, sexo e nascimento.</li>

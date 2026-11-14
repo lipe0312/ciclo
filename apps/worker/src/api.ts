@@ -61,7 +61,11 @@ on("GET", "/api/state", async (req, env, _p, u) => {
 });
 
 // ---- conta (LGPD + token do Claude) ----
-on("GET", "/api/account", async (_req, env, _p, u) => json({ account: await account(env, u), onboarding: onboarding(u), aceitePendente: !!u.aceitePendente }));
+on("GET", "/api/account", async (_req, env, _p, u) => json({
+  account: await account(env, u), onboarding: onboarding(u), aceitePendente: !!u.aceitePendente,
+  // #62: só para o dono, enquanto o secret do 1º acesso existir: a tela Conta avisa para apagá-lo (sem revelar o valor)
+  ...(u.role === "owner" ? { setupPendente: !!env.OWNER_SETUP_CODE } : {}),
+}));
 
 on("PATCH", "/api/account", async (req, env, _p, u) => {
   const b = await readJson<Record<string, unknown>>(req, 4 * 1024);

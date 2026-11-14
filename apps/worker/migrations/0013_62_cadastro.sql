@@ -18,6 +18,10 @@ ALTER TABLE sessions ADD COLUMN aviso_ok INTEGER;
 -- Convite amarrado a um e-mail e ao nome de quem foi convidado (o dono preenche; aparece na boas-vindas).
 ALTER TABLE invites ADD COLUMN nome TEXT CHECK (nome IS NULL OR length(nome) BETWEEN 1 AND 40);
 
+-- Convite de conta nova sem e-mail (anterior à #62) deixa de valer: o convite agora é amarrado ao e-mail.
+-- (Reset de acesso, com user_id, continua.) Vencer = expires_at 0; o cron apaga depois.
+UPDATE invites SET expires_at = 0 WHERE email IS NULL AND user_id IS NULL AND used_at IS NULL;
+
 -- Aceite dos termos e da privacidade, por versão. ip_hash = HMAC do IP com AUTH_PEPPER (nunca o IP puro).
 -- Versão nova do documento = sem linha da versão vigente = o app pede o aceite de novo antes de usar.
 CREATE TABLE consent (

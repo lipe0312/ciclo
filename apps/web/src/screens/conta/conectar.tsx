@@ -34,7 +34,7 @@ function Passo({ n, estado, titulo, children }: { n: number; estado: "feito" | "
   </li>;
 }
 
-export function Conectar({ demo, viaAccess }: { demo: boolean; viaAccess?: boolean }) {
+export function Conectar({ demo }: { demo: boolean }) {
   const [lista, setLista] = useState<Lista | null>(null);
   const [nova, setNova] = useState<{ id: string; token: string } | null>(null);
   const [rotulo, setRotulo] = useState("claude.ai");
@@ -122,7 +122,6 @@ export function Conectar({ demo, viaAccess }: { demo: boolean; viaAccess?: boole
         <Campo rotulo="URL do connector" valor={url} oque="URL" exemplo={demo} />
         <Campo rotulo="Request header" valor={C.cabecalhoAuth(chave ?? "<sua chave>")} copia={chave ? C.cabecalhoAuth(chave) : undefined} oque="Cabeçalho" exemplo={demo} />
         {!chave && !demo && <p class="tiny sub">Gere uma chave nova no passo 2 para o cabeçalho sair pronto (as antigas não aparecem de novo).</p>}
-        {viaAccess && <div class="note warn"><Icon id="warn" /><span>Enquanto o app estiver atrás do Cloudflare Access, crie em <b>Zero Trust → Access → Applications</b> uma aplicação para o caminho <code class="mono">/mcp</code> com a política <b>Bypass → Everyone</b>. Sem isso, o Claude não passa.</span></div>}
       </Passo>
 
       <Passo n={4} estado={conectado ? "feito" : est(4)} titulo="Testar">

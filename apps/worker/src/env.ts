@@ -6,6 +6,7 @@ export interface Env {
   APP_VERSION: string;
   MCP_TOKEN?: string;          // só bootstrap LOCAL (DEV_NO_AUTH + localhost) → usuário de dev "dev". Ignorado em produção.
   OWNER_SETUP_CODE?: string;   // #54: código de uso único da PRIMEIRA conta (owner), ≥ 16 caracteres — `wrangler secret put`. Pode apagar depois.
+  CONTATO_EMAIL?: string;      // #62: e-mail de contato do controlador em #privacidade (separado do OWNER_EMAIL; `wrangler secret put`, nunca no git). Sem ele: "Fale com quem te convidou".
   OWNER_EMAIL?: string;        // #62: e-mail do dono. O owner só nasce com o código E este e-mail (`wrangler secret put`; nunca no git). Contato do controlador em #privacidade.
   AUTH_PEPPER?: string;        // #54: segredo do HMAC do IP no limite de /auth/* (opcional, recomendado) — `wrangler secret put`
   TURNSTILE_SITE_KEY?: string; // #56: chave pública do Turnstile (vars). Sem ela e sem o secret, o Turnstile fica desligado (dev e testes).
@@ -29,6 +30,6 @@ export interface AuthUser {
   sessionId?: string;
   /** #62: último Face ID nesta sessão (ações sensíveis exigem ≤ 5 min). */
   reauthAt?: number | null;
-  /** #62: falta aceitar a versão vigente dos termos ou da privacidade. */
+  /** #62: falta aceitar a versão vigente dos termos ou da privacidade (app e MCP bloqueiam até aceitar). */
   aceitePendente?: boolean;
 }

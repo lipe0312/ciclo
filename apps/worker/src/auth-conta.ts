@@ -99,7 +99,22 @@ export async function authenticateSession(req: Request, env: Env, now = Date.now
   return { user, setCookie: renew ? sessionCookie(token, renew - now) : undefined };
 }
 
-/** #62: ações sensíveis (chave do Chat, convidar, apagar conta, códigos de recuperação, sair de todos) pedem Face ID nos últimos 5 min. */
+/** #62 adicionar passkey: só com a sessão do cookie DESTRAVADA e Face ID (ou código de recuperação) dos últimos 5 min.
+ *  Sem cookie, só o usuário de dev local (`quem`, localhost + DEV_NO_AUTH). Devolve o id da conta. */
+async function contaParaAdicionar(req: Request, env: Env, quem: Quem, now: number): Promise<string> {
+  const cur = await sessaoDoCookie(req, env, now);
+  if (!cur) {
+    const me = await quem(req, env);
+    if (me?.via === "dev") return me.id;
+    throw new HttpError(401, "entre primeiro para adicionar uma passkey", "entrar");
+  }
+  const r = cur.row;
+  if (r.trava || precisaFaceId({ lastSeenAt: r.s_seen, createdAt: r.s_created }, now)) throw new HttpError(401, "confirme que é você com o Face ID", "faceid");
+  exigirFaceId({ ...userRowToAuth(r), via: "sessao", sessionId: r.sid, reauthAt: r.reauth_at }, now);
+  return r.id;
+}
+
+/** #62: ações sensíveis (chave do Chat, convidar, apagar conta, códigos de recuperação, sair de todos, apagar passkey, "Fui eu") pedem Face ID nos últimos 5 min. */
 export function exigirFaceId(u: AuthUser, now = Date.now()) {
   if (u.via === "dev") return; // só localhost com DEV_NO_AUTH (não há passkey)
   if (u.via !== "sessao" || !faceIdRecente(u.reauthAt, now)) throw new HttpError(403, "confirme com o Face ID para continuar", "reauth");
@@ -236,10 +251,11 @@ export async function handleAuth(req: Request, env: Env, quem: Quem, now = Date.
       return json({ bootstrap: bootstrapOpen(env, c), turnstile: turnstileLigado(env) ? env.TURNSTILE_SITE_KEY : null, vagas: vagas(c?.n ?? 0, maxUsersOf(env)), versoes: CONSENT_VERSAO });
     }
     if (req.method === "GET" && path === "/auth/legal") {
-      // #62 #privacidade: controlador = nome do dono (do banco) e o e-mail de contato (secret OWNER_EMAIL; nunca no repositório)
+      // #62 #privacidade: controlador = nome do dono (do banco) e o e-mail de contato CONTATO_EMAIL (var/secret; nunca no repositório).
+      // O OWNER_EMAIL (que abre o 1º acesso) não sai daqui. Sem CONTATO_EMAIL, a tela diz "Fale com quem te convidou".
       const o = await env.DB.prepare("SELECT name, sobrenome FROM user WHERE role = 'owner'").first<{ name: string | null; sobrenome: string | null }>();
       const nome = [o?.name, o?.sobrenome].filter(Boolean).join(" ") || null;
-      return json({ controlador: { nome, email: emailValido(env.OWNER_EMAIL) }, versoes: CONSENT_VERSAO });
+      return json({ controlador: { nome, email: emailValido(env.CONTATO_EMAIL) }, versoes: CONSENT_VERSAO });
     }
     if (req.method !== "POST") return json({ error: "rota não encontrada" }, 404);
     if (segredosFaltando(env).length) return json({ error: "ambiente de testes sem os secrets AUTH_PEPPER e OWNER_SETUP_CODE" }, 503);
@@ -336,10 +352,11 @@ async function rotaAuth(req: Request, env: Env, quem: Quem, url: URL, path: stri
       .first<{ user_id: string | null; email: string | null; nome: string | null; expires_at: number; used_at: number | null; por: string | null; dono_reset: string | null }>() : null;
     const st = inviteState(inv, now);
     if (st !== "ok") throw new HttpError(st === "inexistente" ? 404 : 410, INVITE_MSG[st], `convite_${st}`);
+    if (!inv!.user_id && !inv!.email) throw new HttpError(410, "este convite é antigo (sem e-mail). Peça um novo.", "convite_usado");
     return json({ reset: !!inv!.user_id, nome: inv!.user_id ? inv!.dono_reset : inv!.nome, email: inv!.user_id ? null : inv!.email, por: inv!.por ?? "o dono do app", expiresAt: inv!.expires_at });
   }
   if (path === "/auth/register/options") return await registerOptions(req, env, b, quem, now);
-  if (path === "/auth/register") return await register(req, env, b, now);
+  if (path === "/auth/register") return await register(req, env, b, quem, now);
   if (path === "/auth/recover") {
     const code = normalizeCode(b.codigo, RECOVERY_LEN);
     if (!code) throw new HttpError(400, "código no formato XXXX-XXXX-XX");
@@ -347,7 +364,7 @@ async function rotaAuth(req: Request, env: Env, quem: Quem, url: URL, path: stri
     const r = await env.DB.prepare("SELECT user_id FROM recovery_codes WHERE code_hash = ?1 AND used_at IS NULL").bind(ch).first<{ user_id: string }>();
     if (!r) throw new HttpError(401, "código inválido ou já usado");
     // Um batch só (transação): o código é queimado e a sessão só nasce se ESTA requisição o queimou.
-    const s = await sessionStmt(env, r.user_id, req, "recuperacao", now, { cond: "EXISTS (SELECT 1 FROM recovery_codes WHERE code_hash = ?1 AND user_id = ?2 AND used_at = ?3)", condArgs: [ch, r.user_id, now], avisoOk: await avisoDeAparelho(env, r.user_id, req, now) });
+    const s = await sessionStmt(env, r.user_id, req, "recuperacao", now, { cond: "EXISTS (SELECT 1 FROM recovery_codes WHERE code_hash = ?1 AND user_id = ?2 AND used_at = ?3)", condArgs: [ch, r.user_id, now], reauth: true, avisoOk: await avisoDeAparelho(env, r.user_id, req, now) });
     await env.DB.batch([
       env.DB.prepare("UPDATE recovery_codes SET used_at = ?2 WHERE code_hash = ?1 AND user_id = ?3 AND used_at IS NULL").bind(ch, now, r.user_id),
       s.stmt,
@@ -399,8 +416,9 @@ async function registerOptions(req: Request, env: Env, b: Record<string, unknown
       targetUid = inv!.user_id; userName = u?.name ?? "Ciclo";
       data = { mode: "reset", uid: targetUid, invite: await inviteHash(code!), nome: userName }; // só o hash vai ao banco
     } else {
-      // #62: o convite é amarrado ao e-mail; outro e-mail = recusado (o app manda o e-mail travado que veio do convite)
-      if (inv!.email && !mesmoEmail(b.email, inv!.email)) throw new HttpError(403, "este convite é de outro e-mail. Peça um convite para o seu.", "convite_email");
+      // #62: o convite é amarrado ao e-mail; sem e-mail (convite antigo) ou outro e-mail = recusado
+      if (!inv!.email) throw new HttpError(410, "este convite é antigo (sem e-mail). Peça um novo.", "convite_usado");
+      if (!mesmoEmail(b.email, inv!.email)) throw new HttpError(403, "este convite é de outro e-mail. Peça um convite para o seu.", "convite_email");
       const cad = cadastroDe(b, now);
       if ((await countUsers(env)) >= maxUsersOf(env)) throw new HttpError(409, `sem vagas: o app aceita até ${maxUsersOf(env)} contas`, "sem_vagas");
       await exigirCotaGlobal(env, now); // #56: a 95% do grátis, conta nova por convite para (o dono ainda cria convite e reseta acesso)
@@ -408,12 +426,13 @@ async function registerOptions(req: Request, env: Env, b: Record<string, unknown
       data = { mode: "convite", uid: targetUid, invite: await inviteHash(code!), nome: cad.nome, email: inv!.email, nova: true, cadastro: cad };
     }
   } else {
-    const me = await quem(req, env);
-    if (!me) throw new HttpError(401, "entre primeiro para adicionar uma passkey");
-    const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM passkeys WHERE user_id = ?1").bind(me.id).first<{ n: number }>();
+    // #62: adicionar passkey é ação sensível (sessão destravada + Face ID recente), conferida aqui e de novo no /auth/register
+    const uid = await contaParaAdicionar(req, env, quem, now);
+    const me = await env.DB.prepare("SELECT name FROM user WHERE id = ?1").bind(uid).first<{ name: string | null }>();
+    const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM passkeys WHERE user_id = ?1").bind(uid).first<{ n: number }>();
     if ((n?.n ?? 0) >= MAX_PASSKEYS) throw new HttpError(409, `máximo de ${MAX_PASSKEYS} passkeys; apague uma`);
-    targetUid = me.id; userName = me.name ?? "Ciclo";
-    data = { mode: "adicionar", uid: me.id };
+    targetUid = uid; userName = me?.name ?? "Ciclo";
+    data = { mode: "adicionar", uid };
   }
   const { results: ex } = data.nova ? { results: [] as { id: string }[] }
     : await env.DB.prepare("SELECT id FROM passkeys WHERE user_id = ?1").bind(targetUid).all<{ id: string }>();
@@ -431,7 +450,7 @@ async function registerOptions(req: Request, env: Env, b: Record<string, unknown
   });
 }
 
-async function register(req: Request, env: Env, b: Record<string, unknown>, now: number): Promise<Response> {
+async function register(req: Request, env: Env, b: Record<string, unknown>, quem: Quem, now: number): Promise<Response> {
   const c = await takeChallenge(env, b.challengeId, "registro", now);
   const pk = await verifyRegistration(req, env, b.credential, c.challenge);
   const d = c.data, uid = d.uid!;
@@ -441,7 +460,7 @@ async function register(req: Request, env: Env, b: Record<string, unknown>, now:
     `INSERT INTO passkeys (id, user_id, public_key, alg, counter, transports, synced, created_at) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 WHERE ${cond.replace(/\?(\d+)/g, (_m, n) => `?${Number(n) + 8}`)}`)
     .bind(pk.id, uid, JSON.stringify(pk.jwk), pk.jwk.alg, pk.counter, JSON.stringify(pk.transports), pk.synced ? 1 : 0, now, ...args);
   let codes: string[] | undefined;
-  let s;
+  let s: Awaited<ReturnType<typeof sessionStmt>> | undefined;
   if (d.mode === "convite" || d.mode === "reset") {
     const ih = d.invite!; // já é o hash (auth_challenge.data nunca guarda o código)
     // Tudo numa transação: o convite só é gasto se ainda vale; o resto só acontece se ESTE convite foi gasto por esta conta.
@@ -498,12 +517,13 @@ async function register(req: Request, env: Env, b: Record<string, unknown>, now:
     codes = rc.codes;
   } else {
     if (!c.uid || c.uid !== uid) throw new HttpError(400, "desafio inválido");
+    // #62: a mesma sessão (destravada, Face ID recente) tem que terminar a cerimônia; nenhuma sessão nova nasce aqui
+    if ((await contaParaAdicionar(req, env, quem, now)) !== uid) throw new HttpError(403, "a passkey é da conta que está aberta neste aparelho");
     const cond = "(SELECT COUNT(*) FROM passkeys WHERE user_id = ?1) < ?2";
-    s = await sessionStmt(env, uid, req, "passkey", now, { cond: "EXISTS (SELECT 1 FROM passkeys WHERE id = ?1 AND user_id = ?2)", condArgs: [pk.id, uid], reauth: true });
-    await env.DB.batch([pkInsert(cond, [uid, MAX_PASSKEYS]), s.stmt]);
+    await env.DB.batch([pkInsert(cond, [uid, MAX_PASSKEYS])]);
     if (!(await env.DB.prepare("SELECT 1 FROM passkeys WHERE id = ?1").bind(pk.id).first())) throw new HttpError(409, `máximo de ${MAX_PASSKEYS} passkeys`);
   }
-  return json({ ok: true, ...(codes ? { codigos: codes } : {}), sincronizada: pk.synced }, 201, { "Set-Cookie": s.cookie });
+  return json({ ok: true, ...(codes ? { codigos: codes } : {}), sincronizada: pk.synced }, 201, s ? { "Set-Cookie": s.cookie } : {});
 }
 
 // ---- rotas autenticadas em /api/account/* ----
@@ -533,8 +553,10 @@ export function registerConta(on: (method: string, path: string, h: Handler) => 
     return p.id === u.sessionId ? json({ ok: true }, 200, { "Set-Cookie": CLEAR_SESSION }) : json({ ok: true });
   });
 
-  // #62 "Fui eu": o aviso de login em aparelho novo some
+  // #62 "Fui eu": o aviso de login em aparelho novo some. Só para OUTRA sessão e com Face ID recente (quem entrou não se "aprova").
   on("POST", "/api/account/sessions/:id/ok", async (_req, env, p, u) => {
+    exigirFaceId(u);
+    if (p.id === u.sessionId) throw new HttpError(400, "o aviso é para confirmar outro aparelho");
     const r = await env.DB.prepare("UPDATE sessions SET aviso_ok = ?3 WHERE id = ?1 AND user_id = ?2").bind(p.id, u.id, Date.now()).run();
     if (!r.meta.changes) throw new HttpError(404, "sessão não encontrada");
     return json({ ok: true });
@@ -548,6 +570,7 @@ export function registerConta(on: (method: string, path: string, h: Handler) => 
   });
 
   on("DELETE", "/api/account/passkeys/:id", async (_req, env, p, u) => {
+    exigirFaceId(u); // #62: apagar passkey pede Face ID
     const r = await env.DB.prepare("DELETE FROM passkeys WHERE id = ?1 AND user_id = ?2 AND (SELECT COUNT(*) FROM passkeys WHERE user_id = ?2) > 1").bind(p.id, u.id).run();
     if (r.meta.changes) return json({ ok: true });
     const mine = await env.DB.prepare("SELECT 1 FROM passkeys WHERE id = ?1 AND user_id = ?2").bind(p.id, u.id).first();

@@ -145,7 +145,89 @@ test("Conta → Perfil edita nome, sobrenome, sexo, nascimento, altura e peso; #
   assert.deepEqual(r.data.perfil, { nome: "Dona Fictícia", sobrenome: "Exemplo", sexo: "nao_informado", nascimento: "1990-05-01", alturaCm: 170, pesoKg: 68.5 });
   assert.equal((await as(env, d.cookie, "PATCH", "/api/account/perfil", { sexo: "x" })).status, 400);
   assert.equal((await as(env, d.cookie, "PATCH", "/api/account/perfil", { pesoKg: null })).data.perfil.pesoKg, null);
+  // o contato é o CONTATO_EMAIL, separado do OWNER_EMAIL (que nunca aparece); sem ele, a tela diz "Fale com quem te convidou"
   const legal = await call(env, "GET", "/auth/legal");
-  assert.equal(legal.status, 200); assert.deepEqual(legal.data.controlador, { nome: "Dona Fictícia Exemplo", email: DONO_EMAIL });
+  assert.equal(legal.status, 200); assert.deepEqual(legal.data.controlador, { nome: "Dona Fictícia Exemplo", email: null });
+  assert.ok(!legal.text.includes(DONO_EMAIL), "OWNER_EMAIL não sai em /auth/legal");
   assert.deepEqual(legal.data.versoes, CONSENT_VERSAO);
+  env.CONTATO_EMAIL = "contato@exemplo.com";
+  assert.equal((await call(env, "GET", "/auth/legal")).data.controlador.email, "contato@exemplo.com");
+  // aviso ao dono enquanto o OWNER_SETUP_CODE existir (só o dono vê)
+  assert.equal((await as(env, d.cookie, "GET", "/api/account")).data.setupPendente, true);
+  delete env.OWNER_SETUP_CODE;
+  assert.equal((await as(env, d.cookie, "GET", "/api/account")).data.setupPendente, false);
+});
+
+test("B1: adicionar passkey exige a sessão destravada e Face ID recente; não cria sessão nova", async () => {
+  const env = envConta();
+  const d = await dono(env);
+  const ana = await contaPorConvite(env, d.cookie, "Ana Fictícia");
+  const uid = await uidDe(env, ana.cookie);
+  // Face ID há mais de 5 min → 403 reauth já nas opções
+  env.DB.raw.prepare("UPDATE sessions SET reauth_at = ?2 WHERE user_id = ?1").run(uid, Date.now() - 6 * 60_000);
+  const velho = await registrar(env, {}, { cookie: ana.cookie });
+  assert.equal(velho.status, 403); assert.equal(velho.data.code, "reauth");
+  // travada (8 dias fechado) → 401 faceid, mesmo com reauth recente
+  env.DB.raw.prepare("UPDATE sessions SET reauth_at = ?2, last_seen_at = ?3 WHERE user_id = ?1").run(uid, Date.now(), Date.now() - 8 * 86_400_000);
+  const travada = await registrar(env, {}, { cookie: ana.cookie });
+  assert.equal(travada.status, 401); assert.equal(travada.data.code, "faceid");
+  // opções pegas com Face ID recente, mas o Face ID venceu antes de terminar → o /auth/register também recusa
+  env.DB.raw.prepare("UPDATE sessions SET reauth_at = ?2, last_seen_at = ?2, trava = 0 WHERE user_id = ?1").run(uid, Date.now());
+  const opt = await call(env, "POST", "/auth/register/options", { body: {}, headers: { ...ip(), Cookie: ana.cookie } });
+  assert.equal(opt.status, 200);
+  env.DB.raw.prepare("UPDATE sessions SET reauth_at = ?2 WHERE user_id = ?1").run(uid, Date.now() - 6 * 60_000);
+  const { criar, novoAutenticador } = await import("../../../packages/core/test/fake-autenticador.ts");
+  const cred = await criar(await novoAutenticador(), { ...ORIGEM, challenge: opt.data.options.challenge });
+  assert.equal((await call(env, "POST", "/auth/register", { body: { challengeId: opt.data.challengeId, credential: cred }, headers: { ...ip(), Cookie: ana.cookie } })).status, 403);
+  // com Face ID recente: a passkey entra e NENHUMA sessão nova nasce (nem cookie novo)
+  assert.equal((await reauth(env, ana.auth, ana.cookie)).status, 200);
+  const antes = env.DB.raw.prepare("SELECT COUNT(*) n FROM sessions WHERE user_id = ?1").get(uid).n;
+  const mac = await registrar(env, {}, { cookie: ana.cookie });
+  assert.equal(mac.status, 201, JSON.stringify(mac.data)); assert.equal(mac.cookie, "", "sem Set-Cookie");
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) n FROM sessions WHERE user_id = ?1").get(uid).n, antes);
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) n FROM passkeys WHERE user_id = ?1").get(uid).n, 2);
+});
+
+test("B2: 'Fui eu' só para outra sessão e com Face ID; apagar passkey pede Face ID", async () => {
+  const env = envConta();
+  const d = await dono(env);
+  const ana = await contaPorConvite(env, d.cookie, "Ana Fictícia");
+  const uid = await uidDe(env, ana.cookie);
+  const opt = await call(env, "POST", "/auth/login/options", { body: {}, headers: ip() });
+  const credential = await assinar(ana.auth, { ...ORIGEM, challenge: opt.data.options.challenge });
+  const iphone = cookieDe(await call(env, "POST", "/auth/login", { body: { challengeId: opt.data.challengeId, credential }, headers: { ...ip(), "User-Agent": IPHONE } }));
+  const sessoes = (await as(env, iphone, "GET", "/api/account/devices")).data.sessions;
+  const minha = sessoes.find((s: any) => s.atual), outra = sessoes.find((s: any) => !s.atual);
+  // a sessão nova não pode "aprovar" a si mesma, nem com Face ID
+  assert.equal((await as(env, iphone, "POST", `/api/account/sessions/${minha.id}/ok`, {})).status, 400);
+  // sem Face ID recente → 403 reauth
+  env.DB.raw.prepare("UPDATE sessions SET reauth_at = ?2 WHERE user_id = ?1").run(uid, Date.now() - 6 * 60_000);
+  const sem = await as(env, ana.cookie, "POST", `/api/account/sessions/${minha.id}/ok`, {});
+  assert.equal(sem.status, 403); assert.equal(sem.data.code, "reauth");
+  const pk = (await as(env, ana.cookie, "GET", "/api/account/devices")).data.passkeys[0];
+  const del = await as(env, ana.cookie, "DELETE", `/api/account/passkeys/${pk.id}`);
+  assert.equal(del.status, 403); assert.equal(del.data.code, "reauth");
+  // com Face ID: "Fui eu" vale para a OUTRA sessão
+  assert.equal((await reauth(env, ana.auth, ana.cookie)).status, 200);
+  assert.equal((await as(env, ana.cookie, "POST", `/api/account/sessions/${minha.id}/ok`, {})).status, 200);
+  assert.equal((await as(env, ana.cookie, "POST", `/api/account/sessions/${outra.id}/ok`, {})).status, 400, "é a sessão atual de quem chama");
+});
+
+test("convite sem e-mail (anterior à #62) é recusado; MCP espera o aceite de versão nova", async () => {
+  const env = envConta();
+  const d = await dono(env);
+  const inv = (await convite(env, d.cookie)).data;
+  env.DB.raw.prepare("UPDATE invites SET email = NULL WHERE id = ?1").run(inv.id);
+  assert.equal((await call(env, "POST", "/auth/convite", { body: { convite: inv.codigo }, headers: ip() })).status, 410);
+  assert.equal((await registrar(env, cadastro(inv, "Sem E-mail"))).status, 410);
+  // MCP (fora do dev local): termos em versão nova → 403 aceite até aceitar no app
+  const ana = await contaPorConvite(env, d.cookie, "Ana Fictícia");
+  const tok = (await as(env, ana.cookie, "POST", "/api/account/tokens", { label: "Chat" })).data.token;
+  const rpc = () => call(env, "POST", "/mcp", { bearer: tok, body: { jsonrpc: "2.0", id: 1, method: "tools/list" } });
+  assert.equal((await rpc()).status, 200);
+  const uid = await uidDe(env, ana.cookie);
+  env.DB.raw.prepare("UPDATE consent SET versao = 'velha' WHERE user_id = ?1 AND doc = 'privacidade'").run(uid);
+  const r = await rpc(); assert.equal(r.status, 403); assert.equal(r.data.code, "aceite");
+  assert.equal((await as(env, ana.cookie, "POST", "/api/account/consent", { ...CONSENT_VERSAO })).status, 200);
+  assert.equal((await rpc()).status, 200);
 });

@@ -4,7 +4,7 @@
 // - /mcp e /mcp/media: token do Claude POR USUÁRIO (tabela mcp_token, só o hash SHA-256), comparação em tempo constante.
 // - Local: DEV_NO_AUTH=1 só em localhost/127.0.0.1; usuário de dev pelo cabeçalho x-dev-user ou cookie ciclo_dev_user.
 //   O MCP_TOKEN global vale só aí, como bootstrap do usuário de dev "dev".
-import { maxUsers, tokenValido } from "@ciclo/core";
+import { CONSENT_DOCS, CONSENT_VERSAO, maxUsers, tokenValido } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { authenticateSession } from "./auth-conta.ts";
 
@@ -110,7 +110,11 @@ export async function authenticateMcp(req: Request, env: Env, now = Date.now()):
       await env.DB.prepare("UPDATE mcp_token SET last_used_at = ?2 WHERE id = ?1").bind(row.token_id, now).run();
     }
     await touchUser(env, row, now);
-    return { ...userRowToAuth(row), via: "mcp" };
+    // #62: termos/privacidade em versão nova → o Claude também espera o aceite no app (como no /api, o dev local não tem aceite)
+    if (isLocalDev(req, env)) return { ...userRowToAuth(row), via: "mcp" };
+    const ac = await env.DB.prepare("SELECT COUNT(*) AS n FROM consent WHERE user_id = ?1 AND ((doc = 'termos' AND versao = ?2) OR (doc = 'privacidade' AND versao = ?3))")
+      .bind(row.id, CONSENT_VERSAO.termos, CONSENT_VERSAO.privacidade).first<{ n: number }>();
+    return { ...userRowToAuth(row), via: "mcp", aceitePendente: (ac?.n ?? 0) < CONSENT_DOCS.length };
   }
   // Bootstrap local: MCP_TOKEN global → usuário de dev padrão. Nunca fora de localhost com DEV_NO_AUTH=1.
   if (isLocalDev(req, env) && env.MCP_TOKEN && env.MCP_TOKEN.length >= 32) {

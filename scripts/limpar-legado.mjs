@@ -8,11 +8,15 @@
 //   node scripts/limpar-legado.mjs --id <uuid> --apagar  # escolhe a conta pelo id (quando houver mais de uma candidata)
 //   --saida <arquivo.json>  (padrão: ~/ciclo-legado-<data>.json, fora do repositório)
 //   --persist-to <pasta>    (D1 local de teste, passado ao wrangler)
-//   --remote                PRODUÇÃO: só o dono roda, com confirmação explícita (o script pergunta de novo).
+//   --remote                PRODUÇÃO: só o dono roda. Exige --id; com --apagar, exporta, mostra id e contagens e só então pede confirmação.
 // Nunca apaga o owner nem conta com passkey. Nada de dado pessoal na saída do terminal além do id e das contagens.
+// Reexecutável: o apagamento é um lote de DELETE ... WHERE user_id = <id> (a linha do user sai por último). Se cair no meio,
+// rodar de novo com o mesmo --id termina o serviço. O lote vai num arquivo só (`wrangler d1 execute --file`).
+// R2: o wrangler não lista objetos (só get/put/delete); as chaves apagadas são as registradas na tabela media da conta.
+// Objeto sem linha em media (não deveria existir) fica no bucket: confira no painel do R2 pelo prefixo u/<id>/.
 import { execFileSync } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
@@ -61,8 +65,13 @@ const render = (sql, args) => sql.replace(/\?(\d+)/g, (_m, n) => lit(args[Number
 export function wranglerEnv({ remote = false, persistTo } = {}) {
   const alvo = remote ? ["--remote"] : ["--local", ...(persistTo ? ["--persist-to", persistTo] : [])];
   const run = (sql) => {
-    const out = execFileSync("npx", ["wrangler", "d1", "execute", "ciclo-db", ...alvo, "--json", "--command", sql], { cwd: join(ROOT, "apps/worker"), encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
-    return JSON.parse(out.slice(out.indexOf("[")));
+    // SQL num arquivo (--file): o lote inteiro vai de uma vez, sem depender de vários comandos num --command
+    const dir = mkdtempSync(join(tmpdir(), "ciclo-legado-")), arq = join(dir, "lote.sql");
+    try {
+      writeFileSync(arq, sql + ";\n", { mode: 0o600 });
+      const out = execFileSync("npx", ["wrangler", "d1", "execute", "ciclo-db", ...alvo, "--json", "--yes", "--file", arq], { cwd: join(ROOT, "apps/worker"), encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+      return JSON.parse(out.slice(out.indexOf("[")));
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   };
   const stmt = (sql, args = []) => ({
     sql, args, bind: (...a) => stmt(sql, a), text: () => render(sql, args),
@@ -101,17 +110,27 @@ async function main() {
   const saida = resolve(o.saida ?? join(homedir(), `ciclo-legado-${new Date().toISOString().slice(0, 10)}.json`));
   if (saida.startsWith(resolve(ROOT))) { console.error("✖ a exportação tem dados pessoais: grave FORA do repositório (--saida)"); process.exit(2); }
   if (existsSync(saida)) { console.error(`✖ ${saida} já existe; escolha outro --saida`); process.exit(2); }
-  if (o.remote && o.apagar) {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    const r = await rl.question("PRODUÇÃO: exportar e APAGAR a conta legada? Digite 'apagar legado' para confirmar: ");
-    rl.close();
-    if (r.trim() !== "apagar legado") { console.error("cancelado"); process.exit(1); }
+  if (o.remote && !o.id) {
+    // produção: nada de escolher sozinho; liste as candidatas e peça o --id
+    const e = await escolherLegado(wranglerEnv({ remote: true }).DB);
+    console.error(`✖ em --remote, informe --id. Candidatas: ${e.uid ?? (e.candidatas ?? []).join(", ") ?? "nenhuma"}${e.erro && !e.candidatas ? ` (${e.erro})` : ""}`);
+    process.exit(2);
   }
-  const r = await limparLegado(wranglerEnv({ remote: !!o.remote, persistTo: o["persist-to"] }), { id: o.id, saida, apagar: !!o.apagar });
-  if (!r.ok && !r.uid) { console.error(`✖ ${r.erro}${r.candidatas ? `: ${r.candidatas.join(", ")}` : ""}`); process.exit(1); }
+  const env = wranglerEnv({ remote: !!o.remote, persistTo: o["persist-to"] });
+  // 1º sempre exporta e mostra id e contagens; só depois (e só com --apagar) pergunta e apaga
+  const r = await limparLegado(env, { id: o.id, saida, apagar: false });
+  if (!r.ok) { console.error(`✖ ${r.erro}${r.candidatas ? `: ${r.candidatas.join(", ")}` : ""}`); process.exit(1); }
   console.log(`✔ exportada: ${r.saida}\n  conta ${r.uid} · ${Object.entries(r.contagem).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(", ") || "sem linhas"}`);
-  console.log(r.apagada ? "✔ conta legada apagada (deleteAccount). Agora faça o primeiro acesso com o código e o OWNER_EMAIL." : o.apagar ? "✖ não apagou (a conta mudou?)" : "  (só exportou; rode de novo com --apagar)");
-  if (o.apagar && !r.apagada) process.exit(1);
+  if (!o.apagar) { console.log("  (só exportou; confira o arquivo e rode de novo com --apagar)"); return; }
+  if (o.remote) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const resp = await rl.question(`PRODUÇÃO: APAGAR a conta ${r.uid} (contagens acima)? Digite 'apagar legado' para confirmar: `);
+    rl.close();
+    if (resp.trim() !== "apagar legado") { console.error("cancelado"); process.exit(1); }
+  }
+  const apagada = await deleteAccount(env, r.uid);
+  console.log(apagada ? "✔ conta legada apagada (deleteAccount). Agora faça o primeiro acesso com o código e o OWNER_EMAIL." : "✖ não apagou (a conta mudou?). Rodar de novo com o mesmo --id é seguro.");
+  if (!apagada) process.exit(1);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((e) => { console.error(`✖ ${e.message}`); process.exit(1); });

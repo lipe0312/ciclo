@@ -24,8 +24,9 @@ const ITENS: { id: string; nm: string; desc: string; icon: string; dono?: boolea
 
 export default function Conta({ route }: { route: Route }) {
   const [acc, setAcc] = useState<Account | null>(null);
+  const [setup, setSetup] = useState(false);
   const [erro, setErro] = useState("");
-  const load = async () => setAcc((await api<{ account: Account }>("GET", "/api/account")).account);
+  const load = async () => { const r = await api<{ account: Account; setupPendente?: boolean }>("GET", "/api/account"); setAcc(r.account); setSetup(!!r.setupPendente); };
   useEffect(() => { if (SERVER) load().catch(() => setErro("Não deu para carregar a conta.")); }, []);
   const sub = route.parts[0] ?? "";
 
@@ -47,6 +48,7 @@ export default function Conta({ route }: { route: Route }) {
         <p class="small sub">{!acc ? (erro ? " " : "Carregando…") : <>{acc.role === "owner" ? "Dono do app" : "Conta pessoal"}{acc.email ? ` · ${acc.email}` : ""}</>}</p></div>
     </div>
     {erro && <div class="note entrar-erro" role="alert"><Icon id="warn" />{erro}</div>}
+    {setup && <div class="note warn" role="alert"><Icon id="warn" /><span>O código do primeiro acesso ainda existe no servidor. Apague agora: <code class="mono">npx wrangler secret delete OWNER_SETUP_CODE --cwd apps/worker</code>. Enquanto ele existir, apagar a sua conta reabriria o primeiro acesso.</span></div>}
     <nav class="card conta-menu" aria-label="Conta">
       {ITENS.filter((i) => !i.dono || acc?.role === "owner").map((i) => <a key={i.id} class="conta-item" href={`#conta/${i.id}`}>
         <Icon id={i.icon} /><span><b>{i.nm}</b><small class="sub">{i.desc}</small></span><Icon id="arrow" /></a>)}

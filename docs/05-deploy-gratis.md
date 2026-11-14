@@ -54,10 +54,11 @@ curl -i "https://ciclo.<sua-conta>.workers.dev/api/state?date=2026-01-01"   # 40
 openssl rand -base64 24 | tr -d '/+=' | cut -c1-24               # gere o código de 1º acesso (≥ 16 caracteres)
 npx wrangler secret put OWNER_SETUP_CODE --cwd apps/worker       # só vale enquanto não existe dono nem passkey
 npx wrangler secret put OWNER_EMAIL --cwd apps/worker            # SEU e-mail de dono (nunca no repositório): o dono só nasce com o código E este e-mail
+npx wrangler secret put CONTATO_EMAIL --cwd apps/worker          # opcional: contato do controlador em #privacidade (sem ele: "fale com quem te convidou")
 openssl rand -hex 32 | npx wrangler secret put AUTH_PEPPER --cwd apps/worker   # HMAC do IP no limite de /auth/*
 npm run deploy                                                   # aplica as migrations que faltam (0013: cadastro, consent)
 ```
-1. **Legado do Access (só se existir):** a conta antiga criada pelo login do Access (role=user, sem passkey, com dados herdados) sai antes do 1º acesso. Exporte e apague com `node scripts/limpar-legado.mjs --remote` (só exporta, para `~/ciclo-legado-<data>.json`, fora do git) e, conferido o arquivo, `node scripts/limpar-legado.mjs --remote --apagar` (pede confirmação; usa a mesma rotina do "Apagar minha conta").
+1. **Legado do Access (só se existir):** a conta antiga criada pelo login do Access (role=user, sem passkey, com dados herdados) sai antes do 1º acesso. `node scripts/limpar-legado.mjs --remote` lista o id da candidata; `node scripts/limpar-legado.mjs --remote --id <id>` só exporta (para `~/ciclo-legado-<data>.json`, fora do git) e, conferido o arquivo, `node scripts/limpar-legado.mjs --remote --id <id> --apagar --saida <outro.json>` exporta de novo, mostra id e contagens e pede confirmação (mesma rotina do "Apagar minha conta"; reexecutável).
 2. No iPhone → app → **Primeiro acesso (dono do app)** → código de configuração e o e-mail do `OWNER_EMAIL` (sempre antes do Face ID) → nome, sobrenome, sexo, nascimento (opcional), aceite dos termos e da privacidade → Face ID → guarde os 8 códigos de recuperação. O dono nasce **vazio** (sem academia, semana ou prioridades).
 3. `npx wrangler secret delete OWNER_SETUP_CODE --cwd apps/worker` logo depois.
 4. Gente nova: Conta → **Pessoas e Convidar** → e-mail e nome → **Compartilhar** o link `/#convite/<código>` (uso único, 7 dias, só para aquele e-mail; teto de 10 contas no servidor). Convidar pede Face ID.

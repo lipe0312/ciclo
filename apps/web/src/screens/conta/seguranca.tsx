@@ -1,5 +1,5 @@
 // #54/#62 Conta → Segurança: aviso de login em aparelho novo ("Fui eu" / "Não fui eu"), aparelhos com último acesso
-// (encerrar cada um), passkeys, códigos de recuperação e "Sair de todos". Ver códigos e sair de todos pedem Face ID.
+// (encerrar cada um), passkeys, códigos de recuperação e "Sair de todos". "Fui eu", adicionar/apagar passkey, ver códigos e sair de todos pedem Face ID.
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../../lib/api/index.ts";
 import { Icon, toast } from "../../lib/ui/index.tsx";
@@ -35,7 +35,7 @@ export function Seguranca() {
       <h2 id={`av-${s.id}`}><Icon id="warn" />Login em aparelho novo</h2>
       <p class="small">{s.aparelho} entrou em {dia(s.createdAt)}{s.via === "recuperacao" ? " com um código de recuperação" : ""}.</p>
       <div class="conta-duas">
-        <button type="button" class="btn" disabled={!!busy} onClick={() => act("ok" + s.id, async () => { await api("POST", `/api/account/sessions/${encodeURIComponent(s.id)}/ok`, {}); await load(); })}>Fui eu</button>
+        <button type="button" class="btn" disabled={!!busy} onClick={() => act("ok" + s.id, async () => { await comFaceId(() => api("POST", `/api/account/sessions/${encodeURIComponent(s.id)}/ok`, {})); await load(); })}>Fui eu</button>
         <button type="button" class="btn danger" disabled={!!busy} onClick={() => {
           if (confirm("Encerrar TODAS as sessões agora, inclusive esta? Você entra de novo com o Face ID.")) sairDeTodos();
         }}>Não fui eu</button>
@@ -69,11 +69,11 @@ export function Seguranca() {
           <p class="tiny sub">Criada em {dia(p.createdAt)} · último uso {dia(p.lastUsedAt)}</p></div>
         <button type="button" class="btn sm" disabled={!!busy || (dev?.passkeys.length ?? 0) < 2} aria-label={`Apagar passkey ${i + 1}`} onClick={() => {
           if (!confirm("Apagar esta passkey? O aparelho dela não entra mais.")) return;
-          act("p" + p.id, async () => { await api("DELETE", `/api/account/passkeys/${encodeURIComponent(p.id)}`); toast("Passkey apagada"); await load(); });
+          act("p" + p.id, async () => { await comFaceId(() => api("DELETE", `/api/account/passkeys/${encodeURIComponent(p.id)}`)); toast("Passkey apagada"); await load(); });
         }}>Apagar</button>
       </li>)}</ul>
       <button type="button" class="btn pri full" disabled={!!busy || !temPasskey()} onClick={() => act("nova", async () => {
-        await criarPasskey({}); toast("Passkey criada neste aparelho"); await load();
+        await comFaceId(() => criarPasskey({})); toast("Passkey criada neste aparelho"); await load(); // #62: pede Face ID recente
       })}><Icon id="plus" />{busy === "nova" ? "Aguardando o Face ID…" : "Adicionar passkey neste aparelho"}</button>
     </section>
 
