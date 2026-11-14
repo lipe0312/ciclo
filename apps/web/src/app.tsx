@@ -20,6 +20,7 @@ import Treino from "./screens/treino/index.tsx";
 import Conta from "./screens/conta/index.tsx";
 import Mais from "./screens/mais/index.tsx";
 import Entrar from "./screens/entrar/index.tsx";
+import Legal from "./screens/legal/index.tsx";
 
 // #64 Hoje e Treino (a academia) vêm no pacote inicial; o resto baixa ao abrir ou no ócio (fica no service worker).
 type P = { route: Route };
@@ -85,9 +86,11 @@ export function App() {
     else hideFaixa("treino-desatualizado");
   }, [stale]);
   const comVoltar = !pendente && !(RAIZ.has(screen) && route.parts.length === 0) && screen !== "hoje";
-  useGestosVoltar(route2Of(route, screen), !pendente && route.screen !== "entrar");
-  // #54: #entrar é tela cheia, sem navegação (não há conta ainda); some a faixa e a mini-barra.
-  if (route.screen === "entrar") return <div class="app focus entrar-app"><main class="main"><div class="wrap"><Faixa /><Entrar route={route} /></div></main><Toast /></div>;
+  const telaCheia = ["entrar", "convite", "termos", "privacidade"].includes(route.screen);
+  useGestosVoltar(route2Of(route, screen), !pendente && !telaCheia);
+  // #54/#62: #entrar, #convite/<código>, #termos e #privacidade são tela cheia, sem navegação (abrem sem sessão).
+  if (route.screen === "entrar" || route.screen === "convite") return <div class="app focus entrar-app"><main class="main"><div class="wrap"><Faixa /><Entrar route={route} /></div></main><Toast /></div>;
+  if (route.screen === "termos" || route.screen === "privacidade") return <div class="app focus entrar-app"><main class="main"><div class="wrap"><Legal route={route} /></div></main><Toast /></div>;
   const Tela = SCREENS[screen];
   const route2 = route2Of(route, screen);
   const cur = (id: string) => (id === screen || (id === "mais" && MAIS.some((d) => d.id === screen)) ? "page" : undefined);

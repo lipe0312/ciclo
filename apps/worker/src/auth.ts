@@ -1,19 +1,13 @@
 // Autenticação (falha fechada) e contas:
-// - App e /api (#54): 1º a sessão própria (cookie __Host-ciclo, criada por passkey ou código de recuperação; auth-conta.ts);
-//   2º, durante a transição, o JWT do Cloudflare Access, se os secrets existirem (verificado aqui; e-mail em ALLOWED_EMAILS).
-//   Sem os secrets ACCESS_* o caminho do Access simplesmente não existe (falha fechada).
+// - App e /api: sessão própria (cookie __Host-ciclo, criada por passkey ou código de recuperação; auth-conta.ts).
+//   #62: o caminho do Cloudflare Access (JWT) saiu; não existe outra porta além de #entrar.
 // - /mcp e /mcp/media: token do Claude POR USUÁRIO (tabela mcp_token, só o hash SHA-256), comparação em tempo constante.
 // - Local: DEV_NO_AUTH=1 só em localhost/127.0.0.1; usuário de dev pelo cabeçalho x-dev-user ou cookie ciclo_dev_user.
 //   O MCP_TOKEN global vale só aí, como bootstrap do usuário de dev "dev".
-import { maxUsers, tokenValido } from "@ciclo/core";
+import { CONSENT_DOCS, CONSENT_VERSAO, maxUsers, tokenValido } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { authenticateSession } from "./auth-conta.ts";
 
-type Jwk = JsonWebKey & { kid: string };
-let certCache: { team: string; at: number; keys: Jwk[] } | null = null;
-
-const b64url = (s: string) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0));
-const parseJson = (u8: Uint8Array) => JSON.parse(new TextDecoder().decode(u8));
 const hex = (buf: ArrayBuffer | Uint8Array) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 export const DEV_USER_RE = /^[a-z0-9_-]{1,32}$/;
@@ -34,54 +28,17 @@ export function cookie(req: Request, name: string): string | null {
   return null;
 }
 
-async function accessKeys(team: string): Promise<Jwk[]> {
-  if (certCache && certCache.team === team && Date.now() - certCache.at < 3600_000) return certCache.keys;
-  const r = await fetch(`https://${team}/cdn-cgi/access/certs`, { cf: { cacheTtl: 3600 } } as RequestInit);
-  if (!r.ok) throw new Error("certs");
-  const keys = ((await r.json()) as { keys: Jwk[] }).keys;
-  certCache = { team, at: Date.now(), keys };
-  return keys;
-}
-
-export const allowedEmails = (env: Env) => (env.ALLOWED_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
-
-/** E-mail verificado da requisição (sem tocar no banco) ou null. */
-export async function verifyAccess(req: Request, env: Env): Promise<{ email: string } | null> {
-  if (isLocalDev(req, env)) {
-    const slug = req.headers.get("x-dev-user") ?? cookie(req, "ciclo_dev_user") ?? DEV_DEFAULT_USER;
-    return DEV_USER_RE.test(slug) ? { email: devEmail(slug) } : null;
-  }
-  if (!env.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUD) return null;
-  const token = req.headers.get("Cf-Access-Jwt-Assertion");
-  if (!token) return null;
-  const [h, p, s] = token.split(".");
-  if (!h || !p || !s) return null;
-  try {
-    const header = parseJson(b64url(h)) as { kid: string; alg: string };
-    if (header.alg !== "RS256") return null;
-    const jwk = (await accessKeys(env.ACCESS_TEAM_DOMAIN)).find((k) => k.kid === header.kid);
-    if (!jwk) return null;
-    const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-    const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64url(s), new TextEncoder().encode(`${h}.${p}`));
-    if (!ok) return null;
-    const c = parseJson(b64url(p)) as { aud: string | string[]; exp: number; iss: string; email?: string };
-    const aud = Array.isArray(c.aud) ? c.aud : [c.aud];
-    if (!aud.includes(env.ACCESS_AUD)) return null;
-    if (typeof c.exp !== "number" || c.exp * 1000 < Date.now()) return null;
-    if (c.iss !== `https://${env.ACCESS_TEAM_DOMAIN}`) return null;
-    const email = (c.email ?? "").trim().toLowerCase();
-    // ALLOWED_EMAILS controla quem cria e usa conta em produção; lista vazia = ninguém (falha fechada).
-    if (!email || !allowedEmails(env).includes(email)) return null;
-    return { email };
-  } catch {
-    return null;
-  }
+/** Usuário de dev da requisição (só localhost com DEV_NO_AUTH=1; sem tocar no banco) ou null. */
+export function devUser(req: Request, env: Env): { email: string } | null {
+  if (!isLocalDev(req, env)) return null;
+  const slug = req.headers.get("x-dev-user") ?? cookie(req, "ciclo_dev_user") ?? DEV_DEFAULT_USER;
+  return DEV_USER_RE.test(slug) ? { email: devEmail(slug) } : null;
 }
 
 export type UserRow = { id: string; email: string; name: string | null; role: "owner" | "user"; created_at: number; last_seen_at: number | null; onboarding_done_at: number | null; deleted_at: number | null };
 export const userRowToAuth = (u: UserRow): AuthUser => ({ id: u.id, email: u.email, name: u.name, role: u.role, createdAt: u.created_at, onboardingDoneAt: u.onboarding_done_at });
 
-/** Acha ou cria a conta do e-mail (primeiro acesso) e atualiza last_seen_at (no máx. a cada 5 min).
+/** Só dev local: acha ou cria a conta de dev do e-mail e atualiza last_seen_at (no máx. a cada 5 min).
  *  Criar respeita o teto de contas (#54) no mesmo INSERT: com o teto cheio, a conta nova não nasce (401). */
 export async function userForEmail(env: Env, email: string, now = Date.now()): Promise<AuthUser | null> {
   const sel = env.DB.prepare("SELECT id, email, name, role, created_at, last_seen_at, onboarding_done_at, deleted_at FROM user WHERE email = ?1").bind(email);
@@ -101,13 +58,13 @@ export async function touchUser(env: Env, u: Pick<UserRow, "id" | "last_seen_at"
   await env.DB.prepare("UPDATE user SET last_seen_at = ?2 WHERE id = ?1").bind(u.id, now).run();
 }
 
-/** Quem está chamando /api: sessão própria → dev local → JWT do Access (transição). `setCookie` = sessão renovada. */
-export async function authenticateApi(req: Request, env: Env): Promise<{ user: AuthUser; setCookie?: string } | null> {
+/** Quem está chamando /api: sessão própria → dev local. `setCookie` = sessão renovada; `trava` = pedir Face ID de novo (#62). */
+export async function authenticateApi(req: Request, env: Env): Promise<{ user: AuthUser; setCookie?: string; trava?: boolean } | null> {
   const s = await authenticateSession(req, env);
   if (s) return s;
-  const who = await verifyAccess(req, env);
+  const who = devUser(req, env);
   const u = who ? await userForEmail(env, who.email) : null;
-  return u ? { user: { ...u, via: isLocalDev(req, env) ? "dev" : "access" } } : null;
+  return u ? { user: { ...u, via: "dev" } } : null;
 }
 
 // ---- tokens do Claude (MCP) ----
@@ -153,7 +110,11 @@ export async function authenticateMcp(req: Request, env: Env, now = Date.now()):
       await env.DB.prepare("UPDATE mcp_token SET last_used_at = ?2 WHERE id = ?1").bind(row.token_id, now).run();
     }
     await touchUser(env, row, now);
-    return { ...userRowToAuth(row), via: "mcp" };
+    // #62: termos/privacidade em versão nova → o Claude também espera o aceite no app (como no /api, o dev local não tem aceite)
+    if (isLocalDev(req, env)) return { ...userRowToAuth(row), via: "mcp" };
+    const ac = await env.DB.prepare("SELECT COUNT(*) AS n FROM consent WHERE user_id = ?1 AND ((doc = 'termos' AND versao = ?2) OR (doc = 'privacidade' AND versao = ?3))")
+      .bind(row.id, CONSENT_VERSAO.termos, CONSENT_VERSAO.privacidade).first<{ n: number }>();
+    return { ...userRowToAuth(row), via: "mcp", aceitePendente: (ac?.n ?? 0) < CONSENT_DOCS.length };
   }
   // Bootstrap local: MCP_TOKEN global → usuário de dev padrão. Nunca fora de localhost com DEV_NO_AUTH=1.
   if (isLocalDev(req, env) && env.MCP_TOKEN && env.MCP_TOKEN.length >= 32) {

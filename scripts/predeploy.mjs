@@ -14,10 +14,10 @@ const MIG_RE = /^(\d{4})_[a-z0-9_]+\.sql$/;
 export function staticProblems(cfg, migrations) {
   const p = [];
   const vars = cfg.vars ?? {};
-  for (const k of ["DEV_NO_AUTH", "MCP_TOKEN", "VAPID_PRIVATE_KEY", "ACCESS_AUD", "ALLOWED_EMAILS", "OWNER_SETUP_CODE", "AUTH_PEPPER", "DEV_TUNNEL", "TURNSTILE_SECRET"]) if (k in vars) p.push(`wrangler.jsonc: "${k}" não pode estar em vars (dev ou segredo; use wrangler secret put)`);
+  for (const k of ["DEV_NO_AUTH", "MCP_TOKEN", "VAPID_PRIVATE_KEY", "OWNER_EMAIL", "OWNER_SETUP_CODE", "AUTH_PEPPER", "DEV_TUNNEL", "TURNSTILE_SECRET"]) if (k in vars) p.push(`wrangler.jsonc: "${k}" não pode estar em vars (dev ou segredo; use wrangler secret put)`);
   try { const o = new URL(vars.PUBLIC_ORIGIN ?? ""); if (o.protocol !== "https:" || o.pathname !== "/" || o.hostname === "localhost") throw 0; } catch { p.push('wrangler.jsonc: vars.PUBLIC_ORIGIN precisa ser a origem https de produção (ex.: "https://ciclo.<conta>.workers.dev"); é a origem do passkey'); }
   if (cfg.workers_dev !== true) p.push("wrangler.jsonc: workers_dev precisa ser true (o app mora em *.workers.dev)");
-  if (cfg.preview_urls !== false) p.push("wrangler.jsonc: preview_urls precisa ser false (URL de preview ficaria fora do Access)");
+  if (cfg.preview_urls !== false) p.push("wrangler.jsonc: preview_urls precisa ser false (URL de preview ficaria fora da origem do passkey)");
   const first = cfg.assets?.run_worker_first ?? [];
   for (const r of ["/api/*", "/auth/*", "/mcp", "/mcp/*"]) if (!first.includes(r)) p.push(`wrangler.jsonc: assets.run_worker_first sem "${r}"`);
   const db = (cfg.d1_databases ?? []).find((d) => d.binding === "DB");
@@ -53,7 +53,7 @@ export function stagingProblems(cfg) {
   if (!sr2) p.push("env.staging: binding MEDIA ausente (bindings não são herdados)");
   else if (!/-staging$/.test(sr2.bucket_name ?? "") || sr2.bucket_name === prod.r2?.bucket_name) p.push("env.staging: R2 precisa ser próprio (*-staging), nunca o da produção");
   if (st.vars?.ENVIRONMENT !== "staging") p.push('env.staging: vars.ENVIRONMENT precisa ser "staging" (faixa AMBIENTE DE TESTES)');
-  for (const k of ["DEV_NO_AUTH", "DEV_TUNNEL", "MCP_TOKEN", "VAPID_PRIVATE_KEY", "ACCESS_AUD", "ALLOWED_EMAILS", "OWNER_SETUP_CODE", "AUTH_PEPPER", "TURNSTILE_SECRET", "PUBLIC_ORIGIN"]) if (k in (st.vars ?? {})) p.push(`env.staging: "${k}" não pode estar em vars`);
+  for (const k of ["DEV_NO_AUTH", "DEV_TUNNEL", "MCP_TOKEN", "VAPID_PRIVATE_KEY", "OWNER_EMAIL", "OWNER_SETUP_CODE", "AUTH_PEPPER", "TURNSTILE_SECRET", "PUBLIC_ORIGIN"]) if (k in (st.vars ?? {})) p.push(`env.staging: "${k}" não pode estar em vars`);
   if (JSON.stringify(st.triggers?.crons ?? []).includes('"* * * * *"')) p.push("env.staging: cron a cada minuto não (use */15 ou desligue)");
   if (st.preview_urls !== false) p.push("env.staging: preview_urls precisa ser false");
   return p;
@@ -95,5 +95,5 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   }
   if (process.argv.includes("--with-build") && !existsSync(`${ROOT}apps/web/dist/index.html`)) p.push("apps/web/dist ausente: rode `npm run build`");
   if (p.length) { console.error("✖ Antes do deploy:\n  - " + p.join("\n  - ")); process.exit(1); }
-  console.log(`✔ pré-deploy ok (D1 ${(db?.database_id ?? "?").slice(0, 8)}…, ${readMigrations().length} migrations). Secrets esperados: AUTH_PEPPER (obrigatório), OWNER_SETUP_CODE (1º acesso; apague depois), ACCESS_* + ALLOWED_EMAILS só na transição (e VAPID_* opcional) → \`npx wrangler secret list --cwd apps/worker\``);
+  console.log(`✔ pré-deploy ok (D1 ${(db?.database_id ?? "?").slice(0, 8)}…, ${readMigrations().length} migrations). Secrets esperados: AUTH_PEPPER (obrigatório), OWNER_SETUP_CODE (1º acesso; apague depois), OWNER_EMAIL (e-mail do dono, exigido no 1º acesso; nunca no git) (e VAPID_* opcional) → \`npx wrangler secret list --cwd apps/worker\``);
 }

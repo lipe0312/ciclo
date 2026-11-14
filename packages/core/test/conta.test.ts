@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  INVITE_LEN, MAX_USERS, RECOVERY_LEN, SESSION_MS, aparelhoDe, b64urlDecode, b64urlEncode, backupEligible, cborDecode, checkClientData,
+  INVITE_LEN, MAX_USERS, RECOVERY_LEN, aparelhoDe, b64urlDecode, b64urlEncode, backupEligible, cborDecode, checkClientData,
   codeFromBytes, coseToJwk, counterOk, derToRawEcdsa, formatCode, inviteState, maxUsers, nomeValido, normalizeCode, parseAuthData,
-  sessionAlive, sessionRenewal, vagas,
+  vagas,
 } from "../src/index.ts";
 import { assinar, cborEncode, criar, novoAutenticador, rawToDer } from "./fake-autenticador.ts";
 
@@ -16,16 +16,6 @@ test("teto: config nunca passa de 10; vagas em texto", () => {
   assert.equal(maxUsers("0"), 10); assert.equal(maxUsers("abc"), 10); assert.equal(maxUsers("2.5"), 10);
   assert.deepEqual(vagas(8, 10), { usadas: 8, max: 10, livres: 2, cheio: false, texto: "8 de 10 vagas" });
   assert.equal(vagas(10).cheio, true); assert.equal(vagas(12).livres, 0); assert.equal(vagas(12).texto, "10 de 10 vagas");
-});
-
-test("sessão de 90 dias: viva até expirar e renovada no uso no máx. 1×/dia", () => {
-  const exp = NOW + SESSION_MS;
-  assert.ok(sessionAlive(exp, NOW)); assert.ok(!sessionAlive(NOW, NOW));
-  assert.equal(sessionRenewal(exp, NOW), null, "acabou de nascer");
-  assert.equal(sessionRenewal(exp, NOW + 3_600_000), null, "menos de 1 dia");
-  assert.equal(sessionRenewal(exp, NOW + 86_400_000), NOW + 86_400_000 + SESSION_MS);
-  assert.equal(sessionRenewal(exp, exp + 1), null, "expirada não renova");
-  assert.equal(SESSION_MS, 90 * 86_400_000);
 });
 
 test("convite: ok, usado, expirado, inexistente", () => {

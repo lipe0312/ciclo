@@ -44,43 +44,28 @@ npm run cf:setup                         # cria D1 "ciclo-db" + R2 "ciclo-media"
 ```bash
 npm run deploy      # confere a config (scripts/predeploy.mjs) → build → migrations 0001…0011 remotas, em ordem → deploy
 curl https://ciclo.<sua-conta>.workers.dev/api/health          # {"ok":true,…}
-curl -i "https://ciclo.<sua-conta>.workers.dev/api/state?date=2026-01-01"   # 401: sem Access configurado ninguém entra
+curl -i "https://ciclo.<sua-conta>.workers.dev/api/state?date=2026-01-01"   # 401: sem sessão ninguém entra
 ```
 - O `migrations apply --remote` pergunta "Ok to proceed?": responda **y**. Ele só aplica o que falta; rodar de novo é seguro.
 - **Não** crie `MCP_TOKEN` nem `DEV_NO_AUTH` em produção: o token do Claude de produção nasce no app (passo 5).
 
-**3. Cloudflare Access (#3)** — painel → **Workers & Pages → ciclo → Settings → Domains & Routes → workers.dev → Enable Cloudflare Access** (cria a aplicação). Depois, em **Zero Trust → Access → Applications**:
-1. Na aplicação criada: política **Allow** → *Emails* = o seu; login **One-time PIN**; **Session duration: 1 month** (para não pedir código na academia).
-2. **Add an application → Self-hosted**: domínio `ciclo.<sua-conta>.workers.dev`, caminho `mcp` (cobre `/mcp` e `/mcp/media`), política **Bypass** → *Everyone*. Repita com o caminho `api/health`.
-3. Copie o **Application Audience (AUD) Tag** da aplicação principal e o domínio do time (Zero Trust → Settings → Custom Pages: `<time>.cloudflareaccess.com`).
-```bash
-npx wrangler secret put ACCESS_TEAM_DOMAIN --cwd apps/worker   # ex.: meutime.cloudflareaccess.com (sem https://)
-npx wrangler secret put ACCESS_AUD --cwd apps/worker
-npx wrangler secret put ALLOWED_EMAILS --cwd apps/worker       # seu e-mail (vários: separados por vírgula)
-npx wrangler secret list --cwd apps/worker                     # os três aparecem
-```
-Confira: aba anônima → URL do app → pede o código → abre. `curl -i …/api/state?date=2026-01-01` → 302/401. `curl …/api/health` → ok.
-
-**3b. Conta própria com Face ID (#54) e saída do Access** — o login passa a ser passkey + convite; o Access fica só na transição.
+**3. Conta própria com Face ID (#54/#62)** — não há Cloudflare Access: a tela inicial do app é o login (passkey) e o cadastro é só por convite.
 ```bash
 openssl rand -base64 24 | tr -d '/+=' | cut -c1-24               # gere o código de 1º acesso (≥ 16 caracteres)
-npx wrangler secret put OWNER_SETUP_CODE --cwd apps/worker       # cole o código; ele só vale enquanto não existe dono nem passkey
+npx wrangler secret put OWNER_SETUP_CODE --cwd apps/worker       # só vale enquanto não existe dono nem passkey
+npx wrangler secret put OWNER_EMAIL --cwd apps/worker            # SEU e-mail de dono (nunca no repositório): o dono só nasce com o código E este e-mail
+npx wrangler secret put CONTATO_EMAIL --cwd apps/worker          # opcional: contato do controlador em #privacidade (sem ele: "fale com quem te convidou")
 openssl rand -hex 32 | npx wrangler secret put AUTH_PEPPER --cwd apps/worker   # HMAC do IP no limite de /auth/*
-npm run deploy                                                   # aplica a migration 0011 (passkeys, sessions, invites, recovery_codes)
+npm run deploy                                                   # aplica as migrations que faltam (0013: cadastro, consent)
 ```
-1. **Com o Access ainda ligado**, abra o app no iPhone → `…/#entrar` → **Primeiro acesso (dono do app)** → código + Face ID. Como você já está logado pelo Access, a **sua conta atual (com os dados) vira a dona**; guarde os 8 códigos de recuperação.
-2. Conta → **Aparelhos** mostra a sessão nova (90 dias, renovada no uso). Se usa o Mac fora do iCloud Keychain, **Adicionar passkey** nele também.
-3. Quem já usava o app pelo Access: entre pelo Access e, em Conta → Passkeys, **Adicionar passkey neste aparelho** (a conta e os dados são os mesmos). Gente nova: Conta → **Pessoas → Criar convite** (uso único, 7 dias; teto de 10 contas, conferido no servidor).
-4. **Desligar o Access**: Zero Trust → Access → Applications → apague a aplicação do `ciclo.<sua-conta>.workers.dev` (e as de Bypass). Depois:
-```bash
-npx wrangler secret delete ACCESS_AUD --cwd apps/worker          # sem ACCESS_* o caminho do Access deixa de existir (falha fechada)
-npx wrangler secret delete ACCESS_TEAM_DOMAIN --cwd apps/worker
-npx wrangler secret delete ALLOWED_EMAILS --cwd apps/worker
-npx wrangler secret delete OWNER_SETUP_CODE --cwd apps/worker    # faça logo depois do 1º acesso (passo 1), mesmo sem desligar o Access
-```
-Confira em aba anônima: o app abre na tela **Entrar** (não no código por e-mail); `curl -i …/api/state?date=2026-01-01` → 401 `{"code":"entrar"}`.
+1. **Legado do Access (só se existir):** a conta antiga criada pelo login do Access (role=user, sem passkey, com dados herdados) sai antes do 1º acesso. `node scripts/limpar-legado.mjs --remote` lista o id da candidata; `node scripts/limpar-legado.mjs --remote --id <id>` só exporta (para `~/ciclo-legado-<data>.json`, fora do git) e, conferido o arquivo, `node scripts/limpar-legado.mjs --remote --id <id> --apagar --saida <outro.json>` exporta de novo, mostra id e contagens e pede confirmação (mesma rotina do "Apagar minha conta"; reexecutável).
+2. No iPhone → app → **Primeiro acesso (dono do app)** → código de configuração e o e-mail do `OWNER_EMAIL` (sempre antes do Face ID) → nome, sobrenome, sexo, nascimento (opcional), aceite dos termos e da privacidade → Face ID → guarde os 8 códigos de recuperação. O dono nasce **vazio** (sem academia, semana ou prioridades).
+3. `npx wrangler secret delete OWNER_SETUP_CODE --cwd apps/worker` logo depois.
+4. Gente nova: Conta → **Pessoas e Convidar** → e-mail e nome → **Compartilhar** o link `/#convite/<código>` (uso único, 7 dias, só para aquele e-mail; teto de 10 contas no servidor). Convidar pede Face ID.
+5. Se o Access ainda estiver ligado no painel: Zero Trust → Access → Applications → apague as aplicações do `ciclo.<sua-conta>.workers.dev`. Os secrets `ACCESS_*`/`ALLOWED_EMAILS` não são mais lidos pelo Worker (pode apagá-los).
 
-**Convivência (enquanto os secrets ACCESS_* existirem):** cada requisição em `/api/*` tenta, em ordem, (1) a sessão do cookie `__Host-ciclo`, (2) o JWT do Access (`Cf-Access-Jwt-Assertion`, mesma verificação de antes: RS256, `aud`, `iss`, `exp` e e-mail em `ALLOWED_EMAILS`). Se qualquer um valer, a requisição passa; a conta é a mesma (o Access acha pelo e-mail, a passkey pelo id). Contas criadas pelo Access também respeitam o teto de 10. `/auth/*` precisa ficar acessível sem Access (Bypass) se você quiser testar o login por passkey em outro aparelho antes de desligar o Access. `/mcp` não muda (token do Claude).
+Sessão: cookie `__Host-ciclo`, deslizante de 30 dias (cada uso renova), teto de 180 dias desde o login; app fechado há mais de 7 dias pede Face ID de novo sem deslogar. Ações sensíveis (chave do Chat, convidar, apagar conta, códigos de recuperação, sair de todos) pedem Face ID dos últimos 5 min.
+Confira em aba anônima: o app abre na tela **Entrar**; `curl -i …/api/state?date=2026-01-01` → 401 `{"code":"entrar"}`; `curl …/api/health` → ok.
 
 **4. Opcionais (podem vir depois)**
 - Aviso do descanso com a tela bloqueada: `node scripts/gen-vapid.mjs` e `npx wrangler secret put VAPID_PUBLIC_KEY|VAPID_PRIVATE_KEY|VAPID_SUBJECT --cwd apps/worker` (detalhes abaixo).
@@ -92,7 +77,7 @@ await (await fetch("/api/account/tokens", { method: "POST", headers: { "Content-
 ```
 O campo `token` (`ciclo_…`) aparece **uma vez**: guarde no gerenciador de senhas. (Listar: `GET /api/account/tokens`; revogar: `DELETE /api/account/tokens/<id>`; exportar tudo: abra `/api/account/export`.) Depois, claude.ai → **Configurações → Connectors → Adicionar connector personalizado**: URL `https://ciclo.<sua-conta>.workers.dev/mcp`, autenticação **No sign in**, **Request headers** → `Authorization: Bearer <token>`. Teste no app do Claude no celular: "use ciclo_estado e me diga o treino de hoje".
 
-**6. Celular / PWA (#4)** — abra a URL → código do e-mail → **Adicionar à Tela de Início** (iPhone: Safari → Compartilhar) → abra pelo ícone → permita notificação e microfone → treino de teste com modo avião no meio (as séries sobem ao voltar).
+**6. Celular / PWA (#4)** — abra a URL → Entrar com Face ID → **Adicionar à Tela de Início** (iPhone: Safari → Compartilhar) → abra pelo ícone → permita notificação e microfone → treino de teste com modo avião no meio (as séries sobem ao voltar).
 
 **7. Claude respondendo sozinho (#30)**
 - **Rotina na nuvem** (Claude Code): `/schedule` → "a cada 3 h, das 7h às 23h: `/processar-caixa origem=rotina`" e "domingo 20h: `/revisao`", com o connector `ciclo`.

@@ -6,11 +6,15 @@ import { assinar, criar, novoAutenticador } from "../../../packages/core/test/fa
 import type { Autenticador } from "../../../packages/core/test/fake-autenticador.ts";
 
 export const SETUP = "setup-ficticio-0123456789";
+/** E-mail fictício do dono nos testes (o de verdade é o secret OWNER_EMAIL; nunca no repositório). */
+export const DONO_EMAIL = "dona@exemplo.com";
+/** Etapas 2–5 do cadastro (#62): nome, sobrenome, sexo, nascimento (opcional) e aceite. */
+export const CAD = { sobrenome: "Fictícia", sexo: "feminino", aceite: true } as const;
 export const ORIGEM = { origin: "http://localhost:8791", rpId: "localhost" };
 let ipN = 0;
 /** Cada cerimônia sai de um "IP" diferente para o limite de /auth/* não atrapalhar (ele tem teste próprio). */
 export const ip = () => ({ "CF-Connecting-IP": `10.0.${(ipN >> 8) & 255}.${ipN++ & 255}` });
-export const envConta = (extra: Record<string, unknown> = {}) => makeEnv({ DEV_NO_AUTH: undefined, MCP_TOKEN: undefined, OWNER_SETUP_CODE: SETUP, ...extra });
+export const envConta = (extra: Record<string, unknown> = {}) => makeEnv({ DEV_NO_AUTH: undefined, MCP_TOKEN: undefined, OWNER_SETUP_CODE: SETUP, OWNER_EMAIL: DONO_EMAIL, ...extra });
 export const cookieDe = (r: { headers: Headers }) => (r.headers.get("set-cookie") ?? "").split(";")[0];
 
 export interface Conta { cookie: string; auth: Autenticador; codigos?: string[]; status: number; data: any }
@@ -28,18 +32,24 @@ export async function registrar(env: any, body: Record<string, unknown>, o: { al
 }
 
 export async function dono(env: any, nome = "Dona Fictícia") {
-  const c = await registrar(env, { setup: SETUP, nome });
+  const c = await registrar(env, { setup: SETUP, email: DONO_EMAIL, nome, ...CAD });
   assert.equal(c.status, 201, JSON.stringify(c.data));
   return c;
 }
+let emailN = 0;
+/** Convite do dono (#62: e-mail e nome obrigatórios; a sessão do dono acabou de passar pelo Face ID). `data.email` = e-mail do convite. */
 export async function convite(env: any, donoCookie: string, body: Record<string, unknown> = {}) {
-  const r = await call(env, "POST", "/api/account/invites", { body, headers: { Cookie: donoCookie } });
+  const b = { email: `pessoa${++emailN}@exemplo.com`, nome: "Convidada", ...body };
+  const r = await call(env, "POST", "/api/account/invites", { body: b, headers: { Cookie: donoCookie } });
+  if (r.data && typeof r.data === "object") r.data.email = b.email;
   return r;
 }
+/** Corpo de cadastro por convite (#62) com o e-mail travado do convite. */
+export const cadastro = (inv: { codigo: string; email: string }, nome: string, extra: Record<string, unknown> = {}) => ({ convite: inv.codigo, email: inv.email, nome, ...CAD, ...extra });
 export async function contaPorConvite(env: any, donoCookie: string, nome: string, alg: "ES256" | "RS256" = "ES256") {
   const inv = await convite(env, donoCookie);
   assert.equal(inv.status, 201, inv.text);
-  const c = await registrar(env, { convite: inv.data.codigo, nome }, { alg });
+  const c = await registrar(env, cadastro(inv.data, nome), { alg });
   assert.equal(c.status, 201, JSON.stringify(c.data));
   return c;
 }

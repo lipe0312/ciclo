@@ -1,4 +1,4 @@
-// API JSON do app (atrás do Cloudflare Access). Rotas pequenas, um estado agregado por chamada (/api/state)
+// API JSON do app (sessão própria, #54/#62). Rotas pequenas, um estado agregado por chamada (/api/state)
 // para o celular fazer 1 requisição ao abrir. Toda rota recebe o usuário autenticado (u) e filtra por u.id.
 import { MAX_MCP_TOKENS, estadoToken, tokensAtivos, CARDIO_BY_ID, COTA_MSG, EQUIPMENT_BY_ID, EXERCISE_BY_ID, INTENSITIES, MAX_PLACES, MEDIA_MAX_BYTES, MUSCLE_IDS, PROMPTS, applyManualEdit, checkCardio, classify, planDay, tipoConfere, validatePlace } from "@ciclo/core";
 import type { DayPlan, Intensity, ManualEdit, Mode, MuscleId, Tier } from "@ciclo/core";
@@ -12,7 +12,7 @@ import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
 import { registerComida } from "./comida.ts";
 import { registerHome } from "./home.ts";
 import { registerClaude } from "./mcp-chat.ts";
-import { registerConta } from "./auth-conta.ts";
+import { exigirFaceId, perfilConta, registerConta } from "./auth-conta.ts";
 import { createExam, deleteExam, getDiary, openDiary, putCheckout, saveDaysSummary, saveRecap, setReminder } from "./diario.ts";
 
 type Handler = (req: Request, env: Env, p: Record<string, string>, u: AuthUser) => Promise<Response>;
@@ -26,7 +26,12 @@ const MEDIA_MIME: Record<string, "foto" | "video"> = { "image/jpeg": "foto", "im
 const MAX_MEDIA = MEDIA_MAX_BYTES;
 
 type TokenRow = { id: string; label: string; createdAt: number; lastUsedAt: number | null; revokedAt: number | null };
-const account = (u: AuthUser) => ({ email: u.email.endsWith("@passkey.invalid") ? null : u.email, name: u.name, role: u.role, via: u.via ?? null, createdAt: u.createdAt, onboardingDoneAt: u.onboardingDoneAt });
+// #62: + sobrenome, sexo, nascimento, altura e peso (Conta → Perfil, avatar e o perfil de treino vazio da conta nova)
+const account = async (env: Env, u: AuthUser) => {
+  const p = await perfilConta(env, u.id);
+  return { email: u.email.endsWith("@passkey.invalid") ? null : u.email, name: u.name, sobrenome: p.sobrenome, sexo: p.sexo, nascimento: p.nascimento, alturaCm: p.alturaCm, pesoKg: p.pesoKg,
+    role: u.role, via: u.via ?? null, createdAt: u.createdAt, onboardingDoneAt: u.onboardingDoneAt };
+};
 const onboarding = (u: AuthUser) => (u.onboardingDoneAt ? "concluido" : "pendente");
 
 on("GET", "/api/state", async (req, env, _p, u) => {
@@ -48,7 +53,7 @@ on("GET", "/api/state", async (req, env, _p, u) => {
   // Treino desatualizado: impressão do perfil na hora em que o treino foi gerado (o app compara com o perfil de hoje).
   const profileFp = dayPlan ? await planProfileFingerprint(env, u.id, dayPlan.created_at) : null;
   return json({
-    account: account(u), onboarding: onboarding(u),
+    account: await account(env, u), onboarding: onboarding(u),
     profile: profile ?? {}, gyms, week, history, media: media.results, measures: meas.results.reverse(),
     features: { ai: !!env.AI, media: !!env.MEDIA },
     dayPlan: dayPlan ? { ...dayPlan, plan: JSON.parse(dayPlan.plan), profileFp } : null, version: env.APP_VERSION,
@@ -56,14 +61,18 @@ on("GET", "/api/state", async (req, env, _p, u) => {
 });
 
 // ---- conta (LGPD + token do Claude) ----
-on("GET", "/api/account", async (_req, _env, _p, u) => json({ account: account(u), onboarding: onboarding(u) }));
+on("GET", "/api/account", async (_req, env, _p, u) => json({
+  account: await account(env, u), onboarding: onboarding(u), aceitePendente: !!u.aceitePendente,
+  // #62: só para o dono, enquanto o secret do 1º acesso existir: a tela Conta avisa para apagá-lo (sem revelar o valor)
+  ...(u.role === "owner" ? { setupPendente: !!env.OWNER_SETUP_CODE } : {}),
+}));
 
 on("PATCH", "/api/account", async (req, env, _p, u) => {
   const b = await readJson<Record<string, unknown>>(req, 4 * 1024);
   const st = oneOf(b.onboarding, "onboarding", ["pendente", "concluido"] as const);
   const at = st === "concluido" ? u.onboardingDoneAt ?? Date.now() : null;
   await env.DB.prepare("UPDATE user SET onboarding_done_at = ?2 WHERE id = ?1").bind(u.id, at).run();
-  return json({ ok: true, account: { ...account(u), onboardingDoneAt: at }, onboarding: st });
+  return json({ ok: true, account: { ...(await account(env, u)), onboardingDoneAt: at }, onboarding: st });
 });
 
 on("GET", "/api/account/export", async (_req, env, _p, u) =>
@@ -72,6 +81,7 @@ on("GET", "/api/account/export", async (_req, env, _p, u) =>
 on("DELETE", "/api/account", async (req, env, _p, u) => {
   const b = await readJson<Record<string, unknown>>(req, 1024);
   if (b.confirm !== "APAGAR") throw new HttpError(400, 'confirme com {"confirm":"APAGAR"}');
+  exigirFaceId(u); // #62: apagar a conta pede Face ID
   // #54: a dona não apaga a própria conta enquanto houver outras (ninguém mais administraria convites e resets)
   if (u.role === "owner" && ((await env.DB.prepare("SELECT COUNT(*) AS n FROM user").first<{ n: number }>())?.n ?? 0) > 1)
     throw new HttpError(409, "apague ou passe as outras contas antes: a dona não sai enquanto houver outras pessoas", "dona_com_contas");
@@ -90,6 +100,7 @@ on("GET", "/api/account/tokens", async (_req, env, _p, u) => {
 on("POST", "/api/account/tokens", async (req, env, _p, u) => {
   const b = await readJson<Record<string, unknown>>(req, 2 * 1024);
   const label = str(b.label, "label", 60, false) ?? "Claude";
+  exigirFaceId(u); // #62: gerar chave do Chat pede Face ID
   const now = Date.now();
   const { results } = await env.DB.prepare("SELECT created_at AS createdAt, last_used_at AS lastUsedAt, revoked_at AS revokedAt FROM mcp_token WHERE user_id = ?1 AND revoked_at IS NULL").bind(u.id).all<TokenRow>();
   if (tokensAtivos(results, now) >= MAX_MCP_TOKENS) throw new HttpError(409, `máximo de ${MAX_MCP_TOKENS} chaves ativas; revogue uma`, "max_tokens");

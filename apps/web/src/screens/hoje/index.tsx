@@ -16,6 +16,7 @@ import { ClaudeCard, ComidaPainel } from "./comida-claude.tsx";
 import { H, carregarHome } from "./estado.ts";
 import { Lacunas } from "./lacunas.tsx";
 import { BracoCintura, CardioPainel, ForcaPainel, Objetivo, PesoPainel, PresencaPainel, Volume } from "./paineis.tsx";
+import { AvatarMenu } from "../conta/avatar.tsx";
 import "./hoje.css";
 
 /** Sobrou só hoje? Quem decide é a regra da semana (core). A oferta é um aviso com CTA, não um formulário. */
@@ -52,7 +53,7 @@ export default function Hoje() {
   useEffect(() => { void garantirSemana(); void carregarHome(true); }, []);
   const larga = useLarga();
   const v = H.view;
-  const cab = <div class="row between wrapx" style="margin-bottom:14px"><div><p class="kicker">{longDate(today)}{SERVER ? "" : " · demonstração"}</p><h1>Hoje</h1></div></div>;
+  const cab = <div class="row between" style="margin-bottom:14px"><div><p class="kicker">{longDate(today)}{SERVER ? "" : " · demonstração"}</p><h1>Hoje</h1></div><AvatarMenu /></div>;
   const topo = <><FaixaCheckup /><AvisoFalta /></>;
   if (!v) return <>{cab}{topo}{H.erro
     ? <Card><h2>Não deu para carregar</h2><p class="small sub" style="margin-top:4px">Sem conexão ou o servidor não respondeu. Seus registros estão salvos.</p><button type="button" class="btn pri" style="margin-top:10px" onClick={() => void carregarHome(true)}>Tentar de novo</button></Card>
