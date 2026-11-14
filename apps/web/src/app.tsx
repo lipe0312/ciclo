@@ -47,6 +47,14 @@ export function App() {
   const route = useRoute();
   const [tick, setTick] = useState(0);
   useEffect(() => { const f = () => setTick((x) => x + 1); setSheetRerender(f); setFaixaRerender(f); return onQueue(f); }, []);
+  // #58: staging e túnel avisam que os dados não são os de verdade (o servidor diz em /api/health).
+  useEffect(() => {
+    if (!SERVER) return;
+    fetch("/api/health", { credentials: "same-origin" }).then((r) => r.json()).then((h: { ambiente?: string | null }) => {
+      if (h.ambiente === "staging" || h.ambiente === "tunel") showFaixa({ id: "ambiente", tone: "warn", closable: false,
+        text: h.ambiente === "staging" ? "AMBIENTE DE TESTES: dados de teste, não são os de verdade." : "AMBIENTE DE TESTES: túnel temporário com dados locais fictícios." });
+    }).catch(() => {});
+  }, []);
   useEffect(() => { closeSheet(); scrollTo(0, 0); }, [route.screen, route.parts.join("/")]);
   useEffect(() => {
     if (SERVER && (queue.length || !navigator.onLine)) showFaixa({ id: "offline", tone: "warn", text: `Sem conexão: usando o que está no aparelho${queue.length ? ` · ${queue.length} alteração(ões) na fila` : ""}.`, closable: false });
@@ -64,7 +72,7 @@ export function App() {
     else hideFaixa("treino-desatualizado");
   }, [stale]);
   // #54: #entrar é tela cheia, sem navegação (não há conta ainda); some a faixa e a mini-barra.
-  if (route.screen === "entrar") return <div class="app focus entrar-app"><main class="main"><div class="wrap"><Entrar route={route} /></div></main><Toast /></div>;
+  if (route.screen === "entrar") return <div class="app focus entrar-app"><main class="main"><div class="wrap"><Faixa /><Entrar route={route} /></div></main><Toast /></div>;
   const Tela = SCREENS[screen];
   const route2: Route = screen === route.screen ? route : { screen, parts: [], query: {} };
   const cur = (id: string) => (id === screen || (id === "mais" && MAIS.some((d) => d.id === screen)) ? "page" : undefined);

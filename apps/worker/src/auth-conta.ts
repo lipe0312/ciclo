@@ -13,6 +13,7 @@ import { HttpError, json, readJson, str } from "./http.ts";
 import { cookie, sha256Hex, timingSafeEqualHex, touchUser, userRowToAuth } from "./auth.ts";
 import type { UserRow } from "./auth.ts";
 import type { Handler } from "./comida.ts";
+import { webauthnWhere } from "./ambiente.ts";
 
 export const SESSION_COOKIE = "__Host-ciclo";
 const CHALLENGE_MS = 5 * 60_000;
@@ -100,7 +101,6 @@ async function takeChallenge(env: Env, id: unknown, kind: "login" | "registro", 
 }
 
 // ---- verificação WebAuthn (WebCrypto) ----
-const where = (req: Request) => { const u = new URL(req.url); return { rpId: u.hostname, origin: u.origin }; };
 const field = (o: unknown, k: string, max = 16_384): string => {
   const v = (o as Record<string, unknown> | null)?.[k];
   if (typeof v !== "string" || !v || v.length > max) throw new HttpError(400, `credencial sem ${k}`);
@@ -108,8 +108,8 @@ const field = (o: unknown, k: string, max = 16_384): string => {
 };
 const dec = (s: string) => { try { return b64urlDecode(s); } catch { throw new HttpError(400, "credencial malformada"); } };
 
-async function verifyRegistration(req: Request, cred: unknown, challenge: string) {
-  const { rpId, origin } = where(req);
+async function verifyRegistration(req: Request, env: Env, cred: unknown, challenge: string) {
+  const { rpId, origin } = webauthnWhere(req, env);
   const resp = (cred as Record<string, unknown> | null)?.response;
   const cdBytes = dec(field(resp, "clientDataJSON"));
   const err = checkClientData(new TextDecoder().decode(cdBytes), { type: "webauthn.create", challenge, origin });
@@ -142,7 +142,7 @@ async function importJwk(jwk: Jwk) {
 }
 
 async function verifyAssertion(req: Request, env: Env, cred: unknown, challenge: string, now: number) {
-  const { rpId, origin } = where(req);
+  const { rpId, origin } = webauthnWhere(req, env);
   const id = field(cred, "id", 1400);
   const pk = await env.DB.prepare("SELECT p.id, p.user_id, p.public_key, p.alg, p.counter FROM passkeys p WHERE p.id = ?1")
     .bind(id).first<{ id: string; user_id: string; public_key: string; alg: "ES256" | "RS256"; counter: number }>();
@@ -202,7 +202,7 @@ export async function handleAuth(req: Request, env: Env, quem: Quem, now = Date.
 
     if (path === "/auth/login/options") {
       const c = await newChallenge(env, "login", null, {}, now);
-      return json({ challengeId: c.id, options: { challenge: c.challenge, rpId: url.hostname, timeout: 120_000, userVerification: "required", allowCredentials: [] } });
+      return json({ challengeId: c.id, options: { challenge: c.challenge, rpId: webauthnWhere(req, env).rpId, timeout: 120_000, userVerification: "required", allowCredentials: [] } });
     }
     if (path === "/auth/login") {
       const c = await takeChallenge(env, b.challengeId, "login", now);
@@ -303,7 +303,7 @@ async function registerOptions(req: Request, env: Env, b: Record<string, unknown
 
 async function register(req: Request, env: Env, b: Record<string, unknown>, now: number): Promise<Response> {
   const c = await takeChallenge(env, b.challengeId, "registro", now);
-  const pk = await verifyRegistration(req, b.credential, c.challenge);
+  const pk = await verifyRegistration(req, env, b.credential, c.challenge);
   const d = c.data, uid = d.uid!;
   if (await env.DB.prepare("SELECT 1 FROM passkeys WHERE id = ?1").bind(pk.id).first()) throw new HttpError(409, "esta passkey já está cadastrada");
   const max = maxUsersOf(env);

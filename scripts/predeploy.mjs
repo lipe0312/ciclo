@@ -33,12 +33,44 @@ export function staticProblems(cfg, migrations) {
   return p;
 }
 
+/** #58: o env.staging nunca pode tocar a produção (Worker, D1, R2) nem levar variável de dev/segredo. `cfg` = wrangler.jsonc inteiro. */
+export function stagingProblems(cfg) {
+  const p = [];
+  const st = cfg.env?.staging;
+  if (!st) return ["wrangler.jsonc: env.staging ausente"];
+  const dbOf = (c) => (c.d1_databases ?? []).find((d) => d.binding === "DB");
+  const r2Of = (c) => (c.r2_buckets ?? []).find((b) => b.binding === "MEDIA");
+  const prod = { db: dbOf(cfg), r2: r2Of(cfg) }, sdb = dbOf(st), sr2 = r2Of(st);
+  if (!st.name || st.name === cfg.name) p.push("env.staging: name igual ao da produção");
+  if (!sdb) p.push("env.staging: binding DB ausente (bindings não são herdados)");
+  else {
+    if (!/-staging$/.test(sdb.database_name ?? "") || sdb.database_name === prod.db?.database_name) p.push("env.staging: D1 precisa ser próprio (*-staging), nunca o da produção");
+    if (sdb.database_id === prod.db?.database_id && !/^0{8}-/.test(sdb.database_id ?? "")) p.push("env.staging: database_id igual ao da produção");
+    if (sdb.migrations_dir !== "migrations") p.push("env.staging: migrations_dir precisa ser migrations");
+  }
+  if (!sr2) p.push("env.staging: binding MEDIA ausente (bindings não são herdados)");
+  else if (!/-staging$/.test(sr2.bucket_name ?? "") || sr2.bucket_name === prod.r2?.bucket_name) p.push("env.staging: R2 precisa ser próprio (*-staging), nunca o da produção");
+  if (st.vars?.ENVIRONMENT !== "staging") p.push('env.staging: vars.ENVIRONMENT precisa ser "staging" (faixa AMBIENTE DE TESTES)');
+  for (const k of ["DEV_NO_AUTH", "DEV_TUNNEL", "MCP_TOKEN", "VAPID_PRIVATE_KEY", "ACCESS_AUD", "ALLOWED_EMAILS", "OWNER_SETUP_CODE", "AUTH_PEPPER", "PUBLIC_ORIGIN"]) if (k in (st.vars ?? {})) p.push(`env.staging: "${k}" não pode estar em vars`);
+  if (st.preview_urls !== false) p.push("env.staging: preview_urls precisa ser false");
+  return p;
+}
+
 export const readMigrations = () => readdirSync(`${ROOT}apps/worker/migrations`).filter((f) => f.endsWith(".sql")).sort()
   .map((name) => ({ name, sql: readFileSync(`${ROOT}apps/worker/migrations/${name}`, "utf8") }));
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const cfg = readWrangler();
-  const p = staticProblems(cfg, readMigrations());
+  if (process.argv.includes("--staging")) { // #58: `npm run staging` — confere só o staging (o database_id de produção pode nem existir)
+    const q = [...staticProblems(cfg, readMigrations()), ...stagingProblems(cfg)];
+    const sdb = (cfg.env?.staging?.d1_databases ?? []).find((d) => d.binding === "DB");
+    if (/^0{8}-/.test(sdb?.database_id ?? "0")) q.push("env.staging: database_id ainda é o de exemplo (o `npm run staging` grava depois de criar o D1)");
+    if (process.argv.includes("--with-build") && !existsSync(`${ROOT}apps/web/dist/index.html`)) q.push("apps/web/dist ausente: rode `npm run build`");
+    if (q.length) { console.error("✖ Antes do staging:\n  - " + q.join("\n  - ")); process.exit(1); }
+    console.log(`✔ pré-staging ok (D1 ${sdb.database_id.slice(0, 8)}…, ${readMigrations().length} migrations)`);
+    process.exit(0);
+  }
+  const p = [...staticProblems(cfg, readMigrations()), ...stagingProblems(cfg)];
   const db = (cfg.d1_databases ?? []).find((d) => d.binding === "DB");
   const soEstatico = process.argv.includes("--static"); // deploy:dry: confere tudo menos o database_id (que só existe depois do cf:setup)
   if (!soEstatico && (!db || /^0{8}-/.test(db.database_id ?? ""))) p.push("database_id ainda é o de exemplo: rode `npx wrangler login` e `npm run cf:setup`");
