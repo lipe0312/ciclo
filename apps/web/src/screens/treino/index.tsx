@@ -80,7 +80,7 @@ function Hoje() {
   const plan = activePlan();
   if (s?.finishedAt && s.date === today) {
     return <><p class="kicker">Treino de hoje · encerrado {s.closedBy === "auto" ? "automaticamente (2 h)" : ""}</p><h1>{plan.name}</h1>
-      <p class="small sub" style="margin-top:6px">{s.feedback ? "Feedback salvo. O Claude usa na revisão de domingo." : "Sem feedback (fechado sozinho)."}</p>
+      <p class="small sub" style="margin-top:6px">{s.feedback ? "Feedback salvo. O Chat usa na revisão de domingo." : "Sem feedback (fechado sozinho)."}</p>
       <Resumo s={s} />
       <button type="button" class="btn" style="margin-top:12px" onClick={() => { S.session = null; commit(); }}>Treinar de novo hoje</button></>;
   }
@@ -93,12 +93,12 @@ function Hoje() {
     <div class="row wrapx" style="gap:8px;margin-bottom:12px"><button type="button" class="btn" onClick={() => abrirGerarOutro()}><Icon id="cycle" />Gerar outro treino</button>
       {anterior?.date === today && <button type="button" class="btn ghost" onClick={desfazerGeracao}><Icon id="back" />Desfazer</button>}</div>
     {plan.leve && <p class="small" style="margin-bottom:12px"><span class="badge warn">mais leve hoje</span> <span class="sub">sobrando 3 repetições em cada série.</span></p>}
-    {!run && <div class="note" style="margin-bottom:12px"><Icon id="info" /><span>Ao começar, o dia conta como <b>fui</b> e o treino abre em tela cheia: dá para sair, ver a comida ou falar com o Claude e voltar ao mesmo ponto. Esqueceu de terminar? Fecha sozinho em <b>2 h</b> com o que foi registrado.</span></div>}
+    {!run && <div class="note" style="margin-bottom:12px"><Icon id="info" /><span>Ao começar, o dia conta como <b>fui</b> e o treino abre em tela cheia: dá para sair, ver a comida ou falar com o Chat e voltar ao mesmo ponto. Esqueceu de terminar? Fecha sozinho em <b>2 h</b> com o que foi registrado.</span></div>}
     <div class="grid dash"><div class="stack">
       {plan.prehab.length > 0 && <Card><p class="kicker">Aquecimento · fortalecimento pela dor marcada</p>{plan.prehab.map((p) => <div class="row" key={p.exerciseId} style="margin-top:8px"><img class="thumb" style="width:48px;height:48px" src={`/img/ex/${encodeURIComponent(p.exerciseId)}.webp`} alt="" loading="lazy" /><div><b>{p.nm}</b><p class="small sub">2 × {p.reps[0]}–{p.reps[1]}, leve</p></div></div>)}</Card>}
       {plan.items.length ? plan.items.map((it, i) => <CardDia key={it.exerciseId + i} it={it} idx={i} run={run} />) : <Card><p class="sub">Nada para hoje com esses aparelhos.</p></Card>}</div>
       <div class="stack"><CardioHoje /><Card><h2>Como foi montado</h2><ul class="small" style="padding-left:18px;margin:10px 0 0;display:grid;gap:6px">{plan.why.map((w, i) => <li key={i}>{w}</li>)}
-        <li>Só aparelhos de {gymById(S.ui.gymId)?.name}; trocas já vêm calculadas (sem gastar Claude).</li></ul></Card>
+        <li>Só aparelhos de {gymById(S.ui.gymId)?.name}; trocas já vêm calculadas (sem gastar o Chat).</li></ul></Card>
         <Card><h2>Mídia da sua academia</h2><p class="small sub" style="margin-top:4px">Grave 10–15 s mostrando a regulagem (pino, banco, pegada). Fica ligada ao exercício e ao aparelho; aparece nas próximas vezes e nas trocas.</p></Card>
         <Card><h2>Descanso com a tela bloqueada</h2><AvisoPush /></Card>
         {pend.length > 0 && <Card><h2>Edições em revisão</h2>{pend.map((e) => <div key={e.id}><p class="small" style="margin-top:6px">{e.label}</p>{e.issues.map((x: any, i: number) => <p key={i} class="tiny" style={`color:var(--${x.severity === "erro" ? "bad" : "warn"})`}>{x.msg}</p>)}</div>)}</Card>}

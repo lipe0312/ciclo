@@ -25,7 +25,7 @@ Por trás, é o **OAuth 2.1 da especificação de autorização do MCP** (versã
 
 Só o callback oficial do Claude (`https://claude.ai/api/mcp/auth_callback`) é aceito como destino. Outro app que se registre com o nome "Claude" e um site próprio é recusado. A var `OAUTH_REDIRECT_HOSTS` troca a lista. Ferramentas locais (`http://localhost`) funcionam, mas a tela avisa "app não verificado".
 
-Cada conexão aparece em **Conta → Claude conectado** e pode ser revogada ali. São no máximo 3 conexões por pessoa; a mais antiga sai para caber a nova.
+Cada conexão aparece em **Conta → Conectar meu Chat** e pode ser revogada ali. São no máximo 3 conexões por pessoa; a mais antiga sai para caber a nova.
 
 **Plano B:** a chave manual da #55 (Conta → gerar chave) continua valendo para clientes sem OAuth.
 

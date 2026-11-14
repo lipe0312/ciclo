@@ -1,4 +1,4 @@
-// Folhas do Treino: trocar, editar (manual, o Claude revisa), "não fiz" e terminar (feedback).
+// Folhas do Treino: trocar, editar (manual, o Chat revisa), "não fiz" e terminar (feedback).
 import { C, S, commit, today } from "../../lib/store/index.ts";
 import { EXB, activePlan, dayInput, gymById, mName, profileChanged } from "../../lib/store/regras.ts";
 import { SERVER, send } from "../../lib/api/index.ts";
@@ -26,7 +26,7 @@ function Swap({ idx }: { idx: number }) {
   const gym = gymById(S.session?.gymId ?? S.ui.gymId);
   const unavailable = C.EXERCISES.filter((e) => e.m === it.muscle && e.id !== it.exerciseId && !e.eq.every((q) => gym.equipment.includes(q)));
   return <><SheetHead kicker={`Trocar · ${mName(it.muscle)}`} title={it.nm} />
-    <p class="small sub" style="margin:8px 0 6px">Já calculado pelo app (sem gastar Claude): mesmo músculo, aparelho disponível, sua preferência, dor e academia cheia.</p>
+    <p class="small sub" style="margin:8px 0 6px">Já calculado pelo app (sem gastar o Chat): mesmo músculo, aparelho disponível, sua preferência, dor e academia cheia.</p>
     {all.filter((c) => c.ex.id !== it.exerciseId).map((c) => <div class="alt" key={c.ex.id} style={c.blockedByPain ? "opacity:.5" : ""}>
       <img src={img(c.ex.id)} alt="" loading="lazy" width={56} height={56} />
       <div><h3>{c.ex.nm}</h3><p class="tiny sub">{c.ex.r.join("–")} reps · {c.ex.kind}{c.ex.stretch ? " · alongado" : ""}{S.media[c.ex.id] ? " · você tem vídeo" : ""}{c.blockedByPain ? " · força região com dor" : ""}</p></div>
@@ -47,7 +47,7 @@ async function saveEdit(remove: boolean) {
   const res = C.applyManualEdit(plan, edit as C.ManualEdit, dayInput());
   if (S.session && !S.session.finishedAt) S.session.plan = res.plan; else { S.plan = res.plan; S.ui.locked = true; S.ui.planSource = "manual"; }
   S.edits.push({ id: uid(), date: today, label: remove ? `Tirou ${it.nm}` : `${it.nm} → ${res.plan.items[d.index]?.nm} ${d.sets}×${d.reps.join("–")}`, issues: res.issues, review: "pendente" });
-  closeSheet(); commit(); toast("Aplicado · o Claude revisa na próxima leitura");
+  closeSheet(); commit(); toast("Aplicado · o Chat revisa na próxima leitura");
   if (SERVER) { await send("PUT", `/api/day-plan/${today}`, { plan, gymId: S.ui.gymId, source: "core" }).catch(() => {}); await send("POST", "/api/plan-edits", { date: today, edit, daysLeft: S.ui.daysLeft }).catch(() => {}); }
 }
 function Edit() {
@@ -56,7 +56,7 @@ function Edit() {
   const res = C.applyManualEdit(plan, editOf(d) as C.ManualEdit, dayInput());
   const set = (k: string, v: any) => { S.ui.editDraft = { ...d, [k]: v }; commit(); };
   return <><SheetHead kicker={`Editar · ${mName(it.muscle)}`} title={it.nm} />
-    <p class="small sub" style="margin:8px 0">Você conhece seu corpo: a mudança vale na hora e o Claude revisa depois (só aponta riscos).</p>
+    <p class="small sub" style="margin:8px 0">Você conhece seu corpo: a mudança vale na hora e o Chat revisa depois (só aponta riscos).</p>
     <label class="f" for="edEx">Exercício</label>
     <select class="input" id="edEx" value={d.exerciseId} onChange={(e) => set("exerciseId", e.currentTarget.value)}>
       {C.EXERCISES.filter((e) => e.m === it.muscle).map((e) => <option key={e.id} value={e.id}>{e.nm}</option>)}<option value="__proprio">Outro (meu exercício)…</option></select>
@@ -81,7 +81,7 @@ function Skip({ idx }: { idx: number }) {
   const it = activePlan().items[idx];
   if (!it) return null;
   return <><SheetHead kicker="Não fiz" title={it.nm} />
-    <p class="small sub" style="margin:8px 0 12px">Por quê? Ajuda o Claude a ajustar (ocupado sempre → trocar; dor → mapa de dor).</p>
+    <p class="small sub" style="margin:8px 0 12px">Por quê? Ajuda o Chat a ajustar (ocupado sempre → trocar; dor → mapa de dor).</p>
     <div class="chips">{SKIP_REASONS.map(([v, l]) => <Chip key={v} onClick={() => doSkip(idx, v)}>{l}</Chip>)}</div>
     {it.alts.length > 0 && <button type="button" class="btn full" style="margin-top:14px" onClick={() => openSwap(idx)}><Icon id="swap" />Prefiro trocar por outro</button>}</>;
 }

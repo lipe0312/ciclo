@@ -1,8 +1,8 @@
 // #66 Tela de consentimento do OAuth do MCP. A identidade é o DESTINO (host da redirect_uri, conferido contra a allowlist
-// OAUTH_REDIRECT_HOSTS), nunca o nome que o cliente escolheu no registro. Permitir pede o Face ID na hora, mesmo com
-// sessão: o Worker só aceita uma passkey de ≤ 2 min. Depois, o navegador volta para o destino com um código de uso único.
+// OAUTH_REDIRECT_HOSTS), nunca o nome que o cliente escolheu no registro. Permitir pede o Face ID recente
+// (exigirFaceId da #62), mesmo com sessão, e o aceite dos termos em dia. Depois, o navegador volta para o destino com um código de uso único.
 import { useEffect, useState } from "preact/hooks";
-import { ErroApi, api, entrarComPasskey, erroTexto, temPasskey } from "./passkey.ts";
+import { ErroApi, api, confirmarFaceId, entrarComPasskey, erroTexto, temPasskey } from "./passkey.ts";
 
 interface Info { destino: string; verificado: boolean; conta: { nome: string | null } | null }
 type Fase = "carregando" | "pronto" | "voltando" | "vencido";
@@ -22,7 +22,7 @@ export function Autorizar({ req }: { req: string }) {
   const carregar = () => api<Info>("GET", `/oauth/pedido/${encodeURIComponent(req)}`)
     .then((i) => { setInfo(i); setFase("pronto"); })
     .catch((e) => { setFase("vencido"); setErro(e instanceof ErroApi ? e.message : "Sem conexão. Tente de novo."); });
-  useEffect(() => { if (/^[0-9a-f]{32}$/.test(req)) carregar(); else { setFase("vencido"); setErro("Link incompleto: volte ao Claude e tente de novo."); } }, []);
+  useEffect(() => { if (/^[0-9a-f]{32}$/.test(req)) carregar(); else { setFase("vencido"); setErro("Link incompleto: volte ao app que pediu a conexão e tente de novo."); } }, []);
 
   async function decidir(permitir: boolean, jaFezFaceId = false): Promise<void> {
     setErro(""); setBusy(true);
@@ -31,10 +31,10 @@ export function Autorizar({ req }: { req: string }) {
       setFase("voltando");
       location.replace(r.redirect);
     } catch (e) {
-      if (e instanceof ErroApi && (e.code === "faceid" || e.code === "entrar") && permitir && !jaFezFaceId) {
-        // Face ID na hora de consentir (mesmo com sessão): login por passkey e tenta de novo
-        try { await entrarComPasskey(); setBusy(false); return decidir(true, true); } catch (e2) { setErro(erroTexto(e2)); }
-      } else if (e instanceof ErroApi && e.code === "vencido") { setFase("vencido"); setErro(e.message); }
+      if (e instanceof ErroApi && (e.code === "reauth" || e.code === "entrar") && permitir && !jaFezFaceId) {
+        // Face ID na hora de consentir (#62): com sessão, reconfirma; sem sessão, entra com a passkey. Depois tenta de novo.
+        try { await (e.code === "reauth" ? confirmarFaceId() : entrarComPasskey()); setBusy(false); return decidir(true, true); } catch (e2) { setErro(erroTexto(e2)); }
+      } else if (e instanceof ErroApi && e.code === "aceite") setErro("Antes, abra o app do Ciclo e aceite os termos e a privacidade atualizados."); else if (e instanceof ErroApi && e.code === "vencido") { setFase("vencido"); setErro(e.message); }
       else setErro(erroTexto(e));
     } finally { setBusy(false); }
   }
@@ -45,7 +45,7 @@ export function Autorizar({ req }: { req: string }) {
     {fase === "vencido" && <section class="card aut-card">
       <h1>Não deu para continuar</h1>
       <p class="sub aut-p" role="alert">{erro}</p>
-      <p class="small sub aut-p">Abra o Claude, vá em Conectores e tente conectar de novo. O pedido vale por 10 minutos.</p>
+      <p class="small sub aut-p">Volte ao app que pediu a conexão, abra Conectores e tente de novo. O pedido vale por 10 minutos.</p>
     </section>}
     {fase === "voltando" && <section class="card aut-card"><h1>Pronto</h1><p class="sub aut-p" role="status">Voltando para {info?.destino ?? "o app"}…</p></section>}
     {fase === "pronto" && info && <section class="card aut-card" aria-labelledby="autTitulo">
@@ -59,7 +59,7 @@ export function Autorizar({ req }: { req: string }) {
           : <span class="badge warn" role="alert">app não verificado: só permita se foi você que abriu isto no seu computador</span>}
       </div>
       <ul class="aut-lista">{PODE.map((t) => <li key={t}>{t}</li>)}</ul>
-      <p class="tiny sub aut-p">Nada é apagado pela conexão: apagar dados é só no app. Você desliga quando quiser em Conta → Claude conectado.</p>
+      <p class="tiny sub aut-p">Nada é apagado pela conexão: apagar dados é só no app. Você desliga quando quiser em Conta → Conectar meu Chat.</p>
       {info.conta && <p class="small aut-p">Conta: <b>{info.conta.nome ?? "sua conta"}</b></p>}
       {!temPasskey() && <p class="small aut-erro" role="alert">Este navegador não tem passkey. Use o Safari do iPhone ou um navegador atualizado.</p>}
       <button type="button" class="btn pri lg full aut-btn" disabled={busy} onClick={() => decidir(true)}>Permitir com Face ID</button>

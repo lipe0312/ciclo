@@ -1,4 +1,4 @@
-// #30 Status honesto da fila (online agora / na fila · ~N min), checklist "Claude ligado" e a memória do Claude
+// #30 Status honesto da fila (online agora / na fila · ~N min), checklist "Chat ligado" e a memória do Chat
 // (o dono vê, edita e apaga). No servidor: GET /api/claude; no demo, dados fictícios em memória.
 import { useEffect, useState } from "preact/hooks";
 import { C } from "../../lib/store/index.ts";
@@ -61,7 +61,7 @@ function FatoItem({ f, onSave, onDel }: { f: Fato; onSave: (t: string) => void; 
       <button type="button" class="btn sm" onClick={() => setEdit(null)}>Cancelar</button></div></li>;
   return <li class="row between" style="gap:8px;padding:4px 0;border-top:1px solid var(--borda)">
     <div style="min-width:0;overflow-wrap:anywhere"><span class="small">{f.fato}</span>
-      <div class="tiny sub">{f.fonte === "claude" ? "anotado pelo Claude" : "anotado por você"}{f.expiraEm ? ` · vale até ${new Date(f.expiraEm).toLocaleDateString("pt-BR")}` : ""}</div></div>
+      <div class="tiny sub">{f.fonte === "claude" ? "anotado pelo Chat" : "anotado por você"}{f.expiraEm ? ` · vale até ${new Date(f.expiraEm).toLocaleDateString("pt-BR")}` : ""}</div></div>
     <div class="row" style="gap:0;flex:none">
       <button type="button" class="btn ghost sm" aria-label={`Editar: ${f.fato}`} onClick={() => setEdit(f.fato)}><Icon id="edit" /></button>
       <button type="button" class="btn ghost sm" aria-label={`Apagar: ${f.fato}`} onClick={onDel}><Icon id="x" /></button></div></li>;
@@ -87,11 +87,11 @@ export function MemoriaCard({ info }: { info: ClaudeInfo | null }) {
     if (SERVER && !(await send("DELETE", `/api/claude/memoria/${encodeURIComponent(f.id)}`).catch(() => null))) return;
     if (info) info.memoria = fatos.filter((x) => x.id !== f.id); changed(); toast("Fato apagado");
   };
-  return <Card><div class="row between wrapx"><h2>Memória do Claude</h2><span class="badge">{fatos.length}/{info?.limite ?? C.MEMORIA.max}</span></div>
-    <p class="small sub" style="margin:4px 0 8px">O que o Claude aprendeu sobre você e usa para decidir. Corrija ou apague o que não vale mais.</p>
+  return <Card><div class="row between wrapx"><h2>Memória do Chat</h2><span class="badge">{fatos.length}/{info?.limite ?? C.MEMORIA.max}</span></div>
+    <p class="small sub" style="margin:4px 0 8px">O que o Chat aprendeu sobre você e usa para decidir. Corrija ou apague o que não vale mais.</p>
     <ul style="list-style:none;padding:0;margin:0">{fatos.map((f) => <FatoItem key={f.id} f={f} onSave={(t) => save(f, t)} onDel={() => del(f)} />)}</ul>
     {!fatos.length && <p class="small sub">Nada anotado ainda.</p>}
-    <div class="row" style="gap:8px;margin-top:10px"><input class="input" value={novo} maxLength={C.MEMORIA.fatoMax} placeholder="ex.: prefiro treinar de manhã" aria-label="Novo fato para o Claude"
+    <div class="row" style="gap:8px;margin-top:10px"><input class="input" value={novo} maxLength={C.MEMORIA.fatoMax} placeholder="ex.: prefiro treinar de manhã" aria-label="Novo fato para o Chat"
       onInput={(e) => setNovo(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
       <button type="button" class="btn sm" style="flex:none" onClick={add} aria-label="Adicionar fato"><Icon id="plus" /></button></div></Card>;
 }

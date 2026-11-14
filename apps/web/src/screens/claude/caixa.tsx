@@ -1,4 +1,4 @@
-// Caixa de pedidos ao Claude (connector MCP). No demo, respostas ilustrativas; no servidor, o Claude responde ao processar a caixa.
+// Caixa de pedidos ao Chat (connector MCP). No demo, respostas ilustrativas; no servidor, o Chat responde ao processar a caixa.
 import { C, S, commit, today, loadServer } from "../../lib/store/index.ts";
 import { FOCUS, EXB, activePlan, addFood, addPain, computePlan, dayInput, estimateFood, foodTotals, mName } from "../../lib/store/regras.ts";
 import { SERVER, send } from "../../lib/api/index.ts";
@@ -41,7 +41,7 @@ export function applyChangeTo(ui: typeof S.ui, ch: any, extraPains: any[], previ
   if (ch.gymId) ui.gymId = ch.gymId;
   if (ch.format) ui.format = ch.format;
   if (ch.swap) ui.swapsToday = { ...ui.swapsToday, [ch.swap.muscle]: ch.swap.to };
-  if (ch.pain) { if (preview) extraPains.push(ch.pain); else addPain({ ...ch.pain, kind: "muscular", context: "pelo Claude" }); }
+  if (ch.pain) { if (preview) extraPains.push(ch.pain); else addPain({ ...ch.pain, kind: "muscular", context: "pelo Chat" }); }
   if (ch.food && !preview) addFood(ch.food);
   ui.locked = false;
 }
@@ -86,18 +86,18 @@ function applyInbox(m: any) {
 }
 function dropInbox(m: any) { m.status = "descartado"; commit(); send("POST", `/api/inbox/${m.id}/status`, { status: "descartado" }).catch(() => {}); }
 
-/** "Continuar no Claude": abre o claude.ai com o pedido e o tipo de contexto já escritos (conversa em tempo real pelo connector). */
+/** "Continuar no Chat": abre o claude.ai com o pedido e o tipo de contexto já escritos (conversa em tempo real pelo connector). */
 export const Continuar = ({ m }: { m: { text: string; action?: string; tier?: string } }) =>
-  <a class="btn ghost sm" href={C.linkContinuar({ texto: m.text, acao: m.action, tier: m.tier })} target="_blank" rel="noopener noreferrer"><Icon id="chat" />Continuar no Claude</a>;
+  <a class="btn ghost sm" href={C.linkContinuar({ texto: m.text, acao: m.action, tier: m.tier })} target="_blank" rel="noopener noreferrer"><Icon id="chat" />Continuar no Chat</a>;
 
 export function InboxItem({ m }: { m: any }) {
   const diff: { minus?: string; plus?: string }[] | null = m.change?.diff ?? (m.change?.itens ? m.change.itens.map((t: string) => ({ plus: t })) : null);
   return <div><div class="msg me small"><b>Você</b> <span class={`tier ${m.tier}`}>{C.TIER_INFO[m.tier as Tier]?.nm ?? m.tier}</span><br />{m.text}</div>
-    {m.response ? <div class="msg small" style="margin-top:6px"><b>{m.cerebro === "regra" ? "Ciclo (regra, sem IA):" : m.cerebro === "openai-api" ? "IA de reserva:" : "Claude:"}</b> {m.response}
+    {m.response ? <div class="msg small" style="margin-top:6px"><b>{m.cerebro === "regra" ? "Ciclo (regra, sem IA):" : m.cerebro === "openai-api" ? "IA de reserva:" : "Chat:"}</b> {m.response}
       {!!diff?.length && <div class="diff">{diff.map((d, i) => <div key={i}>{d.minus && <div class="minus">− {d.minus}</div>}{d.plus && <div class="plus">+ {d.plus}</div>}</div>)}</div>}
       {m.status === "respondido" && m.change && <div class="row" style="margin-top:8px;gap:6px"><button type="button" class="btn pri sm" onClick={() => applyInbox(m)}><Icon id="check" />Aplicar</button><button type="button" class="btn sm" onClick={() => dropInbox(m)}>Descartar</button></div>}
       {m.status === "aplicado" && <p class="tiny sub" style="margin-top:6px"><Icon id="check" style="width:12px;height:12px" /> aplicado</p>}
-    </div> : <div class="row between wrapx" style="margin-top:4px;row-gap:4px"><p class="tiny sub"><Icon id="clock" style="width:12px;height:12px;vertical-align:-2px" /> {SERVER ? "na fila — o Claude responde quando processar a caixa" : "pensando…"}</p>
+    </div> : <div class="row between wrapx" style="margin-top:4px;row-gap:4px"><p class="tiny sub"><Icon id="clock" style="width:12px;height:12px;vertical-align:-2px" /> {SERVER ? "na fila — o Chat responde quando processar a caixa" : "pensando…"}</p>
       <Continuar m={m} /></div>}</div>;
 }
 
@@ -108,11 +108,11 @@ export function CaixaClaude({ limit = 6 }: { limit?: number }) {
   const cls = draft ? C.classify(draft) : null;
   const tier = (S.ui.tierOverride ?? cls?.tier ?? S.profile.tiers[S.ui.promptCat]) as Tier;
   const setDraft = (v: string) => { S.ui.inboxDraft = v; commit(); };
-  return <Card><div class="row between wrapx"><h2>Pedir ao Claude</h2><span class="badge">connector · sua assinatura</span></div>
+  return <Card><div class="row between wrapx"><h2>Pedir ao Chat</h2><span class="badge">connector · sua assinatura</span></div>
     <p class="small sub" style="margin:4px 0 10px">Toque num pedido pronto ou escreva/fale. A resposta volta aqui com a mudança para aplicar.</p>
     <div class="tabs">{CATS.map((c) => <Chip key={c} on={S.ui.promptCat === c} onClick={() => { S.ui.promptCat = c; commit(); }}>{c}</Chip>)}</div>
     <div class="chips" style="margin-top:8px">{ps.map((p) => <button type="button" key={p.id} class="chip" onClick={() => sendInbox(p.text, p.id)}>{p.label} <span class={`tier ${p.tier}`}>{C.TIER_INFO[p.tier].nm}</span></button>)}</div>
-    <div class="row start" style="margin-top:10px;gap:8px"><textarea class="input" id="inboxTxt" rows={2} aria-label="Pedido ao Claude" placeholder="ex.: hoje quero treinar ombro e tenho 45 min" value={draft}
+    <div class="row start" style="margin-top:10px;gap:8px"><textarea class="input" id="inboxTxt" rows={2} aria-label="Pedido ao Chat" placeholder="ex.: hoje quero treinar ombro e tenho 45 min" value={draft}
       onInput={(e) => { S.ui.inboxDraft = e.currentTarget.value; }} onBlur={() => commit()} />
       <Mic value={draft} onChange={setDraft} label="Falar o pedido" /></div>
     <div class="row between wrapx" style="margin-top:8px;row-gap:8px"><div class="row small" style="gap:6px">Modelo:

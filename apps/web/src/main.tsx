@@ -22,7 +22,17 @@ async function boot() {
       if (e?.status === 401) paraEntrar(); // #54: sem faixa; a tela #entrar faz o login e volta
       else showFaixa({ id: "boot", tone: "warn", text: "Sem conexão: usando o que está no aparelho." });
     }
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+    if ("serviceWorker" in navigator) {
+      // #62: bundle antigo em cache no PWA. O sw.js muda a cada build (versão no nome do cache); o app procura atualização ao abrir e ao
+      // voltar para a frente, e recarrega UMA vez quando o service worker novo assume (skipWaiting + clients.claim no sw.js).
+      const tinha = !!navigator.serviceWorker.controller;
+      let recarregou = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => { if (tinha && !recarregou && !running()) { recarregou = true; location.reload(); } });
+      navigator.serviceWorker.register("/sw.js").then((reg) => {
+        reg.update().catch(() => {});
+        document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update().catch(() => {}); });
+      }).catch(() => {});
+    }
     setInterval(() => { if (!document.hidden && !running()) loadServer().then(commit).catch(() => {}); }, 60000);
   }
   setVozAI(!!S.features.ai);

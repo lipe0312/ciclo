@@ -26,7 +26,7 @@ O dono quer:
      - redirect desconhecido **nunca redireciona** (sem open redirect);
      - `iss` na resposta (RFC 9207).
    - **Consentimento** em `/autorizar`: página própria (`autorizar.html`), fora da casca do app.
-     - Permitir **pede o Face ID na hora**, mesmo com sessão ativa: o Worker só aceita uma sessão nascida de passkey há no máximo 2 min.
+     - Permitir **pede o Face ID recente**, mesmo com sessão ativa: o mesmo `exigirFaceId` das ações sensíveis da #62 (reconfirma por `/auth/reauth`). Conta com aceite dos termos pendente não conecta (e o `/mcp` já bloqueia, #62).
      - `/oauth/decidir` falha fechado: exige `Origin` igual à origem ou `Sec-Fetch-Site: same-origin`.
      - O redirect de erro leva `Cache-Control: no-store` e `Referrer-Policy: no-referrer`.
    - **Token:**

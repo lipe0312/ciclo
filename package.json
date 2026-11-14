@@ -13,12 +13,12 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "build": "npm run build -w @ciclo/web",
+    "build": "npm run build -w @ciclo/web && node scripts/orcamento-js.mjs",
     "setup": "node scripts/setup-local.mjs",
     "catalogo:imagens": "node scripts/catalogo-imagens.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:tunnel": "node scripts/dev-tunnel.mjs",
-    "test": "node --no-warnings --test packages/core/test/*.test.ts apps/worker/test/*.test.ts",
+    "test": "node --no-warnings --test packages/core/test/*.test.ts apps/worker/test/*.test.ts apps/web/test/*.test.ts",
     "typecheck": "tsc -p packages/core && tsc -p apps/web && npm run cf:types -w @ciclo/worker && tsc -p apps/worker",
     "check": "npm run typecheck && npm test && npm run build",
     "cf:setup": "bash scripts/setup-cloudflare.sh",

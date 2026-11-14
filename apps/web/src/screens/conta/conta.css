@@ -1,0 +1,21 @@
+/* #62 Conta (menu e subtelas) e avatar da Home. Tokens de app.css / docs/DESIGN.md; toques ≥ 44 px. */
+.conta-quem{display:flex;align-items:center;gap:14px}
+.conta-quem h1{margin:0}
+.conta-voltar{align-self:flex-start;margin-left:-8px}
+.conta-menu{padding:4px 16px}
+.conta-item{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 0;color:var(--txt);text-decoration:none;border-top:1px solid var(--borda)}
+.conta-menu .conta-item:first-child,.avatar-menu .conta-item:first-of-type,.conta-sec>.conta-item:first-of-type{border-top:0}
+.conta-item>span{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.conta-item>span small{font-size:12px}
+.conta-item>svg:first-child{color:var(--acc);flex:none}
+.conta-item>svg:last-child{color:var(--sub);flex:none}
+.conta-duas{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.conta-aviso{border-color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn)}
+.conta-aviso h2{display:flex;align-items:center;gap:8px}
+.conta-aviso h2 svg{color:var(--warn)}
+.avatar{width:40px;height:40px;border-radius:999px;display:grid;place-items:center;background:var(--txt);color:var(--bg);font-weight:800;font-size:15px;letter-spacing:.02em;flex:none}
+.avatar.lg{width:56px;height:56px;font-size:20px}
+.avatar-btn{width:44px;height:44px;border:0;padding:0;border-radius:999px;background:none;display:grid;place-items:center;cursor:pointer}
+.avatar-btn:focus-visible{outline:2px solid var(--foco);outline-offset:2px}
+.avatar-menu{display:flex;flex-direction:column;gap:10px}
+.view[aria-label="conta"] .conta{max-width:720px}

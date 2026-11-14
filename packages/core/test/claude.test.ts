@@ -99,7 +99,7 @@ test("statusClaude: online com vigia recente; fila com rotina nas últimas 3 h; 
   const h = statusClaude({ agora: NOW, rotinaEm: NOW - 30 * 60e3, pendentes: 1 });
   assert.equal(h.texto, "na fila · responde em ~3 h");
   const manual = statusClaude({ agora: NOW, rotinaEm: NOW - 4 * 3600e3, pendentes: 1 });
-  assert.equal(manual.modo, "manual"); assert.match(manual.texto, /quando você abrir o Claude/);
+  assert.equal(manual.modo, "manual"); assert.match(manual.texto, /quando você abrir o Chat/);
   assert.equal(statusClaude({ agora: NOW, pendentes: 0 }).texto, "sem rotina ativa");
 });
 

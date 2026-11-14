@@ -29,8 +29,8 @@ export function Saude() {
   return <Card>
     <div class="row between wrapx"><h2>Saúde da semana</h2><span class="badge num">{h.checkouts} checkouts</span></div>
     <div class="dia-stats">{stats.map(([k, v, s]) => <div key={k}><p class="tiny sub">{k}</p><p class="num dia-stat">{v}</p><p class="tiny sub">{s}</p></div>)}</div>
-    {m.suggest && <p class="small dia-alerta" role="status"><Icon id="warn" />Semana de manutenção sugerida: {m.reasons.join(", ")}. O Claude considera isso na revisão.</p>}
-    <p class="tiny sub" style="margin-top:10px">Essas médias entram no resumo que o Claude lê (ciclo_estado) e na revisão de domingo.</p>
+    {m.suggest && <p class="small dia-alerta" role="status"><Icon id="warn" />Semana de manutenção sugerida: {m.reasons.join(", ")}. O Chat considera isso na revisão.</p>}
+    <p class="tiny sub" style="margin-top:10px">Essas médias entram no resumo que o Chat lê (ciclo_estado) e na revisão de domingo.</p>
     <a class="btn full" style="margin-top:12px" href={href("diario", ["exames"])}><Icon id="info" />Exames</a>
   </Card>;
 }

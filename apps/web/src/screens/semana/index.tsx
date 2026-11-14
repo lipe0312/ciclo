@@ -15,6 +15,7 @@ import { AvisoFalta } from "./aviso.tsx";
 import { abrirMover, abrirRegenerar, abrirTrocar, abrirVersoes, aberto, diaCurto } from "./folhas.tsx";
 import { abrirGerarOutro } from "../treino/gerar.tsx";
 import "./semana.css";
+import { Estado } from "../../lib/estado/index.tsx";
 
 export const STATUS: Record<C.DayStatus, string> = {
   feito: "feito", extra: "extra", faltou: "faltou", folga: "folga", pendente: "sem resposta", hoje: "hoje", livre: "livre", planejado: "planejado",
@@ -42,7 +43,7 @@ function DiaCard({ d }: { d: Dia }) {
       {p ? <>
         <p class="small sub num" style="margin-top:2px">{p.items.length} exercícios · {p.setsTotal} séries · ~{p.estMinutes} min{gym ? ` · ${gym}` : ""}</p>
         <p class="tiny sub" style="margin-top:4px">{Object.entries(p.perMuscle).map(([m, n]) => `${mName(m)} ${n}`).join(" · ")}</p>
-        {d.source !== "auto" && <p class="tiny" style="margin-top:4px"><span class="badge">{d.source === "claude" ? "montado pelo Claude" : "escolha sua"}</span></p>}
+        {d.source !== "auto" && <p class="tiny" style="margin-top:4px"><span class="badge">{d.source === "claude" ? "montado pelo Chat" : "escolha sua"}</span></p>}
         {d.warn.map((w, i) => <p key={i} class="tiny" style="margin-top:4px;color:var(--warn)">{w}</p>)}
       </> : d.status === "livre" ? <p class="small sub" style="margin-top:2px">Não planejado. Treinar hoje vira <b>extra</b>: só o que falta, sem passar do orçamento.</p> : null}
       {d.cardio && <p class="tiny" style="margin-top:4px"><Icon id={C.MODALIDADES.find((m) => m.id === d.cardio!.type)?.icon ?? "bolt"} />{" "}Cardio {d.cardio.minutes} min · {C.INTENSITIES[d.cardio.intensity].nm.toLowerCase()}</p>}
@@ -105,12 +106,11 @@ function Lista({ s }: { s: Semana }) {
 
 function Detalhe({ date }: { date: string }) {
   const s = getSemana(), d = diaDe(date);
-  const back = <a class="btn" href="#semana"><Icon id="back" />Semana</a>;
-  if (!s || !d) return <>{back}<p class="sub" style="margin-top:12px">Dia fora desta semana.</p></>;
+  if (!s || !d) return <Estado tipo="vazio" titulo="Dia fora desta semana" acao={{ label: "Ver a semana", href: "#semana" }} />;
   const p = d.status === "livre" ? s.extraToday : d.plan;
   const pode = aberto(d);
   return <>
-    <div class="row between" style="margin-bottom:10px">{back}<span class={`sem-st st-${d.status}`}>{STATUS[d.status]}</span></div>
+    <p style="margin-bottom:10px"><span class={`sem-st st-${d.status}`}>{STATUS[d.status]}</span></p>
     <p class="kicker">{longDate(date)}{d.gymId ? ` · ${gymById(d.gymId)?.name ?? ""}` : ""}</p>
     <h1 style="margin:2px 0 6px">{p?.name ?? "Folga"}</h1>
     {p && <p class="small sub num">{p.items.length} exercícios · {p.setsTotal} séries · ~{p.estMinutes} min{d.opts.format && d.opts.format !== "tradicional" ? ` · ${d.opts.format === "superserie" ? "superséries" : "circuito"}` : ""}</p>}

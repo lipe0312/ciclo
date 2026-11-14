@@ -35,6 +35,28 @@ export async function criarPasskey(body: Record<string, unknown>): Promise<{ cod
   });
 }
 
+/** #62 Face ID de novo na MESMA sessão: destrava depois de 7 dias fechado e libera ações sensíveis por 5 min. */
+export async function faceIdDeNovo(): Promise<void> {
+  const o = await api<{ challengeId: string; options: any }>("POST", "/auth/reauth/options", {});
+  const op = o.options;
+  const cred = await navigator.credentials.get({ publicKey: { ...op, challenge: buf(op.challenge), allowCredentials: (op.allowCredentials ?? []).map((c: { id: string; type: "public-key" }) => ({ ...c, id: buf(c.id) })) } }) as PublicKeyCredential | null;
+  if (!cred) throw new Error("cancelado");
+  const r = cred.response as AuthenticatorAssertionResponse;
+  await api("POST", "/auth/reauth", {
+    challengeId: o.challengeId,
+    credential: { id: cred.id, type: cred.type, response: { clientDataJSON: enc(r.clientDataJSON), authenticatorData: enc(r.authenticatorData), signature: enc(r.signature), userHandle: r.userHandle ? enc(r.userHandle) : null } },
+  });
+}
+
+/** Ação sensível (chave do Chat, convidar, apagar conta, códigos, sair de todos): se o servidor pedir, faz o Face ID e tenta de novo uma vez. */
+export async function comFaceId<T>(f: () => Promise<T>): Promise<T> {
+  try { return await f(); } catch (e) {
+    if (!(e instanceof HttpError) || e.status !== 403 || (e.data as { code?: string } | null)?.code !== "reauth") throw e;
+    await faceIdDeNovo();
+    return f();
+  }
+}
+
 /** Login com a passkey deste aparelho (ou de um iPhone por perto, pelo QR do próprio sistema). */
 export async function entrarComPasskey(extra: Record<string, unknown> = {}): Promise<void> {
   const o = await api<{ challengeId: string; options: any }>("POST", "/auth/login/options", extra);

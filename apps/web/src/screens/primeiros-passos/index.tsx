@@ -63,7 +63,7 @@ function aplicarLugares(places: readonly string[]) {
 }
 const novaConta = () => SERVER && S.onboarding !== "concluido";
 function Onde() {
-  const places = S.profile.places ?? ["academia"];
+  const places = S.profile.places ?? [];
   const toggle = (k: C.PlaceChoice) => {
     const a = places.includes(k) ? places.filter((x) => x !== k) : [...places, k];
     if (!a.length) return toast("Escolha ao menos uma opção");
@@ -169,18 +169,20 @@ export default function PrimeirosPassos({ route }: { route: Route }) {
   const goto = (i: number) => go(href("primeiros-passos", [String(i)]));
   const feito = S.onboarding === "concluido" || !SERVER;
   const porClaude = S.profile.meta?.filledBy === "claude" && !S.profile.meta.confirmed;
-  const blocked = (P.id === "musculos" && !S.profile.subPriorities.length && C.goalPreset(S.profile.goal.id).length > 0) || (P.id === "rotina" && !S.profile.daysUsual.length);
+  // #62: conta nova começa sem nada marcado: objetivo e onde treina precisam de uma escolha
+  const blocked = (P.id === "objetivo" && !S.profile.goal?.id) || (P.id === "onde" && !(S.profile.places ?? []).length)
+    || (P.id === "musculos" && !S.profile.subPriorities.length && C.goalPreset(S.profile.goal.id).length > 0) || (P.id === "rotina" && !S.profile.daysUsual.length);
   return <div class="pp">
     <div class="pp-top"><button type="button" class="btn" disabled={step === 0} onClick={() => goto(step - 1)} aria-label="Voltar uma pergunta"><Icon id="back" />Voltar</button>
       <span class="small sub num" aria-hidden="true">{step + 1} de {PASSOS.length}</span>
       {feito ? <a class="btn ghost" href="#perfil">Sair</a> : <button type="button" class="btn ghost" disabled={busy} onClick={() => pular(setBusy)}>Pular por agora</button>}</div>
     <div class="pp-bar" role="progressbar" aria-label="Progresso dos Primeiros passos" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><i style={`width:${pct}%`} /></div>
-    {porClaude && step === 0 && <div class="note" style="margin-top:14px"><Icon id="chat" /><span>Preenchido pelo Claude. Confira as respostas e siga até o fim para confirmar.</span></div>}
+    {porClaude && step === 0 && <div class="note" style="margin-top:14px"><Icon id="chat" /><span>Preenchido pelo Chat. Confira as respostas e siga até o fim para confirmar.</span></div>}
     <h1 class="pp-q">{P.title}</h1><p class="sub pp-sub">{P.sub}</p>
     <div class="pp-body"><Tela /></div>
     <div class="pp-cta">{step < LAST
       ? <button type="button" class="btn pri lg full" disabled={blocked} onClick={() => goto(step + 1)}>Continuar<Icon id="arrow" /></button>
       : <button type="button" class="btn pri lg full" disabled={busy} onClick={() => concluir(setBusy)}><Icon id="check" />{busy ? "Gerando…" : "Gerar minha semana e abrir o Hoje"}</button>}
-      {blocked && <p class="tiny sub" style="text-align:center;margin-top:6px">{P.id === "rotina" ? "Marque ao menos um dia." : "Escolha ao menos uma prioridade."}</p>}</div>
+      {blocked && <p class="tiny sub" style="text-align:center;margin-top:6px">{P.id === "rotina" ? "Marque ao menos um dia." : P.id === "objetivo" ? "Escolha um objetivo." : P.id === "onde" ? "Escolha onde você treina." : "Escolha ao menos uma prioridade."}</p>}</div>
   </div>;
 }

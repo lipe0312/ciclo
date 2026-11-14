@@ -27,6 +27,18 @@ export async function entrarComPasskey(): Promise<void> {
   });
 }
 
+/** #62 Face ID de novo com a sessão atual (/auth/reauth): o consentimento é ação sensível. */
+export async function confirmarFaceId(): Promise<void> {
+  const o = await api<{ challengeId: string; options: any }>("POST", "/auth/reauth/options", {});
+  const cred = await navigator.credentials.get({ publicKey: { ...o.options, challenge: buf(o.options.challenge), allowCredentials: (o.options.allowCredentials ?? []).map((c: { id: string; type: "public-key" }) => ({ ...c, id: buf(c.id) })) } }) as PublicKeyCredential | null;
+  if (!cred) throw new Error("cancelado");
+  const r = cred.response as AuthenticatorAssertionResponse;
+  await api("POST", "/auth/reauth", {
+    challengeId: o.challengeId,
+    credential: { id: cred.id, type: cred.type, response: { clientDataJSON: enc(r.clientDataJSON), authenticatorData: enc(r.authenticatorData), signature: enc(r.signature), userHandle: r.userHandle ? enc(r.userHandle) : null } },
+  });
+}
+
 export function erroTexto(e: unknown): string {
   if (e instanceof ErroApi) return e.code === "turnstile" ? "Muitas tentativas. Entre pelo app do Ciclo primeiro e volte a esta tela." : e.message;
   const n = (e as { name?: string })?.name;

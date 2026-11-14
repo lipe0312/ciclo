@@ -37,34 +37,11 @@ test("MCP_TOKEN global: só bootstrap em localhost com DEV_NO_AUTH", async () =>
   assert.equal((await mcp(makeEnv({ DEV_NO_AUTH: undefined }), BOOT, "ciclo_estado")).status, 401);
 });
 
-test("x-dev-user só vale em localhost; produção sem Access = 401", async () => {
+test("x-dev-user só vale em localhost; fora dele, sem sessão = 401", async () => {
   const env = makeEnv();
   assert.equal((await call(env, "GET", "/api/account", { user: "x", host: "ciclo.exemplo.workers.dev" })).status, 401);
   assert.equal((await call(env, "GET", "/api/account", { headers: { Cookie: "ciclo_dev_user=bob" } })).data.account.email, "bob@dev.localhost");
   assert.equal((await call(env, "GET", "/api/account", { user: "../X" })).status, 401);
-});
-
-test("JWT do Access: assinatura, aud, exp e ALLOWED_EMAILS (lista vazia = ninguém)", async () => {
-  const kp = await crypto.subtle.generateKey({ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"]) as CryptoKeyPair;
-  const jwk = { ...(await crypto.subtle.exportKey("jwk", kp.publicKey)), kid: "k1" };
-  const orig = globalThis.fetch;
-  globalThis.fetch = (async () => new Response(JSON.stringify({ keys: [jwk] }))) as typeof fetch;
-  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
-  const jwt = async (c: Record<string, unknown>) => {
-    const h = b64({ alg: "RS256", kid: "k1" }), p = b64(c);
-    const s = Buffer.from(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", kp.privateKey, new TextEncoder().encode(`${h}.${p}`))).toString("base64url");
-    return `${h}.${p}.${s}`;
-  };
-  try {
-    const base = { aud: "AUD", iss: "https://t.cloudflareaccess.com", exp: Date.now() / 1000 + 600, email: "Pessoa@Exemplo.com" };
-    const go = async (env: any, c: object) => (await call(env, "GET", "/api/account", { host: "ciclo.exemplo.workers.dev", headers: { "Cf-Access-Jwt-Assertion": await jwt(c) } })).status;
-    const env = makeEnv({ DEV_NO_AUTH: undefined, ACCESS_TEAM_DOMAIN: "t.cloudflareaccess.com", ACCESS_AUD: "AUD", ALLOWED_EMAILS: "pessoa@exemplo.com" });
-    assert.equal(await go(env, base), 200);
-    assert.equal(await go(env, { ...base, aud: "outro" }), 401);
-    assert.equal(await go(env, { ...base, exp: 1 }), 401);
-    assert.equal(await go(env, { ...base, email: "intruso@exemplo.com" }), 401);
-    assert.equal(await go({ ...env, ALLOWED_EMAILS: "" }, base), 401);
-  } finally { globalThis.fetch = orig; }
 });
 
 test("exportar e apagar a conta: linhas e objetos R2 somem", async () => {

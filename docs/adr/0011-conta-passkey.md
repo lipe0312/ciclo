@@ -12,6 +12,7 @@
 - **Segredos fora do banco**: o desafio WebAuthn em andamento guarda só o hash do convite; o limite por IP guarda o HMAC do IP com o secret `AUTH_PEPPER` (recomendado; sem ele usa o `OWNER_SETUP_CODE`). Erro de `UNIQUE` na criação não diz se um e-mail já tem conta.
 - **Verificação estrita**: RS256 só com expoente 65537 e ≥ 2048 bits; assinatura ES256 só em DER canônico.
 - **Transição**: enquanto `ACCESS_*` existirem, `/api` aceita a sessão própria **ou** o JWT do Access (mesma verificação da ADR-0007). Sem os secrets, só a sessão própria.
+- **#62 (2026-11-14)**: a transição acabou. O caminho do JWT do Access saiu do Worker; só a sessão própria vale. Sessão deslizante de 30 dias com teto de 180; o dono nasce só com `OWNER_SETUP_CODE` **e** o e-mail do secret `OWNER_EMAIL`; cadastro só por convite amarrado ao e-mail, com aceite LGPD versionado (`consent`).
 - **Abuso**: `/auth/*` limitado por IP (HMAC, nunca o IP puro) a 30 POST/10 min. Proteções mais amplas ficam na #56.
 
 **Pendências (follow-up):** reautenticação (step-up, Face ID de novo com `userVerification: required`) em ações sensíveis (apagar conta, gerar token do Claude, criar convite, gerar códigos); limite **global** para `/auth/recover` e para o setup (além do por IP), na #56.

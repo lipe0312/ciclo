@@ -11,6 +11,7 @@ import type { AuthUser, Env } from "./env.ts";
 import { HttpError, json, readForm, readJson, str } from "./http.ts";
 import { sha256Hex, timingSafeEqualHex } from "./auth.ts";
 import { chaveIp, contarJanela } from "./limites.ts";
+import { exigirFaceId } from "./auth-conta.ts";
 
 const te = new TextEncoder();
 const rnd = (n: number) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -125,14 +126,6 @@ async function pedidoInfo(req: Request, env: Env, quem: Quem, id: string, now: n
   return json({ destino: new URL(r.redirect_uri).host, verificado, conta: u ? { nome: u.name } : null });
 }
 
-/** Face ID feito agora: a sessão do cookie nasceu de uma passkey há ≤ 2 min. Só o dev local (DEV_NO_AUTH) dispensa. */
-async function faceIdRecente(env: Env, u: AuthUser, now: number) {
-  if (u.via === "dev") return true;
-  if (u.via !== "sessao" || !u.sessionId) return false;
-  const s = await env.DB.prepare("SELECT created_at, via FROM sessions WHERE id = ?1 AND user_id = ?2").bind(u.sessionId, u.id).first<{ created_at: number; via: string }>();
-  return !!s && s.via === "passkey" && now - s.created_at <= OAUTH.faceIdMs;
-}
-
 /** POST /oauth/decidir {req, permitir}: só com sessão. Devolve para onde o navegador vai (o app do Claude). */
 async function decidir(req: Request, env: Env, quem: Quem, origin: string, now: number): Promise<Response> {
   // falha fechada: só a própria página (/autorizar) decide
@@ -145,7 +138,9 @@ async function decidir(req: Request, env: Env, quem: Quem, origin: string, now: 
   const u = b.permitir === true ? await quem(req, env).catch(() => null) : null;
   if (b.permitir === true) {
     if (!u) return json({ error: "entre com o Face ID primeiro", code: "entrar" }, 401);
-    if (!(await faceIdRecente(env, u, now))) return json({ error: "confirme com o Face ID", code: "faceid" }, 401);
+    // #62: o mesmo Face ID recente das ações sensíveis (exigirFaceId); MCP sem aceite dos termos fica bloqueado (#62)
+    try { exigirFaceId(u, now); } catch { return json({ error: "confirme com o Face ID", code: "reauth" }, 403); }
+    if (u.aceitePendente) return json({ error: "aceite os termos e a privacidade atualizados no app do Ciclo antes de conectar", code: "aceite" }, 403);
   }
   // uso único: o pedido sai na mesma leitura (não dá para permitir duas vezes)
   const r = await env.DB.prepare("DELETE FROM oauth_request WHERE id = ?1 RETURNING client_id, redirect_uri, code_challenge, state, resource, expires_at").bind(rid)

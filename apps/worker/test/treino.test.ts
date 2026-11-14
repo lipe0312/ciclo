@@ -104,7 +104,7 @@ test("histórico por exercício: paginado, mais recente primeiro, só da própri
   assert.ok(p1.next);
   const p2 = (await h(`?limit=2&before=${p1.next}`)).data;
   assert.deepEqual(p2.sessions.map((s: any) => s.sessionId), [U1]);
-  assert.ok(!JSON.stringify(all).includes("99"), "nada da conta B");
+  assert.ok(!all.sessions.some((s: any) => s.sets.some((x: any) => x.kg === 99)), "nada da conta B"); // (o texto "99" aparece em timestamps)
   const last = (await ok(call(env, "GET", `/api/history/last?ids=${EX},Leg_Press&n=2`, { user: "ana" }))).data.history;
   assert.equal(last[EX].length, 2);
   assert.deepEqual(last[EX][0], [{ kg: 12, reps: 12 }, { kg: 12, reps: 10 }]);

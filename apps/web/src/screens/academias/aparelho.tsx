@@ -8,6 +8,7 @@ import { href } from "../../lib/roteador/index.ts";
 import { img } from "../../lib/util.ts";
 import { enviarMidia, midiaDoAparelho } from "../../lib/lugares/index.ts";
 import "./academias.css";
+import { Estado } from "../../lib/estado/index.tsx";
 
 function Item({ m }: { m: GymMedia }) {
   return <li class="lug-midia">
@@ -20,8 +21,7 @@ function Item({ m }: { m: GymMedia }) {
 export function PaginaAparelho({ gym, eqId }: { gym: Gym; eqId: string }) {
   const eq = C.EQUIPMENT_BY_ID[eqId];
   const [nota, setNota] = useState(""), [status, setStatus] = useState(""), [busy, setBusy] = useState(false);
-  const back = <a class="btn sm" href={href("academias", [gym.id])}><Icon id="back" />{gym.name}</a>;
-  if (!eq) return <>{back}<p class="sub" style="margin-top:12px">Aparelho não encontrado.</p></>;
+  if (!eq) return <Estado tipo="vazio" titulo="Aparelho não encontrado" acao={{ label: gym.name, href: href("academias", [gym.id]) }} />;
   const midia = midiaDoAparelho(gym.id, eqId);
   const usa = C.EXERCISES.filter((e) => e.eq.includes(eqId));
   const tem = gym.equipment.includes(eqId);
@@ -38,7 +38,6 @@ export function PaginaAparelho({ gym, eqId }: { gym: Gym; eqId: string }) {
   };
 
   return <>
-    <div class="row between" style="margin-bottom:10px">{back}</div>
     <p class="kicker">{gym.name} · aparelho</p><h1 style="margin:2px 0 14px">{eq.nm}</h1>
     <div class="grid dash"><div class="stack">
       <div class="card"><div class="exim big"><img src={img(eq.img)} alt={`${eq.nm}: imagem de referência`} width={480} height={320} /></div>

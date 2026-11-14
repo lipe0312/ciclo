@@ -36,11 +36,11 @@ test("CSP do app: só 'self', os tiles do OSM (ADR-0010) e o Turnstile (ADR-0012
   assert.match(h, /Strict-Transport-Security/); assert.match(h, /Permissions-Policy/);
   const html = readFileSync(new URL("../../web/index.html", import.meta.url), "utf8");
   assert.ok(!/<script(?![^>]*\bsrc=)[^>]*>/i.test(html), "sem script inline");
-  assert.match(html, /rel="manifest"[^>]*crossorigin="use-credentials"/, "manifest leva o cookie do Access (senão o PWA não instala)");
+  assert.match(html, /rel="manifest"[^>]*crossorigin="use-credentials"/, "manifest leva o cookie (senão o PWA não instala)");
 });
 
-test("produção sem Access: TODA rota /api → 401 e TODA ferramenta MCP sem token válido → 401 (gerado do roteador)", async () => {
-  const env = makeEnv({ DEV_NO_AUTH: undefined, ACCESS_TEAM_DOMAIN: "time.cloudflareaccess.com", ACCESS_AUD: "aud", ALLOWED_EMAILS: "a@exemplo.com" });
+test("produção sem sessão: TODA rota /api → 401 e TODA ferramenta MCP sem token válido → 401 (gerado do roteador)", async () => {
+  const env = makeEnv({ DEV_NO_AUTH: undefined });
   const sigs = routeSignatures();
   assert.ok(sigs.length > 60);
   for (const sig of sigs) {
@@ -59,7 +59,7 @@ test("produção sem Access: TODA rota /api → 401 e TODA ferramenta MCP sem to
     }
   }
   assert.equal((await call(env, "POST", "/mcp/media", { host: PROD, bearer: "b".repeat(64), raw: new Uint8Array([1]), ct: "image/png" })).status, 401);
-  assert.equal((await call(env, "GET", "/api/health", { host: PROD })).status, 200, "health fica aberto (Bypass no Access)");
+  assert.equal((await call(env, "GET", "/api/health", { host: PROD })).status, 200, "health fica aberto");
 });
 
 test("LGPD: toda tabela com user_id (lida do schema) é apagada com a conta; export cobre todas, menos as técnicas", async () => {

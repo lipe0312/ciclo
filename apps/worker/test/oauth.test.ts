@@ -246,7 +246,7 @@ test("loopback (dev/CLI) é aceito, mas a tela marca \"app não verificado\"", a
   assert.equal(info.data.verificado, false); assert.equal(info.data.destino, "localhost:3118");
 });
 
-test("consentir: falha fechada sem Origin/Sec-Fetch-Site da própria origem; pede Face ID na hora, mesmo com sessão", async () => {
+test("consentir: falha fechada sem Origin/Sec-Fetch-Site da própria origem; pede Face ID recente (#62), mesmo com sessão", async () => {
   const env = envConta();
   const d = await dono(env);
   const c = await registrarCliente(env);
@@ -254,11 +254,11 @@ test("consentir: falha fechada sem Origin/Sec-Fetch-Site da própria origem; ped
   const req = (await call(env, "GET", `/oauth/authorize?${q}`, { headers: ip() })).headers.get("location")!.split("=")[1];
   assert.equal((await call(env, "POST", "/oauth/decidir", { body: { req, permitir: true }, headers: { Cookie: d.cookie } })).status, 403, "sem Origin");
   assert.equal((await call(env, "POST", "/oauth/decidir", { body: { req, permitir: true }, headers: { Cookie: d.cookie, "Sec-Fetch-Site": "cross-site" } })).status, 403);
-  // sessão antiga (passkey de 10 min atrás): pede o Face ID e NÃO consome o pedido
-  env.DB.raw.prepare("UPDATE sessions SET created_at = created_at - 600000").run();
+  // Face ID antigo (#62 exigirFaceId): pede o Face ID de novo e NÃO consome o pedido
+  env.DB.raw.prepare("UPDATE sessions SET reauth_at = 1").run();
   const velha = await call(env, "POST", "/oauth/decidir", { body: { req, permitir: true }, headers: { Cookie: d.cookie, "Sec-Fetch-Site": "same-origin" } });
-  assert.equal(velha.status, 401); assert.equal(velha.data.code, "faceid");
-  // Face ID agora (login por passkey = sessão nova) → permite
+  assert.equal(velha.status, 403); assert.equal(velha.data.code, "reauth");
+  // Face ID agora (login por passkey = sessão com reauth recente) → permite
   const nova = await entrar(env, d.auth);
   const ok = await call(env, "POST", "/oauth/decidir", { body: { req, permitir: true }, headers: { Cookie: nova.cookie, "Sec-Fetch-Site": "same-origin" } });
   assert.equal(ok.status, 200, ok.text); assert.ok(new URL(ok.data.redirect).searchParams.get("code"));
@@ -290,4 +290,20 @@ test("registro: cliente que nunca obteve token some em 1 h; o teto é atômico",
   for (let i = n0; i < 200; i++) ins.run(i.toString(16).padStart(32, "0"), Date.now());
   const cheio = await call(env, "POST", "/oauth/register", { body: { redirect_uris: [CB] }, headers: ip() });
   assert.equal(cheio.status, 503);
+});
+
+test("#62 aceite pendente: o consentimento recusa e o token OAuth também não usa o /mcp", async () => {
+  const env = envConta();
+  const d = await dono(env);
+  const c = await registrarCliente(env);
+  const t = (await trocar(env, c.client_id, (await autorizar(env, c.client_id, d.cookie)).searchParams.get("code")!)).data;
+  const tabela = env.DB.raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%consent%'").all().map((r: any) => r.name)[0];
+  env.DB.raw.prepare(`DELETE FROM ${tabela}`).run(); // termos "atualizados": ninguém aceitou ainda
+  const r = await mcp(env, t.access_token, "ciclo_memoria_listar");
+  assert.equal(r.status, 403); assert.equal(r.data.code, "aceite");
+  const q = new URLSearchParams({ response_type: "code", client_id: c.client_id, redirect_uri: CB, code_challenge: await s256(VERIFIER), code_challenge_method: "S256" });
+  const req = (await call(env, "GET", `/oauth/authorize?${q}`, { headers: ip() })).headers.get("location")!.split("=")[1];
+  const nao = await call(env, "POST", "/oauth/decidir", { body: { req, permitir: true }, headers: { Cookie: d.cookie, Origin: O } });
+  assert.ok([401, 403].includes(nao.status), nao.text);
+  assert.ok(!nao.data.redirect);
 });

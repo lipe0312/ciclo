@@ -11,8 +11,6 @@ export const OAUTH = {
   pedidoMs: 10 * 60_000,
   /** token de acesso: 1 h (o refresh renova; a conexão some com 90 dias sem uso, regra da #55) */
   acessoS: 3600,
-  /** consentir exige Face ID (passkey) feito há no máximo 2 min, mesmo com sessão ativa */
-  faceIdMs: 2 * 60_000,
   /** cliente registrado que nunca obteve token some em 1 h */
   clienteSemUsoMs: 3600_000,
   /** conexões OAuth ativas por pessoa (a mais antiga sai para caber a nova) */
