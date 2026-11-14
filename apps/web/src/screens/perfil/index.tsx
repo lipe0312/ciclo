@@ -32,7 +32,7 @@ const BLOCOS: Bloco[] = [
   { id: "rotina", nm: "Rotina da semana", icon: "cal", key: "rotina", why: "Muda como as séries se distribuem nos dias em que você realmente vai.", resumo: () => `${pr().daysTarget} dias · ${pr().minutes} min · semana começa ${DAYS_LONG.find((d) => d[0] === pr().weekStart)?.[1].toLowerCase() ?? ""}` },
   { id: "preferencias", nm: "Preferências por músculo", icon: "swap", key: "preferencias", why: "Muda quais exercícios entram e em que aparelho.", resumo: () => `${Object.values(pr().prefs).filter((v) => v && v !== "tanto_faz").length} músculo(s) com preferência · formato ${pr().dynamics}` },
   { id: "mobilidade", nm: "Mobilidade", icon: "body", key: "mobilidade", why: "Tira os exercícios que doem ao agachar fundo ou levantar o braço.", resumo: () => `agachar ${pr().mobility.squat ? "sem dor" : "com dor"} · braço acima da cabeça ${pr().mobility.overhead ? "sem dor" : "com dor"}` },
-  { id: "claude", nm: "Como o Claude trabalha com você", icon: "chat", key: "claude", why: "Define o que ele muda sozinho, o tom e qual modelo responde cada pedido.", resumo: () => `${({ so_sugere: "só sugere", carga_sozinho: "carga sozinho, plano com aprovação", tudo: "tudo automático" } as Record<string, string>)[pr().autonomy]} · tom ${pr().tone}` },
+  { id: "claude", nm: "Como o Chat trabalha com você", icon: "chat", key: "claude", why: "Define o que ele muda sozinho, o tom e qual modelo responde cada pedido.", resumo: () => `${({ so_sugere: "só sugere", carga_sozinho: "carga sozinho, plano com aprovação", tudo: "tudo automático" } as Record<string, string>)[pr().autonomy]} · tom ${pr().tone}` },
 ];
 const FORA: Bloco = { id: "comida", nm: "Comida e registro", icon: "food", why: "Define como você registra o que come (a tela Comida usa isto).", resumo: () => `registro ${pr().diet.mode} · ${pr().diet.kcal} kcal · ${pr().diet.protein} g` };
 
@@ -94,12 +94,12 @@ function Preferencias() {
 const Mobilidade = () => <><div class="row wrapx" style="gap:16px"><div><span class="f">Agacha fundo sem dor?</span><PSeg k="mobility.squat" label="Agachar" opts={[[true, "sim"], [false, "não"]]} /></div><div><span class="f">Braço acima da cabeça sem dor?</span><PSeg k="mobility.overhead" label="Braço acima da cabeça" opts={[[true, "sim"], [false, "não"]]} /></div></div>
   <p class="small" style="margin-top:14px">Dores de hoje ficam no <a class="link44" href="#corpo">mapa de dor</a>: <b>{S.pains.length}</b> ativa(s).</p></>;
 
-function Claude() {
-  return <><span class="f">Quanto o Claude pode mudar sozinho</span><PSeg k="autonomy" label="Autonomia" opts={[["so_sugere", "só sugere"], ["carga_sozinho", "carga sozinho, plano com aprovação"], ["tudo", "tudo"]]} />
+function Chat() {
+  return <><span class="f">Quanto o Chat pode mudar sozinho</span><PSeg k="autonomy" label="Autonomia" opts={[["so_sugere", "só sugere"], ["carga_sozinho", "carga sozinho, plano com aprovação"], ["tudo", "tudo"]]} />
     <div style="margin-top:16px"><span class="f">Modelo por tipo de pedido (economia × qualidade)</span>{CATS.map((c) => <div class="prefrow" key={c}><span class="small"><b>{c}</b></span><PSeg k={`tiers.${c}`} label={`Modelo de ${c}`} opts={[["haiku", "Haiku"], ["sonnet", "Sonnet"], ["opus", "Opus"]]} /></div>)}
       <p class="tiny sub" style="margin-top:8px">Haiku: registro e trocas simples · Sonnet: reorganizar o dia/semana · Opus: dor, revisão e novo bloco. Cada pedido pode trocar o modelo antes de enviar.</p></div>
     <div class="row wrapx" style="gap:16px;margin-top:16px"><div><span class="f">Tom</span><PSeg k="tone" label="Tom" opts={[["direto", "direto"], ["motivador", "motivador"], ["tecnico", "técnico"]]} /></div><div><span class="f">Revisão semanal</span><PSeg k="reviewTime" label="Revisão semanal" opts={[["dom20", "dom 20h"], ["seg7", "seg 7h"]]} /></div></div>
-    <div class="note" style="margin-top:16px"><Icon id="info" /><span>{SERVER ? <>Connector: claude.ai → Personalizar → Connectors → URL <code>/mcp</code> + token. Funciona no app do Claude no celular. Em <a class="link44" href="#conta">Conta</a> você gera o token.</> : "Na versão online, o Claude conversa com este app pelo connector do claude.ai (sem API, na sua assinatura)."}</span></div></>;
+    <div class="note" style="margin-top:16px"><Icon id="info" /><span>{SERVER ? <>Connector: claude.ai → Personalizar → Connectors → URL <code>/mcp</code> + token. Funciona no app do Chat no celular. Em <a class="link44" href="#conta">Conta</a> você gera o token.</> : "Na versão online, o Chat conversa com este app pelo connector do claude.ai (sem API, na sua assinatura)."}</span></div></>;
 }
 
 function Comida() {
@@ -119,7 +119,7 @@ function Prioridades() {
       <SeletorPrioridades onChange={onChange} /></details></>;
 }
 
-const CORPO_BLOCO: Record<string, () => any> = { objetivo: Objetivo, prioridades: Prioridades, voce: Corpo, experiencia: Experiencia, rotina: Rotina, preferencias: Preferencias, mobilidade: Mobilidade, claude: Claude, comida: Comida };
+const CORPO_BLOCO: Record<string, () => any> = { objetivo: Objetivo, prioridades: Prioridades, voce: Corpo, experiencia: Experiencia, rotina: Rotina, preferencias: Preferencias, mobilidade: Mobilidade, claude: Chat, comida: Comida };
 
 const Selo = ({ ok }: { ok: boolean }) => <span class={`badge ${ok ? "ok" : "warn"}`}>{ok ? <><Icon id="check" />completo</> : "dá para melhorar"}</span>;
 
@@ -131,7 +131,7 @@ export default function Perfil({ route }: { route: Route }) {
   const Tela = bloco && CORPO_BLOCO[bloco.id];
   if (bloco && Tela) {
     const nx = cp.next && cp.next.block !== bloco.id ? BLOCOS.find((b) => b.id === cp.next!.block) : null;
-    return <><div class="row between" style="margin-bottom:12px"><a class="btn" href="#perfil"><Icon id="back" />Perfil</a>{bloco.key && <Selo ok={cp.blocks[bloco.key]} />}</div>
+    return <>{bloco.key && <div class="row" style="margin-bottom:12px;justify-content:flex-end"><Selo ok={cp.blocks[bloco.key]} /></div>}
       <h1>{bloco.nm}</h1><p class="sub" style="margin:4px 0 14px">{bloco.why}</p><Card><Tela /></Card>
       <div class="stack" style="margin-top:14px">
         {nx && cp.next && <div class="card hl"><p class="kicker">Próximo passo recomendado</p><p style="font-weight:700;margin-top:2px">{cp.next.cta}</p><p class="small sub">{cp.next.why}</p><a class="btn pri" style="margin-top:10px" href={`#perfil/${nx.id}`}>Ir agora<Icon id="arrow" /></a></div>}
@@ -139,7 +139,7 @@ export default function Perfil({ route }: { route: Route }) {
   }
   const nx = cp.next ? BLOCOS.find((b) => b.id === cp.next!.block) : null;
   return <><p class="kicker">Perfil de treino · edite quando quiser</p><h1>O que o treino sabe sobre você</h1>
-    {porClaude && <div class="note" style="margin-top:14px"><Icon id="chat" /><span style="flex:1">Preenchido pelo Claude. Confira os blocos abaixo.</span>
+    {porClaude && <div class="note" style="margin-top:14px"><Icon id="chat" /><span style="flex:1">Preenchido pelo Chat. Confira os blocos abaixo.</span>
       <button type="button" class="btn sm" onClick={() => { S.profile.meta = { ...S.profile.meta, filledBy: "claude", confirmed: true }; profileChanged(); commit(); toast("Perfil confirmado"); }}>Está certo</button></div>}
     <div class="card dark" style="margin:14px 0"><div class="row between wrapx"><p class="kicker" style="color:#A1A1AA">Objetivo</p><Selo ok={cp.badge === "completo"} /></div>
       <p class="goal" style="margin-top:4px">{S.profile.goal.statement}</p>

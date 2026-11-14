@@ -30,7 +30,7 @@ export function CheckoutCard() {
   return <Card id="checkout">
     <div class="row between wrapx"><div><p class="kicker">Checkout da noite · {d === today ? "hoje" : longDate(d)}</p><h2 style="margin-top:2px">Como foi o dia?</h2></div>
       {saved && <span class="badge ok"><Icon id="check" />feito</span>}</div>
-    {saved?.source === "claude" && <p class="small dia-confira" style="margin-top:8px"><Icon id="info" />Preenchido pelo Claude a partir do seu relato · confira</p>}
+    {saved?.source === "claude" && <p class="small dia-confira" style="margin-top:8px"><Icon id="info" />Preenchido pelo Chat a partir do seu relato · confira</p>}
     <div class="dia-campos">
       <div class="ckrow"><span class="small">Treinou?</span>{ses ? <span class="small"><b>{ses.name ?? "treino"}</b> <span class="sub">· sessão do dia</span></span>
         : <Seg opts={SIMNAO} value={c.trained} label="Treinou?" onPick={(v) => set({ trained: v })} />}</div>
