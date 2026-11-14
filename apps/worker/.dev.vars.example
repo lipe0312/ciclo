@@ -5,6 +5,9 @@ DEV_NO_AUTH=1
 MCP_TOKEN=troque-por-um-token-de-64-caracteres-hex-gerado-com-openssl-rand
 # #54 conta própria (opcional local): código do 1º acesso para testar a tela #entrar → "Primeiro acesso" (≥ 16 caracteres)
 # OWNER_SETUP_CODE=troque-por-um-codigo-local
+# #56 Turnstile (opcional; sem as duas chaves fica desligado). Chaves de teste da Cloudflare que sempre passam:
+# TURNSTILE_SITE_KEY=1x00000000000000000000AA
+# TURNSTILE_SECRET=1x0000000000000000000000000000000AA
 # Web Push local (opcional): node scripts/gen-vapid.mjs
 # VAPID_PUBLIC_KEY=
 # VAPID_PRIVATE_KEY=

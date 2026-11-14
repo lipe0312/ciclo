@@ -3,7 +3,7 @@
 // Regras puras no core (packages/core/src/conta.ts). Aqui: SQL (sempre com bind e user_id), cookie e criptografia.
 // Convivência com o Cloudflare Access: ver authenticateApi em auth.ts e docs/05-deploy-gratis.md.
 import {
-  INVITE_LEN, INVITE_MS, INVITE_MSG, RECOVERY_COUNT, RECOVERY_LEN, SESSION_MS, aparelhoDe, b64urlDecode, b64urlEncode, backupEligible,
+  AUTH_TENTATIVAS, INVITE_LEN, INVITE_MS, INVITE_MSG, RECOVERY_COUNT, RECOVERY_LEN, SESSION_MS, aparelhoDe, b64urlDecode, b64urlEncode, backupEligible,
   cborDecode, checkClientData, codeFromBytes, coseToJwk, counterOk, derToRawEcdsa, formatCode, inviteState, maxUsers, nomeValido,
   normalizeCode, parseAuthData, sessionAlive, sessionRenewal, vagas,
 } from "@ciclo/core";
@@ -13,12 +13,16 @@ import { HttpError, json, readJson, str } from "./http.ts";
 import { cookie, sha256Hex, timingSafeEqualHex, touchUser, userRowToAuth } from "./auth.ts";
 import type { UserRow } from "./auth.ts";
 import type { Handler } from "./comida.ts";
+import {
+  anotarFalha, bloqueioRestante, chaveIp, contarGlobal, contarJanela, exigirCotaGlobal, exigirTurnstile, lerFalhas, precisaTurnstile,
+  turnstileLigado, zerarFalhas,
+} from "./limites.ts";
 
 export const SESSION_COOKIE = "__Host-ciclo";
 const CHALLENGE_MS = 5 * 60_000;
 const MAX_PASSKEYS = 10;
 const SEEN_EVERY_MS = 5 * 60_000;
-/** Tentativas em /auth/* por IP (janela fixa). A proteção ampla (Turnstile etc.) é a #56. */
+/** Teto amplo de POST em /auth/* por IP (janela fixa). As tentativas que validam segredo têm o limite de 5/min e o bloqueio da #56. */
 export const AUTH_LIMIT = { max: 30, windowMs: 10 * 60_000 } as const;
 
 const te = new TextEncoder();
@@ -63,21 +67,8 @@ export async function authenticateSession(req: Request, env: Env, now = Date.now
 }
 
 // ---- limite de tentativas (/auth/*) ----
-/** Pepper do HMAC do IP: secret AUTH_PEPPER (recomendado); sem ele, o OWNER_SETUP_CODE; em último caso, fixo (só dev/teste). */
-const pepperOf = (env: Env) => env.AUTH_PEPPER || env.OWNER_SETUP_CODE || "ciclo-auth-dev";
-async function hmacHex(key: string, msg: string) {
-  const k = await crypto.subtle.importKey("raw", te.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return hex(new Uint8Array(await crypto.subtle.sign("HMAC", k, te.encode(msg))));
-}
-export async function hitAuthLimit(env: Env, req: Request, now = Date.now()): Promise<number> {
-  const ip = req.headers.get("CF-Connecting-IP") ?? "local";
-  const key = "ip:" + (await hmacHex(pepperOf(env), ip)).slice(0, 32); // nunca o IP puro nem um hash adivinhável
-  const { max, windowMs } = AUTH_LIMIT, w = now - (now % windowMs);
-  const r = await env.DB.prepare(`INSERT INTO auth_rate_limit (key, window_start, count) VALUES (?1, ?2, 1)
-    ON CONFLICT(key) DO UPDATE SET count = CASE WHEN window_start = ?2 THEN count + 1 ELSE 1 END, window_start = ?2 RETURNING count`)
-    .bind(key, w).first<{ count: number }>();
-  return (r?.count ?? 0) > max ? Math.ceil((w + windowMs - now) / 1000) : 0;
-}
+/** Teto amplo por IP (HMAC com AUTH_PEPPER; nunca o IP puro). */
+export const hitAuthLimit = async (env: Env, req: Request, now = Date.now()) => contarJanela(env, "ip:" + (await chaveIp(env, req)), AUTH_LIMIT, now);
 
 // ---- desafio WebAuthn ----
 type ChallengeData = { mode?: "convite" | "reset" | "bootstrap" | "adicionar"; uid?: string; nome?: string; invite?: string; email?: string | null; nova?: boolean };
@@ -193,53 +184,85 @@ export async function handleAuth(req: Request, env: Env, quem: Quem, now = Date.
   try {
     if (req.method === "GET" && path === "/auth/status") {
       const owner = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM user WHERE role = 'owner') AS o, (SELECT COUNT(*) FROM passkeys) AS p").first<{ o: number; p: number }>();
-      return json({ bootstrap: bootstrapOpen(env, owner) });
+      return json({ bootstrap: bootstrapOpen(env, owner), turnstile: turnstileLigado(env) ? env.TURNSTILE_SITE_KEY : null });
     }
     if (req.method !== "POST") return json({ error: "rota não encontrada" }, 404);
     const wait = await hitAuthLimit(env, req, now);
     if (wait) return json({ error: "muitas tentativas; espere alguns minutos" }, 429, { "Retry-After": String(wait) });
     const b = await readJson<Record<string, unknown>>(req, 70 * 1024);
-
-    if (path === "/auth/login/options") {
-      const c = await newChallenge(env, "login", null, {}, now);
-      return json({ challengeId: c.id, options: { challenge: c.challenge, rpId: url.hostname, timeout: 120_000, userVerification: "required", allowCredentials: [] } });
-    }
-    if (path === "/auth/login") {
-      const c = await takeChallenge(env, b.challengeId, "login", now);
-      const uid = await verifyAssertion(req, env, b.credential, c.challenge, now);
-      const s = await sessionStmt(env, uid, req, "passkey", now, "EXISTS (SELECT 1 FROM user WHERE id = ?1 AND deleted_at IS NULL)", [uid]);
-      await env.DB.batch([s.stmt]);
-      return json({ ok: true }, 200, { "Set-Cookie": s.cookie });
-    }
-    if (path === "/auth/register/options") return await registerOptions(req, env, b, quem, now);
-    if (path === "/auth/register") return await register(req, env, b, now);
-    if (path === "/auth/recover") {
-      const code = normalizeCode(b.codigo, RECOVERY_LEN);
-      if (!code) throw new HttpError(400, "código no formato XXXX-XXXX-XX");
-      const ch = await sha256Hex("rc:" + code);
-      const r = await env.DB.prepare("SELECT user_id FROM recovery_codes WHERE code_hash = ?1 AND used_at IS NULL").bind(ch).first<{ user_id: string }>();
-      if (!r) throw new HttpError(401, "código inválido ou já usado");
-      // Um batch só (transação): o código é queimado e a sessão só nasce se ESTA requisição o queimou.
-      const s = await sessionStmt(env, r.user_id, req, "recuperacao", now, "EXISTS (SELECT 1 FROM recovery_codes WHERE code_hash = ?1 AND user_id = ?2 AND used_at = ?3)", [ch, r.user_id, now]);
-      await env.DB.batch([
-        env.DB.prepare("UPDATE recovery_codes SET used_at = ?2 WHERE code_hash = ?1 AND user_id = ?3 AND used_at IS NULL").bind(ch, now, r.user_id),
-        s.stmt,
-      ]);
-      if (!(await env.DB.prepare("SELECT 1 FROM sessions WHERE id = ?1 AND user_id = ?2").bind(s.sid, r.user_id).first())) throw new HttpError(401, "código inválido ou já usado");
-      const left = await env.DB.prepare("SELECT COUNT(*) AS n FROM recovery_codes WHERE user_id = ?1 AND used_at IS NULL").bind(r.user_id).first<{ n: number }>();
-      return json({ ok: true, restantes: left?.n ?? 0 }, 200, { "Set-Cookie": s.cookie });
-    }
-    if (path === "/auth/logout") {
-      const token = cookie(req, SESSION_COOKIE);
-      if (token && /^[0-9a-f]{64}$/.test(token)) await env.DB.prepare("DELETE FROM sessions WHERE id_hash = ?1").bind(await sha256Hex(token)).run();
-      return json({ ok: true }, 200, { "Set-Cookie": CLEAR_SESSION });
-    }
-    return json({ error: "rota não encontrada" }, 404);
+    if (path === "/auth/logout") return await logout(req, env);
+    return await tentativa(req, env, path, b, now, () => rotaAuth(req, env, quem, url, path, b, now));
   } catch (e) {
     if (e instanceof HttpError) return json(e.code ? { error: e.message, code: e.code } : { error: e.message }, e.status);
     console.error("auth", path, e instanceof Error ? e.message : "erro");
     return json({ error: "erro interno" }, 500);
   }
+}
+
+/** #56: toda rota de /auth/* (menos sair) passa pelo bloqueio de 15 min depois de 10 falhas seguidas do IP. As que validam
+ *  segredo (login, registro, recuperação, convite, setup) contam 5/min por IP; recuperação e setup também têm limite global.
+ *  Turnstile (quando ligado): sempre para criar conta por convite e, depois de 3 falhas seguidas, para começar qualquer tentativa. */
+async function tentativa(req: Request, env: Env, path: string, b: Record<string, unknown>, now: number, rota: () => Promise<Response>): Promise<Response> {
+  const ipk = await chaveIp(env, req), fk = "f:" + ipk;
+  const f = await lerFalhas(env, fk);
+  const preso = bloqueioRestante(f, now);
+  if (preso) return json({ error: "muitas tentativas erradas; espere 15 minutos", code: "bloqueado" }, 429, { "Retry-After": String(preso) });
+  const opcoesComSegredo = path === "/auth/register/options" && (b.setup != null || b.convite != null);
+  const conta = path === "/auth/login" || path === "/auth/register" || path === "/auth/recover" || opcoesComSegredo;
+  if (conta) {
+    const wait = await contarJanela(env, "t:" + ipk, AUTH_TENTATIVAS, now)
+      || (path === "/auth/recover" ? await contarGlobal(env, "recover", now) : 0)
+      || (path === "/auth/register/options" && b.setup != null ? await contarGlobal(env, "setup", now) : 0);
+    if (wait) return json({ error: "muitas tentativas; espere um pouco", code: "limite" }, 429, { "Retry-After": String(wait) });
+  }
+  const inicio = path === "/auth/login/options" || path === "/auth/register/options" || path === "/auth/recover";
+  if ((path === "/auth/register/options" && b.convite != null) || (inicio && precisaTurnstile(f))) await exigirTurnstile(env, req, b.turnstile);
+  let res: Response;
+  try { res = await rota(); } catch (e) {
+    if (conta && e instanceof HttpError && e.status >= 400 && e.status < 500 && e.status !== 429) await anotarFalha(env, fk, now);
+    throw e;
+  }
+  if (conta && res.ok && f && path !== "/auth/register/options") await zerarFalhas(env, fk);
+  return res;
+}
+
+async function logout(req: Request, env: Env) {
+  const token = cookie(req, SESSION_COOKIE);
+  if (token && /^[0-9a-f]{64}$/.test(token)) await env.DB.prepare("DELETE FROM sessions WHERE id_hash = ?1").bind(await sha256Hex(token)).run();
+  return json({ ok: true }, 200, { "Set-Cookie": CLEAR_SESSION });
+}
+
+async function rotaAuth(req: Request, env: Env, quem: Quem, url: URL, path: string, b: Record<string, unknown>, now: number): Promise<Response> {
+  if (path === "/auth/login/options") {
+    const c = await newChallenge(env, "login", null, {}, now);
+    return json({ challengeId: c.id, options: { challenge: c.challenge, rpId: url.hostname, timeout: 120_000, userVerification: "required", allowCredentials: [] } });
+  }
+  if (path === "/auth/login") {
+    const c = await takeChallenge(env, b.challengeId, "login", now);
+    const uid = await verifyAssertion(req, env, b.credential, c.challenge, now);
+    const s = await sessionStmt(env, uid, req, "passkey", now, "EXISTS (SELECT 1 FROM user WHERE id = ?1 AND deleted_at IS NULL)", [uid]);
+    await env.DB.batch([s.stmt]);
+    return json({ ok: true }, 200, { "Set-Cookie": s.cookie });
+  }
+  if (path === "/auth/register/options") return await registerOptions(req, env, b, quem, now);
+  if (path === "/auth/register") return await register(req, env, b, now);
+  if (path === "/auth/recover") {
+    const code = normalizeCode(b.codigo, RECOVERY_LEN);
+    if (!code) throw new HttpError(400, "código no formato XXXX-XXXX-XX");
+    const ch = await sha256Hex("rc:" + code);
+    const r = await env.DB.prepare("SELECT user_id FROM recovery_codes WHERE code_hash = ?1 AND used_at IS NULL").bind(ch).first<{ user_id: string }>();
+    if (!r) throw new HttpError(401, "código inválido ou já usado");
+    // Um batch só (transação): o código é queimado e a sessão só nasce se ESTA requisição o queimou.
+    const s = await sessionStmt(env, r.user_id, req, "recuperacao", now, "EXISTS (SELECT 1 FROM recovery_codes WHERE code_hash = ?1 AND user_id = ?2 AND used_at = ?3)", [ch, r.user_id, now]);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE recovery_codes SET used_at = ?2 WHERE code_hash = ?1 AND user_id = ?3 AND used_at IS NULL").bind(ch, now, r.user_id),
+      s.stmt,
+    ]);
+    if (!(await env.DB.prepare("SELECT 1 FROM sessions WHERE id = ?1 AND user_id = ?2").bind(s.sid, r.user_id).first())) throw new HttpError(401, "código inválido ou já usado");
+    const left = await env.DB.prepare("SELECT COUNT(*) AS n FROM recovery_codes WHERE user_id = ?1 AND used_at IS NULL").bind(r.user_id).first<{ n: number }>();
+    return json({ ok: true, restantes: left?.n ?? 0 }, 200, { "Set-Cookie": s.cookie });
+  }
+  return json({ error: "rota não encontrada" }, 404);
 }
 
 function bootstrapOpen(env: Env, c: { o: number; p: number } | null) {
@@ -438,6 +461,7 @@ export function registerConta(on: (method: string, path: string, h: Handler) => 
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, "email inválido");
     const max = maxUsersOf(env);
     if ((await countUsers(env)) >= max) throw new HttpError(409, `sem vagas: o app aceita até ${max} contas`, "sem_vagas");
+    await exigirCotaGlobal(env); // #56: a 95% do grátis, convites param
     return json(await createInvite(req, env, u.id, null, email), 201);
   });
 
@@ -454,6 +478,7 @@ export function registerConta(on: (method: string, path: string, h: Handler) => 
     if (p.id === u.id) throw new HttpError(400, "para você mesmo, use um código de recuperação ou adicione uma passkey");
     const t = await env.DB.prepare("SELECT id FROM user WHERE id = ?1").bind(p.id).first<{ id: string }>();
     if (!t) throw new HttpError(404, "pessoa não encontrada");
+    await exigirCotaGlobal(env); // #56: o reset também gera convite
     // sessões caem e os tokens do Claude dela são revogados agora (quem tinha acesso perde tudo); os dados ficam
     await env.DB.batch([
       env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(t.id),

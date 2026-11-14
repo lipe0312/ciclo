@@ -3,10 +3,11 @@
 import { useEffect, useState } from "preact/hooks";
 import { href, replace } from "../../lib/roteador/index.ts";
 import type { Route } from "../../lib/roteador/index.ts";
-import { SERVER, api } from "../../lib/api/index.ts";
+import { HttpError, SERVER, api } from "../../lib/api/index.ts";
 import { Icon } from "../../lib/ui/index.tsx";
 import { Codigos } from "./codigos.tsx";
 import { criarPasskey, entrarComPasskey, erroPasskey, temPasskey } from "./webauthn.ts";
+import { Turnstile } from "./turnstile.tsx";
 
 type Modo = "inicio" | "convite" | "recuperar" | "dono" | "codigos";
 
@@ -27,16 +28,33 @@ export default function Entrar({ route }: { route: Route }) {
   const [busy, setBusy] = useState(false);
   const [codigos, setCodigos] = useState<string[]>([]);
   const [bootstrap, setBootstrap] = useState(false);
+  // #56 Turnstile: só com a chave do servidor; sempre no convite e, depois de 3 falhas, quando o servidor pedir.
+  const [siteKey, setSiteKey] = useState<string | null>(null);
+  const [pedeRobo, setPedeRobo] = useState(false);
+  const [token, setToken] = useState("");
+  const [tsVez, setTsVez] = useState(0);
   const volta = destino(q.volta);
 
   // O código do convite sai da URL assim que é lido (não fica no histórico nem em print de tela).
   useEffect(() => { if (q.convite) replace(href("entrar", [], { volta: q.volta })); }, []);
-  useEffect(() => { if (SERVER) api<{ bootstrap: boolean }>("GET", "/auth/status").then((r) => setBootstrap(r.bootstrap)).catch(() => {}); }, []);
+  useEffect(() => {
+    if (SERVER) api<{ bootstrap: boolean; turnstile?: string | null }>("GET", "/auth/status").then((r) => { setBootstrap(r.bootstrap); setSiteKey(r.turnstile ?? null); }).catch(() => {});
+  }, []);
 
+  const robo = !!siteKey && (pedeRobo || modo === "convite");
+  const ts = () => (robo && token ? { turnstile: token } : {});
   const run = async (f: () => Promise<void>) => {
     setErro(""); setBusy(true);
-    try { await f(); } catch (e) { setErro(erroPasskey(e)); } finally { setBusy(false); }
+    try { await f(); } catch (e) {
+      if (e instanceof HttpError && (e.data as { code?: string } | null)?.code === "turnstile") setPedeRobo(true);
+      setErro(erroPasskey(e));
+    } finally {
+      setBusy(false);
+      if (robo) { setToken(""); setTsVez((n) => n + 1); } // o token vale uma vez: widget novo
+    }
   };
+  const faltaRobo = robo && !token;
+  const verificacao = robo && siteKey && <Turnstile key={tsVez} siteKey={siteKey} onToken={setToken} onErro={() => setErro("Não deu para carregar a verificação contra robôs. Confira a internet e tente de novo.")} />;
   const criada = (r: { codigos?: string[] }) => { if (r.codigos?.length) { setCodigos(r.codigos); setModo("codigos"); } else irPara(volta); };
   const sem = !SERVER ? "Na demonstração não há login: os dados ficam só neste navegador." : !temPasskey() ? "Este navegador não tem passkey. Use o Safari do iPhone ou um navegador atualizado." : "";
 
@@ -51,7 +69,8 @@ export default function Entrar({ route }: { route: Route }) {
       <p class="sub">Com o Face ID ou o Touch ID, sem senha e sem código por e&#8209;mail.</p>
       {sem && <div class="note"><Icon id="info" />{sem}</div>}
       {aviso}
-      <button type="button" class="btn pri lg full" disabled={busy || !!sem} onClick={() => run(async () => { await entrarComPasskey(); irPara(volta); })}>
+      {verificacao}
+      <button type="button" class="btn pri lg full" disabled={busy || !!sem || faltaRobo} onClick={() => run(async () => { await entrarComPasskey(ts()); irPara(volta); })}>
         <Icon id="key" />{busy ? "Aguardando o Face ID…" : "Entrar com Face ID"}</button>
       <div class="entrar-links">
         <button type="button" class="btn full" onClick={() => setModo("convite")}>Tenho um convite</button>
@@ -60,7 +79,7 @@ export default function Entrar({ route }: { route: Route }) {
       </div>
     </>}
 
-    {modo === "convite" && <form onSubmit={(e) => { e.preventDefault(); run(async () => criada(await criarPasskey({ convite, nome }))); }}>
+    {modo === "convite" && <form onSubmit={(e) => { e.preventDefault(); run(async () => criada(await criarPasskey({ convite, nome, ...ts() }))); }}>
       <h1>Criar conta</h1>
       <p class="sub">O convite vale uma vez, por 7 dias.</p>
       <label class="f" for="en-conv">Código do convite</label>
@@ -68,30 +87,33 @@ export default function Entrar({ route }: { route: Route }) {
       <label class="f" for="en-nome">Seu nome</label>
       <input id="en-nome" class="input" value={nome} onInput={(e) => setNome(e.currentTarget.value)} autocomplete="given-name" maxLength={40} required />
       <div class="note"><Icon id="info" /><span>A passkey fica no iCloud Keychain (ou no Gerenciador de senhas do Google). O mesmo Face ID passa a valer no Mac e no iPad da sua conta.</span></div>
+      {verificacao}
       {aviso}
-      <button type="submit" class="btn pri lg full" disabled={busy || !!sem}><Icon id="key" />{busy ? "Aguardando o Face ID…" : "Criar conta com Face ID"}</button>
+      <button type="submit" class="btn pri lg full" disabled={busy || !!sem || faltaRobo}><Icon id="key" />{busy ? "Aguardando o Face ID…" : "Criar conta com Face ID"}</button>
       {voltar}
     </form>}
 
-    {modo === "dono" && <form onSubmit={(e) => { e.preventDefault(); run(async () => criada(await criarPasskey({ setup, nome }))); }}>
+    {modo === "dono" && <form onSubmit={(e) => { e.preventDefault(); run(async () => criada(await criarPasskey({ setup, nome, ...ts() }))); }}>
       <h1>Primeiro acesso</h1>
       <p class="sub">Use o código de configuração (OWNER_SETUP_CODE). Esta conta vira a dona do app e convida as outras.</p>
       <label class="f" for="en-setup">Código de configuração</label>
       <input id="en-setup" class="input mono" type="password" value={setup} onInput={(e) => setSetup(e.currentTarget.value)} autocomplete="off" required maxLength={200} />
       <label class="f" for="en-nome2">Seu nome</label>
       <input id="en-nome2" class="input" value={nome} onInput={(e) => setNome(e.currentTarget.value)} autocomplete="given-name" maxLength={40} />
+      {verificacao}
       {aviso}
-      <button type="submit" class="btn pri lg full" disabled={busy || !!sem}><Icon id="key" />{busy ? "Aguardando o Face ID…" : "Criar conta com Face ID"}</button>
+      <button type="submit" class="btn pri lg full" disabled={busy || !!sem || faltaRobo}><Icon id="key" />{busy ? "Aguardando o Face ID…" : "Criar conta com Face ID"}</button>
       {voltar}
     </form>}
 
-    {modo === "recuperar" && <form onSubmit={(e) => { e.preventDefault(); run(async () => { await api("POST", "/auth/recover", { codigo }); irPara("#conta"); }); }}>
+    {modo === "recuperar" && <form onSubmit={(e) => { e.preventDefault(); run(async () => { await api("POST", "/auth/recover", { codigo, ...ts() }); irPara("#conta"); }); }}>
       <h1>Código de recuperação</h1>
       <p class="sub">Cada código entra uma vez. Depois, em Conta, crie uma passkey nova neste aparelho.</p>
       <label class="f" for="en-rec">Código</label>
       <input id="en-rec" class="input mono" value={codigo} onInput={(e) => setCodigo(e.currentTarget.value)} autocomplete="one-time-code" autocapitalize="characters" spellcheck={false} required maxLength={16} placeholder="XXXX-XXXX-XX" />
+      {verificacao}
       {aviso}
-      <button type="submit" class="btn pri lg full" disabled={busy || !SERVER}>{busy ? "Entrando…" : "Entrar com o código"}</button>
+      <button type="submit" class="btn pri lg full" disabled={busy || !SERVER || faltaRobo}>{busy ? "Entrando…" : "Entrar com o código"}</button>
       {voltar}
     </form>}
 

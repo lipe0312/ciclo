@@ -1,12 +1,13 @@
 // API JSON do app (atrás do Cloudflare Access). Rotas pequenas, um estado agregado por chamada (/api/state)
 // para o celular fazer 1 requisição ao abrir. Toda rota recebe o usuário autenticado (u) e filtra por u.id.
-import { CARDIO_BY_ID, EQUIPMENT_BY_ID, EXERCISE_BY_ID, INTENSITIES, MAX_PLACES, MEDIA_MAX_BYTES, MUSCLE_IDS, PROMPTS, applyManualEdit, checkCardio, classify, planDay, validatePlace } from "@ciclo/core";
+import { CARDIO_BY_ID, COTA_MSG, EQUIPMENT_BY_ID, EXERCISE_BY_ID, INTENSITIES, MAX_PLACES, MEDIA_MAX_BYTES, MUSCLE_IDS, PROMPTS, applyManualEdit, checkCardio, classify, planDay, tipoConfere, validatePlace } from "@ciclo/core";
 import type { DayPlan, Intensity, ManualEdit, Mode, MuscleId, Tier } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, id, int, json, num, oneOf, readJson, str } from "./http.ts";
 import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, countGyms, deleteAccount, exerciseHistory, exportAccount, getGymRow, getProfile, gymDays, gymView, hitRateLimit, listGyms, mediaPrefix, parse, planProfileFingerprint, saveProfile, setGymWeekdays, summarizeSession, takeGeocodeSlot, trashGym, upsertPain, weekState } from "./db.ts";
 import { pushEnabled, validEndpoint } from "./push.ts";
 import { newMcpToken } from "./auth.ts";
+import { exigirCotaConta, exigirCotaGlobal, somarBytesR2 } from "./limites.ts";
 import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
 import { registerComida } from "./comida.ts";
 import { registerHome } from "./home.ts";
@@ -498,12 +499,22 @@ export async function uploadMedia(req: Request, env: Env, uid: string): Promise<
     const g = await getGymRow(env, uid, gid);
     if (!g || g.deleted_at != null) throw new HttpError(404, "lugar não encontrado");
   }
+  // #56: cota do app inteiro (95% do grátis para uploads) e da conta (500 MB) antes de ler o corpo
+  await exigirCotaGlobal(env);
+  await exigirCotaConta(env, uid, len);
+  // Corpo inteiro na memória (≤ 20 MB): o tamanho real e o tipo real (magic bytes) são conferidos antes de ir ao R2.
+  const body = new Uint8Array(await req.arrayBuffer());
+  if (!body.length || body.length > MAX_MEDIA) throw new HttpError(413, "arquivo grande demais");
+  if (!tipoConfere(mime, body)) throw new HttpError(415, COTA_MSG.tipo, "tipo_falso");
   const mid = id(), key = `${mediaPrefix(uid)}media/${new Date().toISOString().slice(0, 7)}/${mid}`;
-  const obj = await env.MEDIA.put(key, req.body, { httpMetadata: { contentType: mime } });
-  if (!obj || obj.size > MAX_MEDIA) { if (obj) await env.MEDIA.delete(key); throw new HttpError(413, "arquivo grande demais"); }
+  const obj = await env.MEDIA.put(key, body, { httpMetadata: { contentType: mime } });
+  if (!obj) throw new HttpError(500, "não deu para guardar o arquivo");
   try {
-    await env.DB.prepare("INSERT INTO media (user_id, id, kind, r2_key, mime, bytes, equipment_id, exercise_id, gym_id, note, created_at) VALUES (?11, ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)")
-      .bind(mid, kind, key, mime, obj.size, equipmentId, exerciseId, gid, note, Date.now(), uid).run();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO media (user_id, id, kind, r2_key, mime, bytes, equipment_id, exercise_id, gym_id, note, created_at) VALUES (?11, ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)")
+        .bind(mid, kind, key, mime, body.length, equipmentId, exerciseId, gid, note, Date.now(), uid),
+      somarBytesR2(env, body.length),
+    ]);
   } catch (e) { await env.MEDIA.delete(key); throw e; }
   return json({ id: mid, kind }, 201);
 }

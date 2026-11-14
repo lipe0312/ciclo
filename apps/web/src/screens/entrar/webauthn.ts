@@ -36,8 +36,8 @@ export async function criarPasskey(body: Record<string, unknown>): Promise<{ cod
 }
 
 /** Login com a passkey deste aparelho (ou de um iPhone por perto, pelo QR do próprio sistema). */
-export async function entrarComPasskey(): Promise<void> {
-  const o = await api<{ challengeId: string; options: any }>("POST", "/auth/login/options", {});
+export async function entrarComPasskey(extra: Record<string, unknown> = {}): Promise<void> {
+  const o = await api<{ challengeId: string; options: any }>("POST", "/auth/login/options", extra);
   const cred = await navigator.credentials.get({ publicKey: { ...o.options, challenge: buf(o.options.challenge) } }) as PublicKeyCredential | null;
   if (!cred) throw new Error("cancelado");
   const r = cred.response as AuthenticatorAssertionResponse;

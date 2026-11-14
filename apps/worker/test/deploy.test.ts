@@ -21,16 +21,17 @@ test("config de produção: sem variável de dev, sem preview, bindings e migrat
   assert.deepEqual(gatilho, [], "BEGIN de gatilho não é transação");
 });
 
-test("CSP do app: só 'self' e os tiles do OSM (ADR-0010); sem inline/eval nem terceiros", () => {
+test("CSP do app: só 'self', os tiles do OSM (ADR-0010) e o Turnstile (ADR-0012); sem inline/eval nem outros terceiros", () => {
   const h = readFileSync(new URL("../../web/public/_headers", import.meta.url), "utf8");
   const csp = /Content-Security-Policy: (.+)/.exec(h)![1];
   const dir = Object.fromEntries(csp.split(";").map((d) => d.trim().split(/\s+/)).map(([k, ...v]) => [k, v]));
-  assert.deepEqual(dir["script-src"], ["'self'"]);
+  assert.deepEqual(dir["script-src"], ["'self'", "https://challenges.cloudflare.com"]);
+  assert.deepEqual(dir["frame-src"], ["https://challenges.cloudflare.com"]);
   assert.deepEqual(dir["connect-src"], ["'self'"]);
   assert.deepEqual(dir["frame-ancestors"], ["'none'"]);
   assert.deepEqual(dir["object-src"], ["'none'"]);
   const hosts = csp.match(/https?:\/\/[^\s;]+/g) ?? [];
-  assert.deepEqual([...new Set(hosts)], ["https://tile.openstreetmap.org"]);
+  assert.deepEqual([...new Set(hosts)].sort(), ["https://challenges.cloudflare.com", "https://tile.openstreetmap.org"]);
   assert.ok(!/unsafe-eval|\*/.test(csp));
   assert.match(h, /Strict-Transport-Security/); assert.match(h, /Permissions-Policy/);
   const html = readFileSync(new URL("../../web/index.html", import.meta.url), "utf8");

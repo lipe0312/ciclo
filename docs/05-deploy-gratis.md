@@ -88,6 +88,11 @@ O campo `token` (`ciclo_…`) aparece **uma vez**: guarde no gerenciador de senh
 - `npx wrangler tail --cwd apps/worker` por alguns minutos de uso: sem erro, CPU baixa.
 - Backup: o D1 tem **Time Travel** (restaurar a um minuto dos últimos dias: `npx wrangler d1 time-travel info ciclo-db`). O `d1 export` não funciona com a tabela de busca (FTS5); use o **Exportar** da tela Conta para um JSON seu.
 
+**8b. Proteção de custo e robôs (#56, manual do dono)**
+- Painel → **Billing → Notifications**: crie alertas de uso do **R2** e do **Workers**. Confirme que a conta está no plano **Workers Free** (sem o Paid, excesso dá erro e não cobrança).
+- Turnstile (opcional): painel → **Turnstile → Add widget** (domínio `ciclo.<sua-conta>.workers.dev`, modo *Managed*) e grave as duas chaves: `npx wrangler secret put TURNSTILE_SITE_KEY --cwd apps/worker` e `npx wrangler secret put TURNSTILE_SECRET --cwd apps/worker`. Sem as duas, ele fica desligado.
+- Recomendado: `npx wrangler secret put AUTH_PEPPER --cwd apps/worker` (valor aleatório; protege o hash do IP nos limites).
+
 **Transcrição (opcional):** descomente `"ai": { "binding": "AI" }` no `wrangler.jsonc` e rode `npm run deploy`. O app informa na tela Comida qual motor de voz está em uso (Whisper, navegador ou nenhum). Em dev local o binding é remoto: exige `wrangler login`; sem ele, deixe comentado e o app usa o reconhecimento do navegador (só em https ou localhost; não existe no Firefox nem em alguns navegadores de privacidade).
 
 **Aviso do descanso com a tela bloqueada (Web Push, #25):** gere o par de chaves VAPID uma vez e guarde como secrets (a privada nunca vai para o git):

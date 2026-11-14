@@ -4,6 +4,7 @@ import { DEFAULT_PROFILE, DOWS, MAX_SESSION_MS, assignWeekdays, reassignDays, MU
 import { HttpError, int, oneOf, str } from "./http.ts";
 import type { DayInput, Group, Mode, MuscleId, Pain, SetLog } from "@ciclo/core";
 import type { Env } from "./env.ts";
+import { somarEscrita } from "./limites.ts";
 
 export interface Profile {
   level: 0 | 1 | 2 | 3; priorities: MuscleId[]; minutes: number; daysTarget: number;
@@ -300,10 +301,13 @@ export type RateBucket = keyof typeof RATE_LIMITS;
 export async function hitRateLimit(env: Env, uid: string, bucket: RateBucket, now = Date.now()): Promise<number> {
   const { max, windowMs } = RATE_LIMITS[bucket];
   const w = now - (now % windowMs);
-  const r = await env.DB.prepare(`INSERT INTO rate_limit (user_id, bucket, window_start, count) VALUES (?1, ?2, ?3, 1)
+  const lim = env.DB.prepare(`INSERT INTO rate_limit (user_id, bucket, window_start, count) VALUES (?1, ?2, ?3, 1)
     ON CONFLICT(user_id, bucket) DO UPDATE SET count = CASE WHEN window_start = ?3 THEN count + 1 ELSE 1 END, window_start = ?3
-    RETURNING count`).bind(uid, bucket, w).first<{ count: number }>();
-  return (r?.count ?? 0) > max ? Math.ceil((w + windowMs - now) / 1000) : 0;
+    RETURNING count`).bind(uid, bucket, w);
+  const count = (await lim.first<{ count: number }>())?.count ?? 0;
+  // #56: escrita e upload também contam no uso do app inteiro (cota global do plano grátis)
+  if (bucket !== "geocode") await somarEscrita(env, now).run();
+  return count > max ? Math.ceil((w + windowMs - now) / 1000) : 0;
 }
 
 export const GEOCODE_GAP_MS = 1000;
