@@ -201,8 +201,22 @@ test("dono: pessoas sem dado de saúde; resetar acesso derruba sessões e passke
   assert.equal((await entrar(env, b.auth)).status, 401, "passkey antiga não vale");
   const exp = (await as(env, nova.cookie, "GET", "/api/account/export")).data;
   assert.equal(exp.user.id, bia.id); assert.equal(exp.pain.length, 1, "dados ficaram");
-  assert.equal((await mcp(env, tok, "ciclo_estado")).status, 200, "token do Claude é gerido à parte");
+  assert.equal((await mcp(env, tok, "ciclo_estado")).status, 401, "reset revoga os tokens do Claude dela");
   assert.equal((await as(env, d.cookie, "POST", `/api/account/people/${pp.data.people.find((p: any) => p.eu).id}/reset`, {})).status, 400);
+});
+
+test("a dona não apaga a própria conta enquanto houver outras; o convite em andamento não guarda o código", async () => {
+  const env = envConta();
+  const d = await dono(env);
+  const inv = (await convite(env, d.cookie)).data;
+  await call(env, "POST", "/auth/register/options", { body: { convite: inv.codigo, nome: "Ana" }, headers: ip() });
+  assert.ok(!JSON.stringify(env.DB.raw.prepare("SELECT data FROM auth_challenge").all()).includes(inv.codigo.replace(/-/g, "")), "código puro no desafio");
+  const a = await registrar(env, { convite: inv.codigo, nome: "Ana Fictícia" });
+  assert.equal(a.status, 201, "convite continua válido pelo hash");
+  const r = await as(env, d.cookie, "DELETE", "/api/account", { confirm: "APAGAR" });
+  assert.equal(r.status, 409); assert.equal(r.data.code, "dona_com_contas");
+  assert.equal((await as(env, a.cookie, "DELETE", "/api/account", { confirm: "APAGAR" })).status, 200);
+  assert.equal((await as(env, d.cookie, "DELETE", "/api/account", { confirm: "APAGAR" })).status, 200, "sozinha, pode");
 });
 
 test("brute force em /auth/*: limite por IP → 429; outro IP segue", async () => {

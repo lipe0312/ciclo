@@ -172,6 +172,7 @@ export function coseToJwk(cose: Map<Cbor, Cbor>): Jwk {
     if (kty !== 3) throw new Error("RS256 exige RSA");
     const n = bytes(-1), e = bytes(-2);
     if (n.length < 256) throw new Error("RSA menor que 2048 bits");
+    if (!(e.length === 3 && e[0] === 1 && e[1] === 0 && e[2] === 1)) throw new Error("RSA exige expoente 65537");
     return { kty: "RSA", n: b64urlEncode(n), e: b64urlEncode(e), alg: "RS256", ext: true };
   }
   throw new Error("algoritmo não suportado (só ES256 e RS256)");
@@ -181,7 +182,12 @@ export function coseToJwk(cose: Map<Cbor, Cbor>): Jwk {
 export function derToRawEcdsa(der: Uint8Array, size = 32): Uint8Array {
   let i = 0;
   const bad = (m: string): never => { throw new Error(`DER inválido: ${m}`); };
-  const readLen = () => { let n = der[i++]; if (n === 0x81) n = der[i++]; else if (n & 0x80) bad("tamanho"); return n ?? bad("truncado"); };
+  // DER canônico: tamanho longo só quando ≥ 128; inteiro positivo e mínimo (zero à esquerda só antes de byte ≥ 0x80)
+  const readLen = () => {
+    let n = der[i++];
+    if (n === 0x81) { n = der[i++]; if (n === undefined || n < 0x80) bad("tamanho não canônico"); } else if (n & 0x80) bad("tamanho");
+    return n ?? bad("truncado");
+  };
   const fit = (v: Uint8Array) => {
     let s = 0; while (s < v.length - 1 && v[s] === 0) s++;
     const t = v.subarray(s);
@@ -192,6 +198,8 @@ export function derToRawEcdsa(der: Uint8Array, size = 32): Uint8Array {
     if (der[i++] !== 0x02) bad("inteiro");
     const n = readLen(), v = der.subarray(i, i + n);
     if (v.length !== n || n === 0) bad("truncado");
+    if (v[0] & 0x80) bad("inteiro negativo");
+    if (v.length > 1 && v[0] === 0 && !(v[1] & 0x80)) bad("zero à esquerda");
     i += n; return fit(v);
   };
   if (der[i++] !== 0x30) bad("sequência");

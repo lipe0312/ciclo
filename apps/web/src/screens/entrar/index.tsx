@@ -1,6 +1,7 @@
 // #54 Tela #entrar: Face ID (passkey), convite, código de recuperação e primeiro acesso do dono.
 // Qualquer 401 da API cai aqui com ?volta=<rota>; depois do login o app recarrega na rota de origem.
 import { useEffect, useState } from "preact/hooks";
+import { href, replace } from "../../lib/roteador/index.ts";
 import type { Route } from "../../lib/roteador/index.ts";
 import { SERVER, api } from "../../lib/api/index.ts";
 import { Icon } from "../../lib/ui/index.tsx";
@@ -28,6 +29,8 @@ export default function Entrar({ route }: { route: Route }) {
   const [bootstrap, setBootstrap] = useState(false);
   const volta = destino(q.volta);
 
+  // O código do convite sai da URL assim que é lido (não fica no histórico nem em print de tela).
+  useEffect(() => { if (q.convite) replace(href("entrar", [], { volta: q.volta })); }, []);
   useEffect(() => { if (SERVER) api<{ bootstrap: boolean }>("GET", "/auth/status").then((r) => setBootstrap(r.bootstrap)).catch(() => {}); }, []);
 
   const run = async (f: () => Promise<void>) => {
@@ -45,7 +48,7 @@ export default function Entrar({ route }: { route: Route }) {
 
     {modo === "inicio" && <>
       <h1>Entrar</h1>
-      <p class="sub">Com o Face ID ou o Touch ID: sem senha e sem e-mail.</p>
+      <p class="sub">Com o Face ID ou o Touch ID, sem senha e sem código por e&#8209;mail.</p>
       {sem && <div class="note"><Icon id="info" />{sem}</div>}
       {aviso}
       <button type="button" class="btn pri lg full" disabled={busy || !!sem} onClick={() => run(async () => { await entrarComPasskey(); irPara(volta); })}>

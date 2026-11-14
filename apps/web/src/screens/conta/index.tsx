@@ -46,8 +46,8 @@ export default function Conta() {
 
   return <div class="conta">
     <p class="kicker">Conta</p>
-    <h1>{acc?.name ?? "Conta"}</h1>
-    <p class="small sub">{acc?.role === "owner" ? "Dona do app" : "Conta pessoal"}{acc?.via === "access" ? " · entrou pelo Cloudflare Access (transição)" : ""}</p>
+    <h1>{acc ? acc.name ?? "Conta" : "Conta"}</h1>
+    <p class="small sub" aria-busy={!acc}>{!acc ? (erro ? "\u00a0" : "Carregando…") : <>{acc.role === "owner" ? "Dona do app" : "Conta pessoal"}{acc.via === "access" ? " · entrou pelo Cloudflare Access (transição)" : ""}</>}</p>
     {erro && <div class="note entrar-erro" role="alert"><Icon id="warn" />{erro}</div>}
 
     {codigos.length > 0 && <Codigos codigos={codigos} onOk={() => setCodigos([])} />}
@@ -55,6 +55,7 @@ export default function Conta() {
     <section class="card conta-sec" aria-labelledby="ct-ap">
       <h2 id="ct-ap">Aparelhos</h2>
       <p class="small sub">Cada aparelho fica logado por 90 dias, renovados quando você usa o app.</p>
+      {!dev && <p class="small sub">{erro ? "Lista indisponível agora." : "Carregando…"}</p>}
       {dev && !dev.sessions.length && <p class="small sub">Nenhuma sessão de passkey ainda{acc?.via === "access" ? ": crie uma passkey abaixo para deixar o Access." : "."}</p>}
       <ul class="conta-list">{dev?.sessions.map((s) => <li key={s.id}>
         <div><strong>{s.aparelho}</strong>{s.atual && <span class="badge acc" style="margin-left:6px">este aparelho</span>}
@@ -73,6 +74,7 @@ export default function Conta() {
     <section class="card conta-sec" aria-labelledby="ct-pk">
       <h2 id="ct-pk">Passkeys</h2>
       <p class="small sub">Com o iCloud Keychain, a passkey do iPhone já vale no Mac e no iPad. Adicione outra se usar um aparelho fora dele.</p>
+      {dev?.passkeys.length === 1 && <p class="small sub">Mantenha ao menos uma: para apagar esta, adicione outra antes.</p>}
       <ul class="conta-list">{dev?.passkeys.map((p, i) => <li key={p.id}>
         <div><strong>Passkey {i + 1}</strong>{p.sincronizada && <span class="badge ok" style="margin-left:6px">sincronizada</span>}
           <p class="tiny sub">Criada em {dia(p.createdAt)} · último uso {dia(p.lastUsedAt)}</p></div>
@@ -88,7 +90,7 @@ export default function Conta() {
 
     <section class="card conta-sec" aria-labelledby="ct-rc">
       <h2 id="ct-rc">Códigos de recuperação</h2>
-      <p class="small sub"><span class="num">{dev?.codigosRestantes ?? 0}</span> de 8 ainda valem. Gerar novos invalida os antigos.</p>
+      <p class="small sub">{dev ? <><span class="num">{dev.codigosRestantes}</span> de 8 ainda valem. Gerar novos invalida os antigos.</> : "Gerar novos invalida os antigos."}</p>
       <button type="button" class="btn full" disabled={!!busy} onClick={() => {
         if (dev?.codigosRestantes && !confirm("Gerar 8 códigos novos? Os antigos deixam de valer.")) return;
         act("rc", async () => { setCodigos((await api<{ codigos: string[] }>("POST", "/api/account/recovery-codes", {})).codigos); await load(); });

@@ -13,7 +13,7 @@ const MIG_RE = /^(\d{4})_[a-z0-9_]+\.sql$/;
 export function staticProblems(cfg, migrations) {
   const p = [];
   const vars = cfg.vars ?? {};
-  for (const k of ["DEV_NO_AUTH", "MCP_TOKEN", "VAPID_PRIVATE_KEY", "ACCESS_AUD", "ALLOWED_EMAILS", "OWNER_SETUP_CODE"]) if (k in vars) p.push(`wrangler.jsonc: "${k}" não pode estar em vars (dev ou segredo; use wrangler secret put)`);
+  for (const k of ["DEV_NO_AUTH", "MCP_TOKEN", "VAPID_PRIVATE_KEY", "ACCESS_AUD", "ALLOWED_EMAILS", "OWNER_SETUP_CODE", "AUTH_PEPPER"]) if (k in vars) p.push(`wrangler.jsonc: "${k}" não pode estar em vars (dev ou segredo; use wrangler secret put)`);
   if (cfg.workers_dev !== true) p.push("wrangler.jsonc: workers_dev precisa ser true (o app mora em *.workers.dev)");
   if (cfg.preview_urls !== false) p.push("wrangler.jsonc: preview_urls precisa ser false (URL de preview ficaria fora do Access)");
   const first = cfg.assets?.run_worker_first ?? [];

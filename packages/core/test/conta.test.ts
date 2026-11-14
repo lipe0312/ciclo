@@ -78,6 +78,9 @@ test("DER ↔ r||s da assinatura ES256", () => {
   assert.deepEqual(derToRawEcdsa(rawToDer(small)), small);
   assert.throws(() => derToRawEcdsa(Uint8Array.from([0x30, 3, 2, 1])));
   assert.throws(() => derToRawEcdsa(Uint8Array.from([0x31, 0])));
+  assert.throws(() => derToRawEcdsa(Uint8Array.from([0x30, 6, 2, 1, 5, 2, 1, 0x80])), /negativo/);
+  assert.throws(() => derToRawEcdsa(Uint8Array.from([0x30, 7, 2, 2, 0, 5, 2, 1, 7])), /zero à esquerda/);
+  assert.throws(() => derToRawEcdsa(Uint8Array.from([0x30, 0x81, 6, 2, 1, 5, 2, 1, 7])), /não canônico/);
 });
 
 test("registro: authData com credencial e chave COSE (ES256 e RS256) vira JWK que o WebCrypto aceita", async () => {
@@ -95,6 +98,7 @@ test("registro: authData com credencial e chave COSE (ES256 e RS256) vira JWK qu
   }
   assert.throws(() => coseToJwk(new Map<any, any>([[1, 1], [3, -8]])), /só ES256 e RS256/);
   assert.throws(() => coseToJwk(new Map<any, any>([[1, 2], [3, -7], [-1, 2]])), /P-256/);
+  assert.throws(() => coseToJwk(new Map<any, any>([[1, 3], [3, -257], [-1, new Uint8Array(256).fill(1)], [-2, Uint8Array.from([3])]])), /65537/);
   assert.throws(() => parseAuthData(new Uint8Array(10)), /curto/);
 });
 

@@ -49,6 +49,7 @@ Confira: aba anônima → URL do app → pede o código → abre. `curl -i …/a
 ```bash
 openssl rand -base64 24 | tr -d '/+=' | cut -c1-24               # gere o código de 1º acesso (≥ 16 caracteres)
 npx wrangler secret put OWNER_SETUP_CODE --cwd apps/worker       # cole o código; ele só vale enquanto não existe dono nem passkey
+openssl rand -hex 32 | npx wrangler secret put AUTH_PEPPER --cwd apps/worker   # HMAC do IP no limite de /auth/*
 npm run deploy                                                   # aplica a migration 0011 (passkeys, sessions, invites, recovery_codes)
 ```
 1. **Com o Access ainda ligado**, abra o app no iPhone → `…/#entrar` → **Primeiro acesso (dono do app)** → código + Face ID. Como você já está logado pelo Access, a **sua conta atual (com os dados) vira a dona**; guarde os 8 códigos de recuperação.
@@ -59,7 +60,7 @@ npm run deploy                                                   # aplica a migr
 npx wrangler secret delete ACCESS_AUD --cwd apps/worker          # sem ACCESS_* o caminho do Access deixa de existir (falha fechada)
 npx wrangler secret delete ACCESS_TEAM_DOMAIN --cwd apps/worker
 npx wrangler secret delete ALLOWED_EMAILS --cwd apps/worker
-npx wrangler secret delete OWNER_SETUP_CODE --cwd apps/worker    # opcional: o bootstrap já está fechado
+npx wrangler secret delete OWNER_SETUP_CODE --cwd apps/worker    # faça logo depois do 1º acesso (passo 1), mesmo sem desligar o Access
 ```
 Confira em aba anônima: o app abre na tela **Entrar** (não no código por e-mail); `curl -i …/api/state?date=2026-01-01` → 401 `{"code":"entrar"}`.
 

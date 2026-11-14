@@ -63,9 +63,15 @@ export async function authenticateSession(req: Request, env: Env, now = Date.now
 }
 
 // ---- limite de tentativas (/auth/*) ----
+/** Pepper do HMAC do IP: secret AUTH_PEPPER (recomendado); sem ele, o OWNER_SETUP_CODE; em último caso, fixo (só dev/teste). */
+const pepperOf = (env: Env) => env.AUTH_PEPPER || env.OWNER_SETUP_CODE || "ciclo-auth-dev";
+async function hmacHex(key: string, msg: string) {
+  const k = await crypto.subtle.importKey("raw", te.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return hex(new Uint8Array(await crypto.subtle.sign("HMAC", k, te.encode(msg))));
+}
 export async function hitAuthLimit(env: Env, req: Request, now = Date.now()): Promise<number> {
   const ip = req.headers.get("CF-Connecting-IP") ?? "local";
-  const key = "ip:" + (await sha256Hex("ciclo-auth:" + ip)).slice(0, 32); // nunca o IP puro
+  const key = "ip:" + (await hmacHex(pepperOf(env), ip)).slice(0, 32); // nunca o IP puro nem um hash adivinhável
   const { max, windowMs } = AUTH_LIMIT, w = now - (now % windowMs);
   const r = await env.DB.prepare(`INSERT INTO auth_rate_limit (key, window_start, count) VALUES (?1, ?2, 1)
     ON CONFLICT(key) DO UPDATE SET count = CASE WHEN window_start = ?2 THEN count + 1 ELSE 1 END, window_start = ?2 RETURNING count`)
@@ -210,11 +216,16 @@ export async function handleAuth(req: Request, env: Env, quem: Quem, now = Date.
     if (path === "/auth/recover") {
       const code = normalizeCode(b.codigo, RECOVERY_LEN);
       if (!code) throw new HttpError(400, "código no formato XXXX-XXXX-XX");
-      const r = await env.DB.prepare("UPDATE recovery_codes SET used_at = ?2 WHERE code_hash = ?1 AND used_at IS NULL RETURNING user_id")
-        .bind(await sha256Hex("rc:" + code), now).first<{ user_id: string }>();
+      const ch = await sha256Hex("rc:" + code);
+      const r = await env.DB.prepare("SELECT user_id FROM recovery_codes WHERE code_hash = ?1 AND used_at IS NULL").bind(ch).first<{ user_id: string }>();
       if (!r) throw new HttpError(401, "código inválido ou já usado");
-      const s = await sessionStmt(env, r.user_id, req, "recuperacao", now);
-      await env.DB.batch([s.stmt]);
+      // Um batch só (transação): o código é queimado e a sessão só nasce se ESTA requisição o queimou.
+      const s = await sessionStmt(env, r.user_id, req, "recuperacao", now, "EXISTS (SELECT 1 FROM recovery_codes WHERE code_hash = ?1 AND user_id = ?2 AND used_at = ?3)", [ch, r.user_id, now]);
+      await env.DB.batch([
+        env.DB.prepare("UPDATE recovery_codes SET used_at = ?2 WHERE code_hash = ?1 AND user_id = ?3 AND used_at IS NULL").bind(ch, now, r.user_id),
+        s.stmt,
+      ]);
+      if (!(await env.DB.prepare("SELECT 1 FROM sessions WHERE id = ?1 AND user_id = ?2").bind(s.sid, r.user_id).first())) throw new HttpError(401, "código inválido ou já usado");
       const left = await env.DB.prepare("SELECT COUNT(*) AS n FROM recovery_codes WHERE user_id = ?1 AND used_at IS NULL").bind(r.user_id).first<{ n: number }>();
       return json({ ok: true, restantes: left?.n ?? 0 }, 200, { "Set-Cookie": s.cookie });
     }
@@ -259,12 +270,12 @@ async function registerOptions(req: Request, env: Env, b: Record<string, unknown
     if (inv!.user_id) {
       const u = await env.DB.prepare("SELECT name FROM user WHERE id = ?1").bind(inv!.user_id).first<{ name: string | null }>();
       targetUid = inv!.user_id; userName = u?.name ?? nomeIn ?? "Ciclo";
-      data = { mode: "reset", uid: targetUid, invite: code!, nome: userName };
+      data = { mode: "reset", uid: targetUid, invite: await inviteHash(code!), nome: userName }; // só o hash vai ao banco
     } else {
       if (!nomeIn) throw new HttpError(400, "nome obrigatório");
       if ((await countUsers(env)) >= maxUsersOf(env)) throw new HttpError(409, `sem vagas: o app aceita até ${maxUsersOf(env)} contas`, "sem_vagas");
       targetUid = crypto.randomUUID(); userName = nomeIn;
-      data = { mode: "convite", uid: targetUid, invite: code!, nome: nomeIn, email: inv!.email, nova: true };
+      data = { mode: "convite", uid: targetUid, invite: await inviteHash(code!), nome: nomeIn, email: inv!.email, nova: true };
     }
   } else {
     const me = await quem(req, env);
@@ -302,7 +313,7 @@ async function register(req: Request, env: Env, b: Record<string, unknown>, now:
   let codes: string[] | undefined;
   let s;
   if (d.mode === "convite" || d.mode === "reset") {
-    const ih = await inviteHash(d.invite!);
+    const ih = d.invite!; // já é o hash (auth_challenge.data nunca guarda o código)
     // Tudo numa transação: o convite só é gasto se ainda vale; o resto só acontece se ESTE convite foi gasto por esta conta.
     const used = "EXISTS (SELECT 1 FROM invites WHERE code_hash = ?1 AND used_by = ?2 AND used_at = ?3)";
     const usedArgs = [ih, uid, now];
@@ -324,7 +335,7 @@ async function register(req: Request, env: Env, b: Record<string, unknown>, now:
     try {
       await env.DB.batch([...stmts, pkInsert(used, usedArgs), ...rc.stmts, s.stmt]);
     } catch (e) {
-      if (e instanceof Error && /UNIQUE/i.test(e.message)) throw new HttpError(409, "este e-mail já tem conta");
+      if (e instanceof Error && /UNIQUE/i.test(e.message)) throw new HttpError(409, "não deu para criar a conta com este convite; peça um novo a quem te convidou"); // sem revelar se o e-mail existe
       throw e;
     }
     const ok = await env.DB.prepare("SELECT 1 FROM invites WHERE code_hash = ?1 AND used_by = ?2 AND used_at = ?3").bind(ih, uid, now).first();
@@ -437,13 +448,17 @@ export function registerConta(on: (method: string, path: string, h: Handler) => 
     return json({ ok: true });
   });
 
-  // Resetar o acesso de outra pessoa: as sessões caem agora; o convite novo troca as passkeys e os códigos. Os dados ficam.
+  // Resetar o acesso de outra pessoa: as sessões e os tokens do Claude caem agora; o convite novo troca as passkeys e os códigos. Os dados ficam.
   on("POST", "/api/account/people/:id/reset", async (req, env, p, u) => {
     owner(u);
     if (p.id === u.id) throw new HttpError(400, "para você mesmo, use um código de recuperação ou adicione uma passkey");
     const t = await env.DB.prepare("SELECT id FROM user WHERE id = ?1").bind(p.id).first<{ id: string }>();
     if (!t) throw new HttpError(404, "pessoa não encontrada");
-    await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(t.id).run();
+    // sessões caem e os tokens do Claude dela são revogados agora (quem tinha acesso perde tudo); os dados ficam
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(t.id),
+      env.DB.prepare("UPDATE mcp_token SET revoked_at = ?2 WHERE user_id = ?1 AND revoked_at IS NULL").bind(t.id, Date.now()),
+    ]);
     return json(await createInvite(req, env, u.id, t.id, null), 201);
   });
 }

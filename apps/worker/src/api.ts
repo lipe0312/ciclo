@@ -71,6 +71,9 @@ on("GET", "/api/account/export", async (_req, env, _p, u) =>
 on("DELETE", "/api/account", async (req, env, _p, u) => {
   const b = await readJson<Record<string, unknown>>(req, 1024);
   if (b.confirm !== "APAGAR") throw new HttpError(400, 'confirme com {"confirm":"APAGAR"}');
+  // #54: a dona não apaga a própria conta enquanto houver outras (ninguém mais administraria convites e resets)
+  if (u.role === "owner" && ((await env.DB.prepare("SELECT COUNT(*) AS n FROM user").first<{ n: number }>())?.n ?? 0) > 1)
+    throw new HttpError(409, "apague ou passe as outras contas antes: a dona não sai enquanto houver outras pessoas", "dona_com_contas");
   await deleteAccount(env, u.id);
   return json({ ok: true });
 });
