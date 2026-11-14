@@ -44,6 +44,7 @@ celular (PWA) ─┐                 ┌─ claude.ai / app do Claude (connector
 | [07 · Claude](docs/07-claude.md) | ferramentas MCP, skills, modelo por pedido, automação |
 | [09 · Teste local](docs/09-teste-local.md) | roteiro de ponta a ponta antes do deploy |
 | [10 · Chat](docs/10-chat.md) | conectar com URL + Face ID (OAuth), regra/assinatura/API paga, rotina sem Mac |
+| [11 · Testar antes de subir](docs/11-testar-antes-de-subir.md) | cenários locais (vazio, semi, dono), roteiros manual e e2e |
 | [DESIGN](docs/DESIGN.md) · [ADRs](docs/adr) · [Concepção v2](docs/00-concepcao-v2.md) | |
 
 ## Licença

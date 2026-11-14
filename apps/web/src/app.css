@@ -511,3 +511,7 @@ html{overscroll-behavior-y:none}
 .esq-c{height:96px}
 @keyframes pisca{50%{opacity:.55}}
 @media (prefers-reduced-motion:reduce){.view.on,.esq i,.scrim.open{animation:none}}
+/* #70 botão "↺ cenário": só aparece em localhost, aberto pelo dev:cenario (lib/cenario) */
+.cenario-btn{position:fixed;z-index:30;top:calc(env(safe-area-inset-top) + 8px);left:50%;transform:translateX(-50%);min-height:var(--alvo);padding:0 var(--sp-3);border-radius:var(--r-chip);border:1px dashed var(--borda-ctrl);background:var(--sup);color:var(--sub);font-weight:600;font-size:12px;font-family:inherit;cursor:pointer;opacity:.8;transition:opacity var(--dur-1) var(--ease)}
+.cenario-btn:hover,.cenario-btn:focus-visible{opacity:1;color:var(--txt)}
+.cenario-btn:disabled{opacity:.5;cursor:progress}

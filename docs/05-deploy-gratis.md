@@ -28,7 +28,7 @@ Teste sempre na ordem mais barata. Tudo com dados fictícios; produção só no 
 - Staging fica numa URL `*.workers.dev` separada, fora do Access; use só dados fictícios.
 
 ## Checklist final do deploy (copie e siga em ordem, ~30 min)
-Tudo local já foi conferido por `npm run check`, `npm run deploy:dry` e `npm run e2e:local` (docs/09-teste-local.md).
+Tudo local já foi conferido por `npm run check`, `npm run deploy:dry` e `npm run e2e:local` (docs/09-teste-local.md). Cenários de teste e roteiros de tela: [docs/11-testar-antes-de-subir.md](11-testar-antes-de-subir.md).
 
 **1. Conta e recursos (#1)**
 ```bash
