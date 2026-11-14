@@ -2,7 +2,7 @@
 // navegação = rede primeiro com o index.html em cache como reserva. /api e /mcp nunca são cacheados.
 // #62: a versão muda a cada build (vite.config.ts troca o marcador pelo hash do bundle): o sw.js novo instala, assume e o app recarrega.
 const V = "ciclo-__BUILD__";
-const SHELL = ["/", "/index.html", "/icon.svg", "/manifest.webmanifest"];
+const SHELL = ["/", "/index.html", "/icon.svg", "/apple-touch-icon.png", "/manifest.webmanifest"];
 self.addEventListener("install", (e) => e.waitUntil(caches.open(V).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (e) => e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== V).map((k) => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", (e) => {

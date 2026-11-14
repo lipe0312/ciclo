@@ -1,4 +1,4 @@
-// Comida do dia e da semana (proteína e kcal de hoje + média de 7 dias vs a meta) e o cartão do Claude (#29).
+// Comida do dia e da semana (proteína e kcal de hoje + média de 7 dias vs a meta) e o cartão do Chat (#29).
 import * as C from "@ciclo/core";
 import { S } from "../../lib/store/index.ts";
 import { Card, Icon } from "../../lib/ui/index.tsx";
@@ -25,14 +25,14 @@ export function ComidaPainel({ c }: { c: C.HomeView["comida"] }) {
 }
 
 const curto = (t: string, n = 150) => (t.length > n ? t.slice(0, n - 1).trimEnd() + "…" : t);
-/** Último pedido ao Claude: pendente (aguardando) ou a última resposta, com atalho para o chat. Texto vira nó de texto (nunca HTML). */
+/** Último pedido ao Chat: pendente (aguardando) ou a última resposta, com atalho para o chat. Texto vira nó de texto (nunca HTML). */
 export function ClaudeCard() {
   const lista = [...(S.inbox as { id: string; text: string; status: string; response?: string | null; created_at: number }[])].sort((a, b) => b.created_at - a.created_at);
   const pend = lista.find((x) => x.status === "pendente");
   const resp = lista.find((x) => x.response);
-  return <Card cls="hm-painel"><div class="row between wrapx" style="gap:8px"><h2>Claude</h2>{pend ? <span class="badge warn">pedido pendente</span> : resp ? <span class="badge ok">respondido</span> : null}</div>
-    {pend ? <><p class="small" style="margin-top:6px">Você pediu: “{curto(pend.text, 110)}”</p><p class="small sub">O Claude responde quando você abrir o chat dele e processar a caixa.</p></>
+  return <Card cls="hm-painel"><div class="row between wrapx" style="gap:8px"><h2>Chat</h2>{pend ? <span class="badge warn">pedido pendente</span> : resp ? <span class="badge ok">respondido</span> : null}</div>
+    {pend ? <><p class="small" style="margin-top:6px">Você pediu: “{curto(pend.text, 110)}”</p><p class="small sub">O Chat responde quando você abrir o chat dele e processar a caixa.</p></>
       : resp ? <><p class="small sub" style="margin-top:6px">Última resposta</p><p class="small">{curto(resp.response ?? "")}</p></>
-        : <p class="small sub" style="margin-top:6px">Peça ajustes de treino, comida ou dor. Os pedidos ficam numa caixa que o Claude lê pelo connector.</p>}
-    <div class="hm-ctas"><a class="btn sm pri" href="#claude"><Icon id="chat" />Abrir o chat</a></div></Card>;
+        : <p class="small sub" style="margin-top:6px">Peça ajustes de treino, comida ou dor. Os pedidos ficam numa caixa que o Chat lê pelo connector.</p>}
+    <div class="hm-ctas"><a class="btn sm pri" href="#chat"><Icon id="chat" />Abrir o chat</a></div></Card>;
 }

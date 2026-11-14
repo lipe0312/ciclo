@@ -9,19 +9,18 @@ import { href } from "../../lib/roteador/index.ts";
 import { img } from "../../lib/util.ts";
 import { ExImgs } from "./biblioteca.tsx";
 import { MediaBox } from "./midia.tsx";
+import { Estado } from "../../lib/estado/index.tsx";
 
 const List = ({ title, items, empty }: { title: string; items?: string[]; empty: string }) =>
   <Card><h2>{title}</h2>{items?.length ? <ol class="steps">{items.map((t, i) => <li key={i}>{t}</li>)}</ol> : <p class="small sub" style="margin-top:6px">{empty}</p>}</Card>;
 
 export function Detalhe({ id }: { id: string }) {
   const it = C.CATALOG_BY_ID[id];
-  const back = <a class="btn sm" href="#treino/exercicios"><Icon id="back" />Exercícios</a>;
-  if (!it) return <>{back}<p class="sub" style="margin-top:12px">Exercício não encontrado.</p></>;
+  if (!it) return <Estado tipo="vazio" titulo="Exercício não encontrado" acao={{ label: "Ver exercícios", href: "#treino/exercicios" }} />;
   const src = C.imageSrc(it);
   const primary = it.subMuscles?.length ? it.subMuscles : it.type === "forca" ? DEFAULT_SUB[it.m] : [];
   const alts = it.type === "forca" ? C.EXERCISES.filter((e) => e.m === it.m && e.id !== it.id).slice(0, 4) : C.CARDIO.filter((c) => c.id !== it.id).slice(0, 4);
   return <>
-    <div class="row between" style="margin-bottom:10px">{back}</div>
     <p class="kicker">{it.type === "forca" ? `${C.MUSCLES[it.m].nm} · ${it.kind}` : "Cardio"}</p><h1 style="margin:2px 0 14px">{it.nm}</h1>
     <div class="grid dash"><div class="stack">
       <Card>{it.images.length ? <Carrossel label="Imagens do exercício" items={it.images.map((n) => <img src={img(src, n)} alt={`${it.nm} · ${n ? "fim" : "início"} do movimento`} width={360} height={240} />)} /> : <ExImgs it={it} size="big" />}

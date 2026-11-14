@@ -1,5 +1,5 @@
 // Diário → Saúde → Exames: colar o texto ou escolher um PDF de até 5 MB (lido NO APARELHO com pdf.js sob demanda).
-// Só o texto vai para a análise do Claude e é apagado depois dela (máx. 7 dias). Fica só o resumo estruturado.
+// Só o texto vai para a análise do Chat e é apagado depois dela (máx. 7 dias). Fica só o resumo estruturado.
 import { useState } from "preact/hooks";
 import { C } from "../../lib/store/index.ts";
 import { Card, Icon, toast } from "../../lib/ui/index.tsx";
@@ -18,7 +18,7 @@ function ExameCard({ e }: { e: Exame }) {
     <div class="row between start"><div style="min-width:0"><p class="kicker">Enviado em {dia(e.createdAt)}{e.summary?.data ? ` · laudo de ${e.summary.data.split("-").reverse().join("/")}` : ""}</p><h3 style="margin-top:2px">{e.label}</h3></div>
       {sure ? <button type="button" class="btn sm danger" onClick={del}>Apagar?</button>
         : <button type="button" class="iconbtn" onClick={del} aria-label={`Apagar ${e.label}`}><Icon id="x" /></button>}</div>
-    {e.status === "pendente" && <p class="small" style="margin-top:8px"><span class="badge warn">aguardando o Claude</span> <span class="sub">o texto é apagado na análise ou em {left} dia(s)</span></p>}
+    {e.status === "pendente" && <p class="small" style="margin-top:8px"><span class="badge warn">aguardando o Chat</span> <span class="sub">o texto é apagado na análise ou em {left} dia(s)</span></p>}
     {e.status === "expirado" && <p class="small sub" style="margin-top:8px"><span class="badge">texto apagado</span> 7 dias sem análise. Envie de novo se quiser.</p>}
     {e.summary && <>
       <ul class="ex-marc">{e.summary.marcadores.map((m, i) => <li key={i} class={`st-${m.status}`}>
@@ -49,15 +49,14 @@ export function Exames() {
   async function enviar() {
     if (!text.trim()) return toast("Cole o texto ou escolha um PDF");
     setBusy(true);
-    try { await addExam(label.trim(), text.trim()); setText(""); setLabel(""); setMsg(""); toast("Enviado · o Claude analisa e o texto é apagado depois"); }
+    try { await addExam(label.trim(), text.trim()); setText(""); setLabel(""); setMsg(""); toast("Enviado · o Chat analisa e o texto é apagado depois"); }
     catch { /* erro já avisado */ } finally { setBusy(false); }
   }
   return <>
-    <a class="btn ghost sm" href="#diario" style="margin-bottom:6px"><Icon id="back" />Diário</a>
     <p class="kicker">Diário · Saúde</p><h1 style="margin-bottom:14px">Exames</h1>
     <div class="grid dash"><div class="stack">
       <Card><h2>Novo exame</h2>
-        <p class="small sub" style="margin-top:4px">O PDF é lido aqui no aparelho e não é guardado. Só o texto vai para o Claude e é apagado depois da análise (no máximo 7 dias). Fica o resumo.</p>
+        <p class="small sub" style="margin-top:4px">O PDF é lido aqui no aparelho e não é guardado. Só o texto vai para o Chat e é apagado depois da análise (no máximo 7 dias). Fica o resumo.</p>
         <label class="f" for="exLabel" style="margin-top:12px">Nome</label>
         <input class="input" id="exLabel" maxLength={80} placeholder="ex.: Exame de sangue de outubro" value={label} onInput={(e) => setLabel(e.currentTarget.value)} />
         <label class="btn full ex-file" style="margin-top:12px"><Icon id="plus" />Escolher PDF (até 5 MB)

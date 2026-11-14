@@ -40,7 +40,7 @@ export function Privacidade({ controlador }: { controlador?: Legal["controlador"
     <h3>Base legal</h3>
     <p>Consentimento específico e destacado para o dado de saúde (LGPD, art. 11, I), dado no cadastro.</p>
     <h3>Operadores</h3>
-    <p>Cloudflare (hospedagem) e, se você conectar, a Anthropic, pelo seu próprio Claude.</p>
+    <p>Cloudflare (hospedagem) e, se você conectar o Chat, a Anthropic (pela sua própria conta).</p>
     <h3>Retenção</h3>
     <p>Enquanto a conta existir. Apagar a conta remove tudo em até 30 dias, inclusive backups.</p>
     <h3>Seus direitos (art. 18)</h3>

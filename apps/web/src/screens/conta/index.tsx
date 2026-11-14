@@ -18,7 +18,7 @@ const ITENS: { id: string; nm: string; desc: string; icon: string; dono?: boolea
   { id: "perfil", nm: "Perfil", desc: "Nome, sexo, nascimento, altura e peso", icon: "user" },
   { id: "seguranca", nm: "Segurança", desc: "Aparelhos, passkeys e códigos de recuperação", icon: "key" },
   { id: "pessoas", nm: "Pessoas e Convidar", desc: "Convites, vagas e acessos", icon: "grid", dono: true },
-  { id: "chat", nm: "Conectar Chat", desc: "Use o Ciclo pelo seu Claude", icon: "chat" },
+  { id: "chat", nm: "Conectar Chat", desc: "Use o Ciclo pelo Chat", icon: "chat" },
   { id: "dados", nm: "Privacidade e dados", desc: "Termos, privacidade, exportar e apagar", icon: "book" },
 ];
 

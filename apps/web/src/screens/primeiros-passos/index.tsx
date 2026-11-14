@@ -177,7 +177,7 @@ export default function PrimeirosPassos({ route }: { route: Route }) {
       <span class="small sub num" aria-hidden="true">{step + 1} de {PASSOS.length}</span>
       {feito ? <a class="btn ghost" href="#perfil">Sair</a> : <button type="button" class="btn ghost" disabled={busy} onClick={() => pular(setBusy)}>Pular por agora</button>}</div>
     <div class="pp-bar" role="progressbar" aria-label="Progresso dos Primeiros passos" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><i style={`width:${pct}%`} /></div>
-    {porClaude && step === 0 && <div class="note" style="margin-top:14px"><Icon id="chat" /><span>Preenchido pelo Claude. Confira as respostas e siga até o fim para confirmar.</span></div>}
+    {porClaude && step === 0 && <div class="note" style="margin-top:14px"><Icon id="chat" /><span>Preenchido pelo Chat. Confira as respostas e siga até o fim para confirmar.</span></div>}
     <h1 class="pp-q">{P.title}</h1><p class="sub pp-sub">{P.sub}</p>
     <div class="pp-body"><Tela /></div>
     <div class="pp-cta">{step < LAST
