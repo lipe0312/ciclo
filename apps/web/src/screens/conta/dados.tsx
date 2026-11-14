@@ -5,9 +5,10 @@ import * as C from "@ciclo/core";
 import { HttpError, api } from "../../lib/api/index.ts";
 import { Icon } from "../../lib/ui/index.tsx";
 
-/** Some o que o app guardou neste navegador (fila offline, caches de tela). */
+/** Some tudo o que o app guardou neste navegador (fila offline, caches de tela, preferências). A origem é só do app. */
 function limparNavegador() {
-  try { for (const k of Object.keys(localStorage)) if (k.startsWith("ciclo:")) localStorage.removeItem(k); } catch { /* sem storage */ }
+  try { localStorage.clear(); } catch { /* sem storage */ }
+  try { sessionStorage.clear(); } catch { /* sem storage */ }
 }
 
 export function SeusDados({ donaComOutras }: { donaComOutras: boolean }) {

@@ -4,7 +4,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MAX_MCP_TOKENS, TOKEN_IDLE_MS } from "@ciclo/core";
-import { toolNames } from "../src/mcp.ts";
+import { TOOLS, toolNames } from "../src/mcp.ts";
+import { USER_TABLES, deleteAccount } from "../src/db.ts";
 import { call, makeEnv, mcp } from "./fakes.ts";
 import { contaPorConvite, dono, envConta } from "./conta-helpers.ts";
 
@@ -99,6 +100,12 @@ test("escopo: o token da A nunca lê nem escreve a B, mesmo mandando o user_id d
     for (const k of Object.keys(x.inputSchema.properties ?? {})) assert.ok(!PROIBIDOS.test(k), `${x.name} aceita ${k}`);
   }
 
+  // cada chamada precisa chegar ao handler da ferramenta (não pode parar antes, por exemplo no limite de escrita)
+  const chegou = new Map<string, number>();
+  for (const tool of TOOLS) {
+    const run = tool.run;
+    t.mock.method(tool, "run", (...a: Parameters<typeof run>) => { chegou.set(tool.name, (chegou.get(tool.name) ?? 0) + 1); return run(...a); });
+  }
   const intrusos = { user_id: B.uid, userId: B.uid, uid: B.uid, email: B.email, conta: B.uid };
   for (const x of tools) {
     const base = gerar(x.inputSchema) as Record<string, unknown>;
@@ -108,6 +115,9 @@ test("escopo: o token da A nunca lê nem escreve a B, mesmo mandando o user_id d
       semVazar(x.name, r.text);
     }
   }
+  const naoChegou = TOOLS.filter((x) => (chegou.get(x.name) ?? 0) < 3).map((x) => `${x.name}${x.readOnly ? "" : " (escrita)"}`);
+  assert.deepEqual(naoChegou, [], "chamadas que não chegaram ao handler");
+  assert.ok(TOOLS.some((x) => !x.readOnly), "há ferramentas de escrita na lista");
   // quem chama é a A: as leituras trazem a A (prova de que o token, e não o parâmetro, escolhe a conta)
   const est = await mcp(env, A.token, "ciclo_contexto", { user_id: B.uid });
   assert.ok(est.text.includes("MARCA_A")); semVazar("ciclo_contexto", est.text);
@@ -129,6 +139,16 @@ test("apagar a conta pela tela: tokens, sessões, passkeys e R2 somem; o resto c
   const tok = (await as("POST", "/api/account/tokens", { body: { label: "claude.ai" } })).data;
   assert.equal((await as("POST", "/api/media", { raw: new Uint8Array([137, 80, 78, 71, 1]), ct: "image/png" })).status, 201);
   const dTok = (await call(env, "POST", "/api/account/tokens", { user: d.cookie, body: {} })).data;
+  // convite com o e-mail de uma terceira pessoa: o export da dona não leva esse e-mail
+  assert.equal((await call(env, "POST", "/api/account/invites", { user: d.cookie, body: { email: "terceira@exemplo.com" } })).status, 201);
+  const expDona = await call(env, "GET", "/api/account/export", { user: d.cookie });
+  assert.ok(expDona.data.invites.some((i: any) => i.tipo === "criado_por_mim"));
+  assert.ok(!expDona.text.includes("terceira@exemplo.com"), "e-mail de terceiro no export");
+  const donaUid = expDona.data.user.id;
+  // a regra da dona vale dentro do lote (atômica): chamada direta, sem a checagem da API, não apaga nada
+  assert.equal(await deleteAccount(env, donaUid), false);
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM mcp_token WHERE user_id = ?1").get(donaUid).n, 1);
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM user WHERE id = ?1").get(donaUid).n, 1);
   const uid = (await as("GET", "/api/account/export")).data.user.id;
   const n = (t: string) => env.DB.raw.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE user_id = ?1`).get(uid).n;
   assert.ok(n("mcp_token") && n("sessions") && n("passkeys"));
@@ -143,4 +163,14 @@ test("apagar a conta pela tela: tokens, sessões, passkeys e R2 somem; o resto c
   // a dona segue (com o token dela) e, agora sozinha, pode se apagar
   assert.equal((await mcp(env, dTok.token, "ciclo_estado", { date: D })).status, 200);
   assert.equal((await call(env, "DELETE", "/api/account", { user: d.cookie, body: { confirm: "APAGAR" } })).status, 200);
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM invites WHERE created_by = ?1").get(donaUid).n, 0, "convites que a dona criou");
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM user").get().n, 0);
+});
+
+test("USER_TABLES cobre toda tabela com coluna user_id (as migrations de verdade)", () => {
+  const db = makeEnv().DB.raw;
+  const EXCECOES: string[] = []; // tabela com user_id que NÃO deve ser apagada com a conta (nenhuma hoje)
+  const tabelas = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all().map((r: any) => r.name as string)
+    .filter((t: string) => db.prepare("SELECT COUNT(*) AS n FROM pragma_table_info(?1) WHERE name = 'user_id'").get(t).n > 0);
+  assert.deepEqual(tabelas.filter((t: string) => !EXCECOES.includes(t)).sort(), [...USER_TABLES].sort());
 });
