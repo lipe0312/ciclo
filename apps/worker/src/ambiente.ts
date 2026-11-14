@@ -19,6 +19,7 @@ export function webauthnWhere(req: Request, env: Pick<Env, "PUBLIC_ORIGIN" | "DE
 export const ambiente = (env: Pick<Env, "ENVIRONMENT" | "DEV_TUNNEL">): Ambiente | null =>
   env.ENVIRONMENT === "staging" ? "staging" : env.DEV_TUNNEL === "1" ? "tunel" : null;
 
-/** Staging falha fechado: sem AUTH_PEPPER e OWNER_SETUP_CODE o /auth/* (POST) não responde (503). Produção segue as regras próprias (#54). */
+/** Staging falha fechado: sem AUTH_PEPPER e OWNER_SETUP_CODE o /auth/* (POST) não responde (503). Produção segue as regras próprias (#54).
+ *  (#62: sem OWNER_EMAIL o primeiro acesso simplesmente não abre.) */
 export const segredosFaltando = (env: Pick<Env, "ENVIRONMENT" | "AUTH_PEPPER" | "OWNER_SETUP_CODE">): string[] =>
   env.ENVIRONMENT === "staging" ? (["AUTH_PEPPER", "OWNER_SETUP_CODE"] as const).filter((k) => !env[k]) : [];

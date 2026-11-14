@@ -140,7 +140,7 @@ test("apagar a conta pela tela: tokens, sessões, passkeys e R2 somem; o resto c
   assert.equal((await as("POST", "/api/media", { raw: new Uint8Array([137, 80, 78, 71, 1]), ct: "image/png" })).status, 201);
   const dTok = (await call(env, "POST", "/api/account/tokens", { user: d.cookie, body: {} })).data;
   // convite com o e-mail de uma terceira pessoa: o export da dona não leva esse e-mail
-  assert.equal((await call(env, "POST", "/api/account/invites", { user: d.cookie, body: { email: "terceira@exemplo.com" } })).status, 201);
+  assert.equal((await call(env, "POST", "/api/account/invites", { user: d.cookie, body: { email: "terceira@exemplo.com", nome: "Terceira" } })).status, 201);
   const expDona = await call(env, "GET", "/api/account/export", { user: d.cookie });
   assert.ok(expDona.data.invites.some((i: any) => i.tipo === "criado_por_mim"));
   assert.ok(!expDona.text.includes("terceira@exemplo.com"), "e-mail de terceiro no export");

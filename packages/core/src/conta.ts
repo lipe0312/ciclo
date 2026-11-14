@@ -1,4 +1,4 @@
-// #54 Conta própria: regras puras do login por passkey (WebAuthn), convite, teto de contas, sessão e recuperação.
+// #54/#62 Conta própria: regras puras do login por passkey (WebAuthn), convite, teto de contas, sessão e recuperação.
 // Sem dependência e sem criptografia aqui: o core só decodifica e confere formatos; a assinatura é verificada no
 // Worker com WebCrypto (ES256/RS256). Tudo o que dá para testar sem rede e sem chave fica neste arquivo.
 
@@ -15,16 +15,22 @@ export function vagas(usadas: number, max = MAX_USERS): Vagas {
   return { usadas, max, livres, cheio: livres === 0, texto: `${Math.min(usadas, max)} de ${max} vagas` };
 }
 
-// ---- sessão ----
-export const SESSION_DAYS = 90;
+// ---- sessão (#62: deslizante de 30 dias, teto absoluto de 180) ----
+export const SESSION_DAYS = 30;
 export const SESSION_MS = SESSION_DAYS * 86_400_000;
+export const SESSION_MAX_DAYS = 180;
+export const SESSION_MAX_MS = SESSION_MAX_DAYS * 86_400_000;
 const RENEW_GAP_MS = 86_400_000; // renova no uso, no máx. 1 vez por dia (1 escrita no D1)
-/** Sessão válida agora? */
-export const sessionAlive = (expiresAt: number, now: number) => expiresAt > now;
+export interface SessaoTempo { createdAt: number; expiresAt: number }
+/** Sessão válida agora? Venceu os 30 dias sem uso ou passou de 180 dias desde o login = não. */
+export const sessionAlive = (s: SessaoTempo, now: number) => s.expiresAt > now && now < s.createdAt + SESSION_MAX_MS;
+/** Validade que um uso agora dá à sessão: 30 dias a partir de agora, sem passar do teto de 180 desde o login. */
+export const sessionExpiry = (createdAt: number, now: number) => Math.min(now + SESSION_MS, createdAt + SESSION_MAX_MS);
 /** Nova validade se a sessão deve ser renovada neste uso (null = não precisa). */
-export function sessionRenewal(expiresAt: number, now: number): number | null {
-  if (!sessionAlive(expiresAt, now)) return null;
-  return now + SESSION_MS - expiresAt >= RENEW_GAP_MS ? now + SESSION_MS : null;
+export function sessionRenewal(s: SessaoTempo, now: number): number | null {
+  if (!sessionAlive(s, now)) return null;
+  const alvo = sessionExpiry(s.createdAt, now);
+  return alvo - s.expiresAt >= RENEW_GAP_MS ? alvo : null;
 }
 
 // ---- convite ----

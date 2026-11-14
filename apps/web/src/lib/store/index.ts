@@ -71,8 +71,10 @@ export function loadLocal() {
 // ---------- servidor ----------
 export async function loadServer() {
   const st = await api("GET", `/api/state?date=${today}`);
-  S.profile = { ...clone(DEFAULT_PROFILE), ...(st.profile ?? {}) };
-  S.gyms = st.gyms?.length ? st.gyms : S.gyms;
+  // #62: conta nova = vazia. Sem perfil salvo, nada vem marcado (objetivo, prioridades, dias, lugares) e não há academia de exemplo.
+  const vazio = !st.profile || !Object.keys(st.profile).length;
+  S.profile = { ...(vazio ? C.perfilContaNova(st.account ?? {}, today) : clone(DEFAULT_PROFILE)), ...(st.profile ?? {}) };
+  S.gyms = st.gyms ?? [];
   S.features = st.features ?? S.features;
   S.account = st.account ?? null; S.onboarding = st.onboarding ?? null;
   const w = st.week ?? {};

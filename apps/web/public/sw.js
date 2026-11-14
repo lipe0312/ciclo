@@ -1,12 +1,13 @@
 // Service worker: app abre sem sinal na academia. /assets/* (nomes com hash do Vite) e /img/* = cache primeiro;
 // navegação = rede primeiro com o index.html em cache como reserva. /api e /mcp nunca são cacheados.
-const V = "ciclo-v0.2.0";
+// #62: a versão muda a cada build (vite.config.ts troca o marcador pelo hash do bundle): o sw.js novo instala, assume e o app recarrega.
+const V = "ciclo-__BUILD__";
 const SHELL = ["/", "/index.html", "/icon.svg", "/manifest.webmanifest"];
 self.addEventListener("install", (e) => e.waitUntil(caches.open(V).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (e) => e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== V).map((k) => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener("fetch", (e) => {
   const u = new URL(e.request.url);
-  if (e.request.method !== "GET" || u.origin !== location.origin || u.pathname.startsWith("/api/") || u.pathname === "/mcp") return;
+  if (e.request.method !== "GET" || u.origin !== location.origin || u.pathname.startsWith("/api/") || u.pathname.startsWith("/auth/") || u.pathname === "/mcp") return;
   if (e.request.mode === "navigate") {
     e.respondWith(fetch(e.request).then((r) => { const c = r.clone(); caches.open(V).then((x) => x.put("/index.html", c)); return r; }).catch(() => caches.match("/index.html")));
     return;

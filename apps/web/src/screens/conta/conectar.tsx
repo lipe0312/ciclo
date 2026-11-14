@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import * as C from "@ciclo/core";
 import { api } from "../../lib/api/index.ts";
 import { Icon, toast } from "../../lib/ui/index.tsx";
+import { comFaceId } from "../entrar/webauthn.ts";
 
 export interface Chave extends C.TokenInfo, C.EstadoToken { id: string; label: string }
 interface Lista { tokens: Chave[]; max: number; ativos: number }
@@ -63,7 +64,7 @@ export function Conectar({ demo, viaAccess }: { demo: boolean; viaAccess?: boole
   };
 
   const gerar = () => act("gerar", async () => {
-    const r = await api<{ id: string; token: string }>("POST", "/api/account/tokens", { label: rotulo.trim() || "Claude" });
+    const r = await comFaceId(() => api<{ id: string; token: string }>("POST", "/api/account/tokens", { label: rotulo.trim() || "Claude" })); // #62: gerar chave pede Face ID
     setNova({ id: r.id, token: r.token }); await load();
   });
 

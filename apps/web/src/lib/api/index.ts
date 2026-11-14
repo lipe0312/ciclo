@@ -22,16 +22,18 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
   });
   const data = r.headers.get("Content-Type")?.includes("json") ? await r.json() : null;
   // #54: sessão ausente/vencida em /api → tela #entrar (volta para a rota de origem depois do login)
-  if (r.status === 401 && data?.code === "entrar") paraEntrar();
+  // #62: app fechado há mais de 7 dias → Face ID de novo; termos/privacidade em versão nova → aceite antes de usar
+  if (r.status === 401 && (data?.code === "entrar" || data?.code === "faceid")) paraEntrar(data.code === "faceid" ? "faceid" : undefined);
+  if (r.status === 403 && data?.code === "aceite") paraEntrar("aceite");
   if (!r.ok) throw new HttpError(data?.error || `HTTP ${r.status}`, r.status, data);
   return data as T;
 }
 
-/** Vai para #entrar guardando a rota atual em ?volta= (não repete se já está lá). */
-export function paraEntrar() {
-  if (location.hash.startsWith("#entrar")) return;
+/** Vai para #entrar guardando a rota atual em ?volta= (não repete se já está lá). #62: convite, termos e privacidade abrem sem sessão. */
+export function paraEntrar(modo?: "faceid" | "aceite") {
+  if (/^#(entrar|convite|privacidade|termos)\b/.test(location.hash)) return;
   const volta = location.hash && location.hash !== "#" ? location.hash : "#hoje";
-  location.hash = "#entrar?volta=" + encodeURIComponent(volta);
+  location.hash = "#entrar?" + (modo ? `modo=${modo}&` : "") + "volta=" + encodeURIComponent(volta);
 }
 
 let onHttpError: (msg: string) => void = () => {};

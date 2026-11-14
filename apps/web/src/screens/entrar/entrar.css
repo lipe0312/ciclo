@@ -1,0 +1,26 @@
+/* #62 Entrar, "Crie sua conta no Ciclo" e #termos/#privacidade (tokens de app.css / docs/DESIGN.md; 390 px primeiro) */
+.entrar-vagas{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--r);background:var(--sup-2);margin-top:4px}
+.entrar-vagas svg{color:var(--acc);flex:none;margin-top:2px}
+.entrar-vagas p{margin:2px 0 0}
+.entrar-rodape{text-align:center;margin-top:8px}
+.entrar-rodape a{display:inline-flex;align-items:center;min-height:44px;padding:0 6px}
+.cad-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.cad-kicker{margin-top:14px}
+.cad .pp-bar{margin-top:4px}
+.cad-form{display:flex;flex-direction:column;gap:12px}
+.cad-form h1{outline:none;font-size:clamp(24px,6vw,30px);margin:0}
+.cad-form .f{margin-bottom:-6px}
+.cad-form .opts{display:grid;gap:10px}
+.cad-form .opt{color:var(--txt)}
+.cad-email{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid var(--borda);border-radius:var(--r);background:var(--sup)}
+.cad-email .mono{word-break:break-all}
+.cad-check{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px solid var(--borda-ctrl);border-radius:var(--r);background:var(--sup);cursor:pointer;line-height:1.4}
+.cad-check input{flex:none;width:24px;height:24px;margin:0;accent-color:var(--acc)}
+.cad-check .link44{display:inline;min-height:0}
+.cad-doc{border:1px solid var(--borda);border-radius:var(--r);background:var(--sup)}
+.cad-doc>summary{min-height:44px;display:flex;align-items:center;padding:0 14px;font-weight:700;cursor:pointer}
+.cad-doc>*:not(summary){padding:0 14px 12px}
+.legal-txt h3{font-size:15px;margin:14px 0 4px}
+.legal-txt ul{margin:6px 0;padding-left:18px;display:grid;gap:6px}
+.legal-txt p{margin:4px 0}
+.legal-nav{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;margin-top:12px}

@@ -1,6 +1,7 @@
 // Prova de isolamento: a conta A tenta ler/alterar dados da B em TODAS as rotas /api/* e ferramentas MCP.
 // Falha se qualquer query perder o filtro user_id (vazamento de MARCA_B ou mudança no export da B).
 import { test } from "node:test";
+import { CONSENT_VERSAO } from "@ciclo/core";
 import assert from "node:assert/strict";
 import { EQUIPMENT } from "@ciclo/core";
 import { routeSignatures } from "../src/api.ts";
@@ -93,6 +94,10 @@ async function matriz(env: any, ana: string, bia: string) {
     ["GET /api/account/devices", () => a("GET", "/api/account/devices")],
     ["DELETE /api/account/sessions/:id", () => a("DELETE", `/api/account/sessions/${B.sessao}`), 404],
     ["DELETE /api/account/passkeys/:id", () => a("DELETE", `/api/account/passkeys/${B.passkey}`), 404],
+    // #62: "Fui eu" de uma sessão da B não existe para a A; perfil e aceite só mexem na própria conta
+    ["POST /api/account/sessions/:id/ok", () => a("POST", `/api/account/sessions/${B.sessao}/ok`, {}), 404],
+    ["PATCH /api/account/perfil", () => a("PATCH", "/api/account/perfil", { alturaCm: 170 })],
+    ["POST /api/account/consent", () => a("POST", "/api/account/consent", { termos: CONSENT_VERSAO.termos, privacidade: CONSENT_VERSAO.privacidade })],
     ["POST /api/account/recovery-codes", () => a("POST", "/api/account/recovery-codes", {}), 201],
     ["GET /api/account/people", () => a("GET", "/api/account/people"), 403],
     ["POST /api/account/invites", () => a("POST", "/api/account/invites", {}), 403],

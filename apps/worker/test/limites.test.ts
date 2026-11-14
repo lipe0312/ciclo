@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { GRATIS, LINHAS_POR_ESCRITA, diaUtc } from "@ciclo/core";
 import { SITEVERIFY } from "../src/limites.ts";
 import { call, makeEnv } from "./fakes.ts";
-import { convite, dono, envConta, ip } from "./conta-helpers.ts";
+import { cadastro, convite, dono, envConta, ip } from "./conta-helpers.ts";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10, 1, 2]);
 const H = { "CF-Connecting-IP": "198.51.100.7" };
@@ -116,7 +116,7 @@ test("Turnstile: validado no servidor (sem token, token inválido → 403); conv
   assert.equal((await call(env, "GET", "/auth/status")).data.turnstile, "site-ficticio");
   const d = await dono(env); // setup do dono não pede Turnstile
   const inv = (await convite(env, d.cookie)).data;
-  const opt = (turnstile?: string) => call(env, "POST", "/auth/register/options", { body: { convite: inv.codigo, nome: "Ana Fictícia", turnstile }, headers: ip() });
+  const opt = (turnstile?: string) => call(env, "POST", "/auth/register/options", { body: { ...cadastro(inv, "Ana Fictícia"), turnstile }, headers: ip() });
   const sem = await opt(); assert.equal(sem.status, 403); assert.equal(sem.data.code, "turnstile");
   assert.equal((await opt("token-ruim")).status, 403);
   assert.equal((await opt("token-bom-outro-host")).status, 403, "hostname tem que ser o do app");
@@ -139,7 +139,7 @@ test("Turnstile desligado sem secret: status sem chave e convite sem token funci
   assert.equal((await call(env, "GET", "/auth/status")).data.turnstile, null);
   const d = await dono(env);
   const inv = (await convite(env, d.cookie)).data;
-  assert.equal((await call(env, "POST", "/auth/register/options", { body: { convite: inv.codigo, nome: "Bia Fictícia" }, headers: ip() })).status, 200);
+  assert.equal((await call(env, "POST", "/auth/register/options", { body: cadastro(inv, "Bia Fictícia"), headers: ip() })).status, 200);
 });
 
 test("upload: acima de 25 MB → 413; tipo falso (magic bytes) → 415; conta acima de 500 MB → 429", async () => {
@@ -172,7 +172,7 @@ test("cota global: a 95% do grátis, upload e conta nova por convite param (o co
   const u = await up(); assert.equal(u.status, 429); assert.equal(u.data.code, "cota_global"); assert.match(u.data.error, /amanhã/);
   // o dono ainda convida e reseta; quem tenta CRIAR conta pelo convite espera
   const c = await convite(env, d.cookie); assert.equal(c.status, 201, "convite do dono é isento");
-  const nova = await call(env, "POST", "/auth/register/options", { body: { convite: c.data.codigo, nome: "Nova Fictícia" }, headers: ip() });
+  const nova = await call(env, "POST", "/auth/register/options", { body: cadastro(c.data, "Nova Fictícia"), headers: ip() });
   assert.equal(nova.status, 429); assert.equal(nova.data.code, "cota_global");
   assert.equal((await call(env, "GET", "/api/media", { user: d.cookie })).status, 200, "leitura segue");
   assert.equal((await call(env, "GET", "/api/account", { user: d.cookie })).status, 200);

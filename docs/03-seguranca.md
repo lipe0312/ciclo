@@ -7,7 +7,7 @@ O repositório é **público** e os dados são **pessoais** (peso, dor, comida e
 |---|---|---|
 | Login próprio (#54, ADR-0011) | **Passkey** (WebAuthn, Face ID/Touch ID) verificada no Worker com WebCrypto (ES256/RS256: desafio de uso único, origem, rpId, UV obrigatório, contador anticlone). Conta só por **convite** de uso único (7 dias, só hash no banco) ou pelo `OWNER_SETUP_CODE` (1ª conta, fecha para sempre). **Teto de 10 contas** conferido no mesmo `INSERT` (transação). Sessão de 90 dias no cookie `__Host-ciclo` (`HttpOnly; Secure; SameSite=Lax`), só o SHA-256 no D1, renovada no uso; "Sair de todos" apaga todas. 8 códigos de recuperação (só hash, uso único). `/auth/*`: limites e bloqueio da #56 (linha "Abuso"). O owner **não apaga a própria conta** enquanto houver outras; apague o secret `OWNER_SETUP_CODE` depois do 1º acesso. Pendente: step-up (Face ID de novo) em ações sensíveis | `auth-conta.ts`, `packages/core/src/conta.ts`, `test/conta.test.ts` |
 | Quem abre o app (transição) | **Cloudflare Access** (login por código no seu e-mail, até 50 usuários grátis) na frente do domínio inteiro | painel Zero Trust |
-| Defesa em profundidade | O Worker **verifica de novo** o JWT do Access: assinatura RS256 com as chaves do time, `aud`, `iss`, `exp` e e-mail na lista `ALLOWED_EMAILS` (vazia = ninguém) | `apps/worker/src/auth.ts` |
+| Login | Sessão própria por passkey (#54/#62): cookie `__Host-ciclo` deslizante de 30 dias com teto de 180; Face ID de novo após 7 dias fechado e antes de ações sensíveis; o caminho do Cloudflare Access (JWT) foi removido | `apps/worker/src/auth-conta.ts` |
 | Reset de acesso (owner) | O owner pode **resetar a conta de outra pessoa**: as sessões dela caem e os tokens do Claude dela são revogados na hora; o convite novo troca passkeys e códigos e dá a quem o usar o controle da conta, **com os dados**. Quem entra no app confia no owner para isso | `auth-conta.ts`, ADR-0011 |
 | Papéis | `owner` gerencia pessoas e convites e vê só nome, papel, criação e último acesso das outras contas (nunca dado de saúde); `user` só a própria. O teste de isolamento roda a matriz inteira também com duas contas criadas por convite (cookie) | `auth-conta.ts`, `test/isolation.test.ts` |
 | Contas | Cada e-mail vira uma conta (`user`) no 1º acesso; banco nasce vazio. **Todo dado tem `user_id`** e toda query filtra pelo usuário da sessão, nunca do corpo. Teste de isolamento cobre todas as rotas e ferramentas (ADR-0007) | `db.ts`, `api.ts`, `test/isolation.test.ts` |
@@ -50,7 +50,7 @@ O repositório é **público** e os dados são **pessoais** (peso, dor, comida e
 
 ## Checklist antes de publicar o deploy
 - [ ] Access ligado para o domínio `*.workers.dev` do Worker, com política "Allow" só para o seu e-mail, e **Bypass** só para `/mcp`, `/mcp/media` e `/api/health`.
-- [ ] `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` e `ALLOWED_EMAILS` definidos (`wrangler secret put` ou `vars`). **Não** definir `DEV_NO_AUTH` nem `MCP_TOKEN` em produção.
+- [ ] `AUTH_PEPPER`, `OWNER_SETUP_CODE` e `OWNER_EMAIL` por `wrangler secret put` (nunca em `vars` nem no git); `OWNER_SETUP_CODE` apagado depois do 1º acesso. **Não** definir `DEV_NO_AUTH` nem `MCP_TOKEN` em produção.
 - [ ] Token do Claude gerado (`POST /api/account/tokens`, passo 5 do `05-deploy-gratis.md`) e guardado no gerenciador de senhas.
 - [ ] `npm run check`, `npm run deploy:dry`, `npm run e2e:local` e `npm audit` verdes; gitleaks verde (CI).
 - [ ] Plano **Free** confirmado e alerta de billing do R2 e do Workers ligados (`docs/05`, passo 8b).

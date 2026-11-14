@@ -1,60 +1,67 @@
-// #54 Conta própria: bootstrap do dono, convite (usado/expirado/forjado), teto de 10 contas, login por passkey
-// (ES256/RS256, assinatura/origem/contador), cookie __Host-, "Sair de todos", recuperação, reset de acesso e limite em /auth/*.
+// #54/#62 Conta própria: bootstrap do dono (código + OWNER_EMAIL), convite amarrado ao e-mail (usado/expirado/forjado/outro e-mail),
+// teto de 10 contas, login por passkey (ES256/RS256, assinatura/origem/contador), cookie __Host- de 30 dias (teto de 180),
+// "Sair de todos", recuperação, reset de acesso e limite em /auth/*.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AUTH_LIMIT } from "../src/auth-conta.ts";
 import { call, makeEnv, mcp } from "./fakes.ts";
-import { ORIGEM, SETUP, contaPorConvite, convite, cookieDe, dono, entrar, envConta, ip, registrar } from "./conta-helpers.ts";
+import { CAD, DONO_EMAIL, ORIGEM, SETUP, cadastro, contaPorConvite, convite, cookieDe, dono, entrar, envConta, ip, registrar } from "./conta-helpers.ts";
 import { assinar } from "../../../packages/core/test/fake-autenticador.ts";
 
 const as = (env: any, cookie: string, m: string, p: string, body?: unknown) => call(env, m, p, { user: cookie, body });
 
-test("bootstrap: só com OWNER_SETUP_CODE, a 1ª conta vira owner e o bootstrap fecha para sempre", async () => {
+test("bootstrap (#62): o dono nasce só com o OWNER_SETUP_CODE E o e-mail do OWNER_EMAIL; o código é sempre pedido; fecha para sempre", async () => {
   const env = envConta();
   assert.equal((await call(env, "GET", "/auth/status")).data.bootstrap, true);
-  assert.equal((await registrar(env, { setup: "errado-errado-errado", nome: "X" })).status, 403);
+  const base = { email: DONO_EMAIL, nome: "Dona", ...CAD };
+  assert.equal((await registrar(env, { ...base, setup: "errado-errado-errado" })).status, 403);
+  assert.equal((await registrar(env, { ...base, setup: "" })).data.code, "setup_errado", "sem código, sem Face ID");
+  assert.equal((await registrar(env, { ...base, setup: SETUP, email: "outra@exemplo.com" })).data.code, "setup_errado", "e-mail diferente do OWNER_EMAIL");
+  assert.equal((await registrar(env, { ...base, setup: SETUP, sexo: undefined })).status, 400, "sexo obrigatório");
+  assert.equal((await registrar(env, { ...base, setup: SETUP, aceite: false })).data.code, "aceite", "aceite obrigatório");
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) n FROM auth_challenge").get().n, 0, "nenhuma cerimônia de Face ID começou sem o código");
   const d = await dono(env);
   assert.equal(d.codigos!.length, 8); assert.match(d.codigos![0], /^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{2}$/);
   const me = await as(env, d.cookie, "GET", "/api/account");
-  assert.equal(me.data.account.role, "owner"); assert.equal(me.data.account.name, "Dona Fictícia"); assert.equal(me.data.account.email, null);
+  assert.equal(me.data.account.role, "owner"); assert.equal(me.data.account.name, "Dona Fictícia"); assert.equal(me.data.account.email, DONO_EMAIL);
+  assert.equal(me.data.account.sobrenome, "Fictícia"); assert.equal(me.data.account.sexo, "feminino");
   assert.equal((await call(env, "GET", "/auth/status")).data.bootstrap, false);
-  assert.equal((await registrar(env, { setup: SETUP, nome: "Intrusa" })).status, 403, "bootstrap fechado");
-  assert.equal((await call(makeEnv({ DEV_NO_AUTH: undefined, OWNER_SETUP_CODE: "curto" }), "GET", "/auth/status")).data.bootstrap, false, "código curto não abre");
+  assert.equal((await registrar(env, { ...base, setup: SETUP, nome: "Intrusa" })).status, 403, "bootstrap fechado");
+  assert.equal((await call(makeEnv({ DEV_NO_AUTH: undefined, OWNER_SETUP_CODE: "curto", OWNER_EMAIL: DONO_EMAIL }), "GET", "/auth/status")).data.bootstrap, false, "código curto não abre");
+  assert.equal((await call(makeEnv({ DEV_NO_AUTH: undefined, OWNER_SETUP_CODE: SETUP }), "GET", "/auth/status")).data.bootstrap, false, "sem OWNER_EMAIL não abre");
 });
 
-test("transição: quem já usa o app (Access/dev) vira owner com os MESMOS dados ao criar a passkey", async () => {
-  const env = makeEnv({ OWNER_SETUP_CODE: SETUP }); // dev local faz o papel do Access aqui
-  await call(env, "POST", "/api/inbox", { user: "dev", body: { text: "pedido antigo" } });
-  const c = await registrar(env, { setup: SETUP }, { cookie: "ciclo_dev_user=dev" });
-  assert.equal(c.status, 201, JSON.stringify(c.data));
-  const s = await call(env, "GET", "/api/account/export", { headers: { Cookie: `${c.cookie}` }, host: "127.0.0.1:8791" });
-  assert.equal(s.data.user.email, "dev@dev.localhost"); assert.equal(s.data.user.role, "owner"); assert.equal(s.data.inbox.length, 1);
-});
-
-test("convite: forjado, usado e expirado são recusados; só o dono cria", async () => {
+test("convite: forjado, usado, expirado e de outro e-mail são recusados; só o dono cria", async () => {
   const env = envConta();
   const d = await dono(env);
-  assert.equal((await registrar(env, { convite: "ABCD-EFGH-JKMN-PQRS", nome: "Forja" })).status, 404, "forjado");
-  assert.equal((await registrar(env, { convite: "<script>", nome: "Forja" })).status, 404, "lixo");
-  const inv = (await convite(env, d.cookie)).data;
-  assert.match(inv.link, /#entrar\?convite=/);
+  assert.equal((await registrar(env, cadastro({ codigo: "ABCD-EFGH-JKMN-PQRS", email: "x@exemplo.com" }, "Forja"))).status, 404, "forjado");
+  assert.equal((await registrar(env, cadastro({ codigo: "<script>", email: "x@exemplo.com" }, "Forja"))).status, 404, "lixo");
+  assert.equal((await call(env, "POST", "/api/account/invites", { user: d.cookie, body: { nome: "Sem e-mail" } })).status, 400, "convite sem e-mail");
+  const inv = (await convite(env, d.cookie, { nome: "Ana" })).data;
+  assert.match(inv.link, /\/#convite\/[0-9A-Z]{4}-/);
   assert.ok(!JSON.stringify(env.DB.raw.prepare("SELECT * FROM invites").all()).includes(inv.codigo.replace(/-/g, "")), "só hash no banco");
-  const a = await registrar(env, { convite: inv.codigo, nome: "Ana Fictícia" });
+  const prev = await call(env, "POST", "/auth/convite", { body: { convite: inv.codigo }, headers: ip() });
+  assert.deepEqual([prev.data.nome, prev.data.email, prev.data.por, prev.data.reset], ["Ana", inv.email, "Dona Fictícia", false], "boas-vindas com quem convidou");
+  const outro = await registrar(env, cadastro({ ...inv, email: "intrusa@exemplo.com" }, "Intrusa"));
+  assert.equal(outro.status, 403); assert.equal(outro.data.code, "convite_email", "e-mail diferente do convite");
+  const a = await registrar(env, cadastro(inv, "Ana Fictícia"));
   assert.equal(a.status, 201);
-  const de_novo = await registrar(env, { convite: inv.codigo, nome: "Outra" });
+  assert.equal((await as(env, a.cookie, "GET", "/api/account")).data.account.email, inv.email, "e-mail vem do convite");
+  const de_novo = await registrar(env, cadastro(inv, "Outra"));
   assert.equal(de_novo.status, 410); assert.equal(de_novo.data.code, "convite_usado");
+  assert.equal((await call(env, "POST", "/auth/convite", { body: { convite: inv.codigo }, headers: ip() })).status, 410);
   const velho = (await convite(env, d.cookie)).data;
   env.DB.raw.prepare("UPDATE invites SET expires_at = 1 WHERE id = ?").run(velho.id);
-  const exp = await registrar(env, { convite: velho.codigo, nome: "Tarde" });
+  const exp = await registrar(env, cadastro(velho, "Tarde"));
   assert.equal(exp.status, 410); assert.equal(exp.data.code, "convite_expirado");
   // convite válido nas opções, mas usado por outra aba antes de terminar: o registro final também recusa
   const corrida = (await convite(env, d.cookie)).data;
-  const opt = await call(env, "POST", "/auth/register/options", { body: { convite: corrida.codigo, nome: "Corrida" }, headers: ip() });
-  assert.equal((await registrar(env, { convite: corrida.codigo, nome: "Primeira" })).status, 201);
+  const opt = await call(env, "POST", "/auth/register/options", { body: cadastro(corrida, "Corrida"), headers: ip() });
+  assert.equal((await registrar(env, cadastro(corrida, "Primeira"))).status, 201);
   const { criar, novoAutenticador } = await import("../../../packages/core/test/fake-autenticador.ts");
   const cred = await criar(await novoAutenticador(), { ...ORIGEM, challenge: opt.data.options.challenge });
   assert.equal((await call(env, "POST", "/auth/register", { body: { challengeId: opt.data.challengeId, credential: cred }, headers: ip() })).status, 410);
-  assert.equal((await as(env, a.cookie, "POST", "/api/account/invites", {})).status, 403, "user não convida");
+  assert.equal((await as(env, a.cookie, "POST", "/api/account/invites", { email: "z@exemplo.com", nome: "Z" })).status, 403, "user não convida");
 });
 
 test("teto: a 11ª conta é recusada pelo servidor (convite e criação), e MAX_USERS nunca passa de 10", async () => {
@@ -63,9 +70,10 @@ test("teto: a 11ª conta é recusada pelo servidor (convite e criação), e MAX_
   for (let i = 2; i <= 9; i++) await contaPorConvite(env, d.cookie, `Pessoa ${i}`);
   const p = await as(env, d.cookie, "GET", "/api/account/people");
   assert.equal(p.data.vagas.texto, "9 de 10 vagas");
+  assert.equal((await call(env, "GET", "/auth/status")).data.vagas.texto, "9 de 10 vagas", "#entrar mostra as vagas");
   const [x, y] = [(await convite(env, d.cookie)).data, (await convite(env, d.cookie)).data]; // dois convites com 1 vaga
-  assert.equal((await registrar(env, { convite: x.codigo, nome: "Décima" })).status, 201);
-  const onze = await registrar(env, { convite: y.codigo, nome: "Décima primeira" });
+  assert.equal((await registrar(env, cadastro(x, "Décima"))).status, 201);
+  const onze = await registrar(env, cadastro(y, "Décima primeira"));
   assert.equal(onze.status, 409); assert.equal(onze.data.code, "sem_vagas");
   assert.equal((await convite(env, d.cookie)).status, 409, "com 10 contas nem o convite nasce");
   assert.equal(env.DB.raw.prepare("SELECT COUNT(*) n FROM user").get().n, 10);
@@ -73,9 +81,9 @@ test("teto: a 11ª conta é recusada pelo servidor (convite e criação), e MAX_
   const env3 = envConta({ MAX_USERS: "2" });
   const d3 = await dono(env3);
   const [c1, c2] = [(await convite(env3, d3.cookie)).data, (await convite(env3, d3.cookie)).data];
-  const opt = await call(env3, "POST", "/auth/register/options", { body: { convite: c2.codigo, nome: "Atrasada" }, headers: ip() });
+  const opt = await call(env3, "POST", "/auth/register/options", { body: cadastro(c2, "Atrasada"), headers: ip() });
   assert.equal(opt.status, 200);
-  assert.equal((await registrar(env3, { convite: c1.codigo, nome: "Primeira" })).status, 201);
+  assert.equal((await registrar(env3, cadastro(c1, "Primeira"))).status, 201);
   const { criar, novoAutenticador } = await import("../../../packages/core/test/fake-autenticador.ts");
   const cred = await criar(await novoAutenticador(), { ...ORIGEM, challenge: opt.data.options.challenge });
   const r = await call(env3, "POST", "/auth/register", { body: { challengeId: opt.data.challengeId, credential: cred }, headers: ip() });
@@ -83,7 +91,7 @@ test("teto: a 11ª conta é recusada pelo servidor (convite e criação), e MAX_
   assert.equal(env3.DB.raw.prepare("SELECT COUNT(*) n FROM invites WHERE used_at IS NULL").get().n, 1, "convite não foi gasto");
 });
 
-test("login por passkey (ES256 e RS256): cookie __Host- HttpOnly Secure de 90 dias; só o hash no banco", async () => {
+test("login por passkey (ES256 e RS256): cookie __Host- HttpOnly Secure de 30 dias; só o hash no banco", async () => {
   const env = envConta();
   const d = await dono(env);
   for (const alg of ["ES256", "RS256"] as const) {
@@ -91,7 +99,7 @@ test("login por passkey (ES256 e RS256): cookie __Host- HttpOnly Secure de 90 di
     const r = await entrar(env, c.auth);
     assert.equal(r.status, 200, r.text);
     const sc = r.headers.get("set-cookie")!;
-    assert.match(sc, /^__Host-ciclo=[0-9a-f]{64}; Path=\/; HttpOnly; Secure; SameSite=Lax; Max-Age=7776000$/);
+    assert.match(sc, /^__Host-ciclo=[0-9a-f]{64}; Path=\/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000$/);
     assert.equal((await as(env, r.cookie, "GET", "/api/account")).data.account.name, `Conta ${alg}`);
     const val = r.cookie.split("=")[1];
     assert.ok(!JSON.stringify(env.DB.raw.prepare("SELECT * FROM sessions").all()).includes(val));
@@ -146,14 +154,20 @@ test("Sair de todos: sessão roubada deixa de valer; a outra conta segue", async
   assert.equal((await as(env, n1, "GET", "/api/account")).status, 401);
 });
 
-test("sessão: renovada no uso (90 dias de novo) e vencida = 401", async () => {
+test("sessão (#62): deslizante de 30 dias, teto de 180 desde o login; vencida = 401", async () => {
   const env = envConta();
   const d = await dono(env);
   env.DB.raw.prepare("UPDATE sessions SET expires_at = ?").run(Date.now() + 10 * 86_400_000);
   const r = await as(env, d.cookie, "GET", "/api/account");
-  assert.match(r.headers.get("set-cookie") ?? "", /Max-Age=7776000/);
-  assert.ok(env.DB.raw.prepare("SELECT expires_at FROM sessions").get().expires_at > Date.now() + 89 * 86_400_000);
-  env.DB.raw.prepare("UPDATE sessions SET expires_at = ?").run(Date.now() - 1);
+  assert.match(r.headers.get("set-cookie") ?? "", /Max-Age=259(19|20)\d\d/);
+  assert.ok(env.DB.raw.prepare("SELECT expires_at FROM sessions").get().expires_at > Date.now() + 29 * 86_400_000);
+  // perto do teto: renova só até 180 dias desde o login
+  env.DB.raw.prepare("UPDATE sessions SET created_at = ?, expires_at = ?").run(Date.now() - 175 * 86_400_000, Date.now() + 86_400_000);
+  await as(env, d.cookie, "GET", "/api/account");
+  assert.ok(env.DB.raw.prepare("SELECT expires_at FROM sessions").get().expires_at <= Date.now() + 5 * 86_400_000 + 1000, "não passa do teto");
+  env.DB.raw.prepare("UPDATE sessions SET created_at = ?, expires_at = ?").run(Date.now() - 181 * 86_400_000, Date.now() + 86_400_000);
+  assert.equal((await as(env, d.cookie, "GET", "/api/account")).status, 401, "passou de 180 dias");
+  env.DB.raw.prepare("UPDATE sessions SET created_at = ?, expires_at = ?").run(Date.now(), Date.now() - 1);
   assert.equal((await as(env, d.cookie, "GET", "/api/account")).status, 401);
 });
 
@@ -177,7 +191,11 @@ test("recuperação: código vale uma vez, só hash no banco; 2ª passkey e apag
   assert.equal((await as(env, ck, "DELETE", `/api/account/passkeys/${pks[0].id}`)).status, 200);
   assert.equal((await entrar(env, a.auth)).status, 401, "passkey apagada não entra");
   assert.equal((await registrar(env, {})).status, 401, "adicionar passkey exige estar logado");
-  const novos = await as(env, ck, "POST", "/api/account/recovery-codes", {});
+  // #62: ver códigos novos pede Face ID; a sessão do código de recuperação não teve Face ID
+  const semFace = await as(env, ck, "POST", "/api/account/recovery-codes", {});
+  assert.equal(semFace.status, 403); assert.equal(semFace.data.code, "reauth");
+  const comFace = (await entrar(env, mac.auth)).cookie;
+  const novos = await as(env, comFace, "POST", "/api/account/recovery-codes", {});
   assert.equal(novos.status, 201); assert.equal(novos.data.codigos.length, 8);
   assert.equal((await call(env, "POST", "/auth/recover", { body: { codigo: a.codigos![0] }, headers: ip() })).status, 401, "códigos antigos morrem");
 });
@@ -209,9 +227,9 @@ test("a dona não apaga a própria conta enquanto houver outras; o convite em an
   const env = envConta();
   const d = await dono(env);
   const inv = (await convite(env, d.cookie)).data;
-  await call(env, "POST", "/auth/register/options", { body: { convite: inv.codigo, nome: "Ana" }, headers: ip() });
+  await call(env, "POST", "/auth/register/options", { body: cadastro(inv, "Ana"), headers: ip() });
   assert.ok(!JSON.stringify(env.DB.raw.prepare("SELECT data FROM auth_challenge").all()).includes(inv.codigo.replace(/-/g, "")), "código puro no desafio");
-  const a = await registrar(env, { convite: inv.codigo, nome: "Ana Fictícia" });
+  const a = await registrar(env, cadastro(inv, "Ana Fictícia"));
   assert.equal(a.status, 201, "convite continua válido pelo hash");
   const r = await as(env, d.cookie, "DELETE", "/api/account", { confirm: "APAGAR" });
   assert.equal(r.status, 409); assert.equal(r.data.code, "dona_com_contas");
