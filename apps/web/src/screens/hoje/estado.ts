@@ -32,6 +32,7 @@ export function carregarHome(force = false): Promise<void> {
     await Promise.resolve(); // o efeito da tela roda antes de a casca assinar o commit
     try {
       H.view = SERVER ? (await api<{ home: C.HomeView }>("GET", `/api/home?date=${today}`)).home : demoView();
+      reaplicarCache(H.view);
       lsSet(CACHE, H.view);
     } catch (e) {
       if (!H.view) H.erro = true;
@@ -40,3 +41,43 @@ export function carregarHome(force = false): Promise<void> {
   })();
   return pedido;
 }
+
+// ---------- #73 cartão de boas-vindas e "Complete o perfil": o servidor manda; o aparelho guarda só um cache otimista ----------
+const conta = () => (SERVER ? S.account?.email ?? "?" : "demo");
+const KEY_BV = () => `ciclo:boas-vindas-dispensado:${conta()}`, KEY_PERFIL = () => `ciclo:perfil-adiado:${conta()}`;
+
+/** O servidor ainda não sabe da dispensa feita aqui (rede caiu no meio): esconde já e tenta gravar de novo. */
+function reaplicarCache(v: C.HomeView) {
+  if (lsGet<string | null>(KEY_BV(), null) && v.boasVindas === "mostrar") { v.boasVindas = "oculto"; void gravar({ boasVindas: "dispensar" }); }
+  const adiado = lsGet<string | null>(KEY_PERFIL(), null);
+  if (adiado && (!v.perfilAdiadoEm || v.perfilAdiadoEm < adiado)) { v.perfilAdiadoEm = adiado; void gravar({ perfil: "adiar" }); }
+}
+
+async function gravar(body: { boasVindas?: "dispensar"; perfil?: "adiar" }) {
+  if (!SERVER) return;
+  try { await api("PATCH", "/api/home/preferencias", body); }
+  catch { /* fica no cache do aparelho; a próxima abertura tenta de novo */ }
+}
+
+/** "✕ Dispensar" do "Sua semana está pronta": some aqui na hora e no servidor para sempre. */
+export function dispensarBoasVindas() {
+  lsSet(KEY_BV(), today);
+  if (H.view) { H.view.boasVindas = "oculto"; lsSet(CACHE, H.view); }
+  commit();
+  void gravar({ boasVindas: "dispensar" });
+}
+
+/** "Lembrar depois" do "Complete o Perfil de treino": 7 dias. */
+export function adiarPerfil() {
+  lsSet(KEY_PERFIL(), today);
+  if (H.view) { H.view.perfilAdiadoEm = today; lsSet(CACHE, H.view); }
+  commit();
+  void gravar({ perfil: "adiar" });
+}
+
+/** O cartão aparece? (o cache da Home pode ser de antes da dispensa feita neste aparelho) */
+export const boasVindasVisivel = (v: C.HomeView) => v.boasVindas === "mostrar" && !lsGet<string | null>(KEY_BV(), null);
+export const perfilAdiadoEm = (v: C.HomeView): string | null => {
+  const l = lsGet<string | null>(KEY_PERFIL(), null), s = v.perfilAdiadoEm ?? null;
+  return l && (!s || l > s) ? l : s;
+};

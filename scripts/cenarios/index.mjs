@@ -8,7 +8,7 @@ import * as dono from "./dono.mjs";
 
 export const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 export const PORTA_PADRAO = 8791;
-export const PORTA_CTRL = 8795;
+export const PORTA_CTRL = Number(process.env.CENARIO_CTRL_PORTA) || 8795;
 export const CENARIOS = { vazio, semi, dono };
 export const NOMES = Object.keys(CENARIOS);
 
@@ -49,7 +49,7 @@ export function lerArgs(argv) {
 export const textoLista = () => NOMES.map((n) => `${n}\n  ${CENARIOS[n].descricao}\n${CENARIOS[n].tem.map((t) => `    · ${t}`).join("\n")}`).join("\n\n");
 
 /** Os comandos do wrangler (rodam em apps/worker). Sempre `--local` + `--persist-to` do cenário. */
-export function comandos(nome, { porta = PORTA_PADRAO, comLogin = false, codigo = "", root = ROOT } = {}) {
+export function comandos(nome, { porta = PORTA_PADRAO, comLogin = false, codigo = "", root = ROOT, ctrl = PORTA_CTRL } = {}) {
   const dir = dirCenario(nome, root), alvo = ["--local", "--persist-to", dir];
   const vars = comLogin
     ? ["--var", "DEV_NO_AUTH:0", "--var", "MCP_TOKEN:", "--var", `OWNER_SETUP_CODE:${codigo}`, "--var", "OWNER_EMAIL:dono@exemplo.com"]
@@ -58,7 +58,7 @@ export function comandos(nome, { porta = PORTA_PADRAO, comLogin = false, codigo 
     dir,
     migrar: garantirLocal(["wrangler", "d1", "migrations", "apply", "ciclo-db", ...alvo]),
     sql: (arquivo) => garantirLocal(["wrangler", "d1", "execute", "ciclo-db", ...alvo, "--json", "--yes", "--file", arquivo]),
-    dev: garantirLocal(["wrangler", "dev", "--port", String(porta), "--persist-to", dir, ...vars, "--var", `CENARIO_NOME:${nome}`, "--var", `CENARIO_CTRL:${PORTA_CTRL}`]),
+    dev: garantirLocal(["wrangler", "dev", "--port", String(porta), "--persist-to", dir, ...vars, "--var", `CENARIO_NOME:${nome}`, "--var", `CENARIO_CTRL:${ctrl}`]),
   };
 }
 

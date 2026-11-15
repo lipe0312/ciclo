@@ -4,15 +4,16 @@
 // Só localhost. Roteiro manual equivalente: docs/11-testar-antes-de-subir.md
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { CENARIOS, PORTA_CTRL, urlAbertura } from "./cenarios/index.mjs";
+import { CENARIOS, urlAbertura } from "./cenarios/index.mjs";
 import { abrirChrome, sleep } from "./cenarios/cdp.mjs";
 
-const PORTA = 8793;
+const PORTA = Number(process.env.CENARIO_PORTA) || 8793;
 const ROTEIROS = { "primeiro-acesso": primeiroAcesso, pular };
 const nome = process.argv[2];
 if (!ROTEIROS[nome]) { console.error(`✖ roteiro: ${Object.keys(ROTEIROS).join(" | ")}`); process.exit(2); }
 const BASE = (process.env.CICLO_URL ?? `http://localhost:${PORTA}`).replace(/\/$/, "");
 if (!["localhost", "127.0.0.1"].includes(new URL(BASE).hostname)) { console.error("✖ só roda em localhost"); process.exit(2); }
+const CTRL = Number(process.env.CENARIO_CTRL_PORTA) || Number(new URL(BASE).port || 80) + 4; // controle do cenário (reset)
 
 let n = 0;
 async function passo(titulo, fn, c) {
@@ -28,11 +29,11 @@ const ok = (cond, msg) => { if (!cond) throw new Error(msg); };
 
 async function subir() {
   if (process.env.CICLO_URL) { // cenário vazio já no ar: reseta
-    const r = await fetch(`http://127.0.0.1:${PORTA_CTRL}/reset`, { method: "POST", headers: { "x-ciclo-cenario": "reset" } }).catch(() => null);
+    const r = await fetch(`http://127.0.0.1:${CTRL}/reset`, { method: "POST", headers: { "x-ciclo-cenario": "reset" } }).catch(() => null);
     if (!r?.ok) throw new Error("não achei o dev:cenario vazio no ar (npm run dev:cenario -- vazio)");
     return () => {};
   }
-  const filho = spawn(process.execPath, [fileURLToPath(new URL("./dev-cenario.mjs", import.meta.url)), "vazio", "--sem-abrir", "--porta", String(PORTA)], { stdio: ["ignore", "pipe", "pipe"] });
+  const filho = spawn(process.execPath, [fileURLToPath(new URL("./dev-cenario.mjs", import.meta.url)), "vazio", "--sem-abrir", "--porta", String(PORTA)], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, CENARIO_CTRL_PORTA: String(CTRL) } });
   let log = ""; filho.stdout.on("data", (d) => { log += d; }); filho.stderr.on("data", (d) => { log += d; });
   // #71 espera a porta liberar: no `npm run gate` o próximo roteiro sobe o cenário na mesma porta logo em seguida
   const parar = async () => {
@@ -179,6 +180,54 @@ async function primeiroAcesso(c) {
       ok((await c.esperar("document.querySelector('.view.on')?.innerText.trim().length > 10")), `${nm}: a tela abriu vazia`);
       await c.abrir(`${BASE}/#mais`); await c.esperar("location.hash === '#mais'");
     }
+  }, c);
+  await boasVindas(c);
+}
+
+// #73 O cartão "Sua semana está pronta" some sozinho e não volta: depois de "Dispensar" e depois de registrar uma série.
+const HOJE_JS = "new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())";
+const CARTAO = "Sua semana está pronta";
+const temCartao = (c) => c.ev(`(document.querySelector('#app')?.innerText ?? '').includes(${JSON.stringify(CARTAO)})`);
+const homePronta = (c) => c.esperar("location.hash === '#hoje' && (document.querySelector('#app')?.innerText ?? '').includes('O caminho até aqui')", 10000);
+const boasVindasServidor = (c) => c.ev(`fetch('/api/home?date=' + ${HOJE_JS}).then((r) => r.json()).then((j) => j.home.boasVindas)`);
+
+async function boasVindas(c) {
+  await passo("11. Hoje: o cartão 'Sua semana está pronta' aparece depois dos Primeiros passos, abaixo do treino de hoje", async () => {
+    await c.abrir(`${BASE}/#hoje`);
+    ok(await homePronta(c), `o Hoje não carregou (${(await c.texto()).replace(/\s+/g, " ").slice(0, 160)})`);
+    ok(await temCartao(c), "sem o cartão de boas-vindas");
+    ok(await c.ev(`(() => { const t = document.querySelector('#app').innerText; return t.indexOf('Sua semana') < t.indexOf(${JSON.stringify(CARTAO)}); })()`), "o treino de hoje não está acima do cartão");
+  }, c);
+  await passo("11. ✕ Dispensar: o cartão some, o servidor grava e ele não volta ao recarregar", async () => {
+    await c.clicar("Dispensar o cartão de boas-vindas");
+    ok(await c.esperar(`!(document.querySelector('#app')?.innerText ?? '').includes(${JSON.stringify(CARTAO)})`, 3000), "o cartão continua na tela");
+    ok(await c.esperar(`fetch('/api/home?date=' + ${HOJE_JS}).then((r) => r.json()).then((j) => j.home.boasVindas === 'oculto')`, 5000), "o servidor não gravou a dispensa");
+    await c.recarregar(); ok(await homePronta(c), "o Hoje não recarregou");
+    ok(!(await temCartao(c)), "o cartão voltou ao recarregar");
+  }, c);
+  await passo("11. em outro aparelho (sem o cache do navegador) o cartão também não volta", async () => {
+    await c.ev("localStorage.clear()"); await c.recarregar(); ok(await homePronta(c), "o Hoje não recarregou");
+    ok(!(await temCartao(c)), "o cartão voltou sem o cache do aparelho");
+  }, c);
+  await passo("12. outra conta com o checkup feito: o cartão aparece e o servidor diz 'mostrar'", async () => {
+    const perfil = await c.ev(`fetch('/api/state?date=' + ${HOJE_JS}).then((r) => r.json()).then((j) => j.profile)`);
+    await c.send("Network.setExtraHTTPHeaders", { headers: { "x-dev-user": "cenario-vazio-serie" } });
+    const r = await c.ev(`(async () => { const j = async (m, p, b) => { const r = await fetch(p, { method: m, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }); if (!r.ok) throw new Error(m + ' ' + p + ' → ' + r.status); return r.json(); };
+      await j('PUT', '/api/profile', { data: ${JSON.stringify(perfil)} }); await j('PATCH', '/api/account', { onboarding: 'concluido' }); return (await fetch('/api/account').then((x) => x.json())).account?.email; })()`);
+    ok(String(r).startsWith("cenario-vazio-serie@"), `não trocou de conta (${r})`);
+    await c.ev("localStorage.clear()"); await c.recarregar(); ok(await homePronta(c), `o Hoje da 2ª conta não carregou (${(await c.texto()).replace(/\s+/g, " ").slice(0, 160)})`);
+    igual(await boasVindasServidor(c), "mostrar", "boasVindas no servidor");
+    ok(await temCartao(c), "sem o cartão na 2ª conta");
+  }, c);
+  await passo("12. registra uma série: o cartão some e não volta ao recarregar", async () => {
+    const st = await c.ev(`(async () => { const j = async (m, p, b) => { const r = await fetch(p, { method: m, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }); if (!r.ok) throw new Error(m + ' ' + p + ' → ' + r.status); return r.json(); };
+      const s = await j('POST', '/api/sessions', { date: ${HOJE_JS}, plan: { name: 'teste e2e', items: [] } });
+      await j('POST', '/api/sessions/' + s.id + '/sets', { exerciseId: 'Cable_Seated_Lateral_Raise', setNo: 1, kg: 6, reps: 12 });
+      await j('POST', '/api/sessions/' + s.id + '/finish', { feedback: { feel: 'bom' } }); return 'ok'; })()`);
+    igual(st, "ok", "série registrada");
+    igual(await boasVindasServidor(c), "oculto", "boasVindas no servidor depois da série");
+    await c.abrir(`${BASE}/#hoje`); await c.recarregar(); ok(await homePronta(c), "o Hoje não recarregou");
+    ok(!(await temCartao(c)), "o cartão continua depois da 1ª série");
   }, c);
 }
 

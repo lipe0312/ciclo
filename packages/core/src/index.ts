@@ -24,6 +24,7 @@ export * from "./mp4.ts";
 export * from "./contexto-metodo.ts";
 export * from "./contexto.ts";
 export * from "./home.ts";
+export * from "./home-inicio.ts";
 export * from "./claude.ts";
 export * from "./conta.ts";
 export * from "./cadastro.ts";
