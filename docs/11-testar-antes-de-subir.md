@@ -39,7 +39,7 @@ Rode `npm run dev:cenario -- vazio --tela primeiros-passos/0` e confira em 390 e
 npm run e2e:primeiro-acesso   # cenário vazio, roteiro acima (Chrome headless, sobe e derruba o servidor sozinho, porta 8793)
 npm run e2e:pular             # cenário vazio, Pular por agora no passo 1
 ```
-Falham no primeiro passo errado e dizem qual. Os passos que dependem das correções da #71 aparecem como `PENDENTE_71` e não rodam (`CICLO_71=1` força rodar). Enquanto isso, os e2e **não** fazem parte do `npm run check`. Depois do merge da #71: apague `PENDENTE_71` em `scripts/e2e-cenario.mjs` e inclua os dois no check.
+Falham no primeiro passo errado e dizem qual, e qualquer erro ou aviso no console reprova o passo. Os dois rodam no `npm run gate` (= `npm run check` + `e2e:primeiro-acesso` + `e2e:pular`), que o `npm run deploy` exige antes de subir. O `npm run check` continua só com typecheck, testes e build (rápido, sem Chrome), para rodar a cada commit.
 
 ## Antes de subir
-`npm run check` e `npm run deploy:dry` (ver também [09 · Teste local](09-teste-local.md) e [05 · Deploy](05-deploy-gratis.md)). O iPhone, pelo túnel (`npm run dev:tunnel`), fica para depois do fluxo aprovado aqui.
+`npm run gate` e `npm run deploy:dry` (ver também [09 · Teste local](09-teste-local.md) e [05 · Deploy](05-deploy-gratis.md)). O iPhone, pelo túnel (`npm run dev:tunnel`), fica para depois do fluxo aprovado aqui.

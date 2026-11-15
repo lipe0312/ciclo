@@ -28,6 +28,12 @@ export function voltarDe(screen: string, parts: readonly string[]): Destino | nu
   return para(s);
 }
 
+/** #71 Conta com Primeiros passos pendente: tudo cai nos Primeiros passos, menos Conta e o menu ⋯ (Mais), que mostra só o que abre. */
+export const ABERTAS_NO_CHECKUP = ["conta", "mais"] as const;
+export function telaComCheckupPendente(pedida: string, pendente: boolean): string {
+  return pendente && !(ABERTAS_NO_CHECKUP as readonly string[]).includes(pedida) ? "primeiros-passos" : pedida;
+}
+
 /** A sequência de destinos tocando "voltar" até a Home (vazia se já está nela). Para em 8 passos (sem ciclo). */
 export function caminhoAteHoje(screen: string, parts: readonly string[]): Destino[] {
   const out: Destino[] = [];

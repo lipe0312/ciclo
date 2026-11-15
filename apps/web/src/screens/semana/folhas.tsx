@@ -1,6 +1,6 @@
 // Folhas da Semana: trocar a geração de um dia, mover/trocar dias, regenerar com diff e versões (desfazer).
 import type * as C from "@ciclo/core";
-import { S, commit, today } from "../../lib/store/index.ts";
+import { S, calc, commit, today } from "../../lib/store/index.ts";
 import { FOCUS } from "../../lib/store/regras.ts";
 import { SheetHead, closeSheet, openSheet } from "../../lib/folha/index.tsx";
 import { Chip, Icon, Seg } from "../../lib/ui/index.tsx";
@@ -34,7 +34,7 @@ function Trocar() {
         onPick={(v) => up({ split: v as C.Split | null, focus: null })} label="Divisão" /></div>
       <div><span class="f">Foco</span><div class="chips">{FOCUS.map(([id, nm, ms]) =>
         <Chip key={id} on={fid === id} onClick={() => up({ focus: ms.length ? ms : null, split: null })}>{nm}</Chip>)}</div></div>
-      <div><span class="f">Duração (min)</span><Seg opts={[30, 45, 60, 75, 90].map((n) => [n, String(n)] as [number, string])} value={r.minutes ?? S.profile.minutes} onPick={(v) => up({ minutes: v })} label="Duração" /></div>
+      <div><span class="f">Duração (min)</span><Seg opts={[30, 45, 60, 75, 90].map((n) => [n, String(n)] as [number, string])} value={r.minutes ?? calc().minutes} onPick={(v) => up({ minutes: v })} label="Duração" /></div>
       <div><span class="f">Academia</span><Seg opts={S.gyms.map((g) => [g.id, g.name] as [string, string])} value={r.gymId ?? d.gymId} onPick={(v) => up({ gymId: v })} label="Academia" /></div>
       <div><span class="f">Formato</span><Seg opts={[["tradicional", "Normal"], ["superserie", "Superséries"], ["circuito", "Circuito"]]} value={r.format ?? "tradicional"} onPick={(v) => up({ format: v as C.Format })} label="Formato" /></div>
     </div>

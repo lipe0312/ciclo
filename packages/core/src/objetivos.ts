@@ -54,3 +54,12 @@ export function goalDefaults(id: string): { id: GoalId; statement: string; horiz
   const g = ((GOAL_IDS as readonly string[]).includes(id) ? id : "bracos_ombros") as GoalId;
   return { id: g, statement: GOAL_INFO[g].statement, horizonWeeks: METAS[g].horizonWeeks, metrics: { ...METAS[g].metrics } };
 }
+
+/** #71 Objetivo escolhido sem horizonte ou metas (o Chat costuma mandar só id e frase): completa com as metas iniciais
+ *  daquele objetivo. É padrão do objetivo, não da pessoa; sem objetivo válido, nada muda. */
+export function completarObjetivo<T extends Record<string, any>>(perfil: T): T {
+  const g = perfil?.goal;
+  if (!g || typeof g !== "object" || !(GOAL_IDS as readonly string[]).includes(g.id)) return perfil;
+  const d = goalDefaults(g.id);
+  return { ...perfil, goal: { ...g, horizonWeeks: g.horizonWeeks ?? d.horizonWeeks, metrics: { ...d.metrics, ...(g.metrics ?? {}) } } };
+}

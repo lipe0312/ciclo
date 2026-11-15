@@ -7,7 +7,7 @@ import { Card, Chip, Icon, Seg, Stepper, toast } from "../../lib/ui/index.tsx";
 import { SeletorPrioridades, escolherObjetivo } from "../../lib/prioridades/index.tsx";
 import { SeletorGrupos } from "../../lib/mapa-corpo/index.tsx";
 import { IlustCorpo, IlustObjetivo } from "../../lib/ilustracoes/index.tsx";
-import { ANCHORS, ANCHOR_DEFAULT, BODY, DAYS_LONG, GOALS, LIM } from "../../lib/perfil-dados.ts";
+import { ANCHORS, ANCHOR_DEFAULT, BODY, DAYS_LONG, GOALS, INICIO, LIM } from "../../lib/perfil-dados.ts";
 import { Mic } from "../../lib/voz/index.tsx";
 import { DOW, DOW_NM, fmt, getPath, setPath } from "../../lib/util.ts";
 import { CATS } from "../claude/caixa.tsx";
@@ -16,7 +16,11 @@ const pr = () => S.profile;
 const pset = (k: string, v: unknown) => { setPath(S.profile, k, v); profileChanged(); commit(); };
 const ptoggle = (k: string, v: string) => { const arr: string[] = getPath(S.profile, k); const i = arr.indexOf(v); i >= 0 ? arr.splice(i, 1) : arr.push(v); profileChanged(); commit(); };
 const bounds = (k: string): [number, number] => LIM[k] ?? (k.endsWith(".kg") ? [0, 600] : k.endsWith(".reps") ? [1, 30] : [-1e9, 1e9]);
-const step = (k: string, d: number) => { const [lo, hi] = bounds(k); pset(k, Math.min(hi, Math.max(lo, Math.round(((Number(getPath(S.profile, k)) || 0) + d) * 10) / 10))); };
+const step = (k: string, d: number) => {
+  const [lo, hi] = bounds(k), cur = getPath(S.profile, k);
+  pset(k, cur == null && k in INICIO ? INICIO[k] : Math.min(hi, Math.max(lo, Math.round(((Number(cur) || 0) + d) * 10) / 10)));
+};
+const ou = (v: unknown, unidade = "") => (v == null || v === "" ? "—" : `${v}${unidade}`);
 function PSeg<T>({ k, opts, label }: { k: string; opts: [T, string][]; label?: string }) { return <Seg opts={opts} value={getPath(S.profile, k)} onPick={(v) => pset(k, v)} label={label} />; }
 const Opt = ({ on, onClick, title, desc, children }: { on: boolean; onClick: () => void; title: string; desc: string; children?: any }) =>
   <button type="button" class="opt big" aria-pressed={on} onClick={onClick}>{children}<b>{title}</b><span>{desc}</span></button>;
@@ -26,14 +30,14 @@ const LV = ["nunca treinou", "menos de 1 ano", "1–3 anos", "3+ anos"];
 const BLOCOS: Bloco[] = [
   { id: "objetivo", nm: "Objetivo e foco", icon: "target", key: "objetivo", why: "Guia o volume, as prioridades e as metas de tudo no app.", resumo: () => pr().goal.statement },
   { id: "prioridades", nm: "Músculos prioritários", icon: "dumb", key: "prioridades", why: "Esses músculos são protegidos primeiro quando falta tempo ou dia.", resumo: () => C.groupsOfSubs(pr().subPriorities ?? []).map((g) => C.priorityGroups[g].nm).join(" › ") || pr().priorities.map(mName).join(" › ") || "nenhum escolhido" },
-  { id: "voce", nm: "Você", icon: "user", key: "voce", why: "Calibra o ritmo de ganho e o alerta de cintura.", resumo: () => `${pr().age} anos · ${pr().heightCm} cm · ${pr().weightKg} kg · ${BODY.find((b) => b[0] === pr().bodyType)?.[1] ?? ""}` },
-  { id: "experiencia", nm: "Experiência e cargas", icon: "clock", key: "experiencia", why: "Muda quantas séries você faz e a carga do 1º treino.", resumo: () => `${LV[pr().level]} · ${pr().remembered.length ? `${pr().remembered.length} carga(s) lembrada(s)` : "calibra no 1º treino"}` },
-  { id: "rotina", nm: "Rotina da semana", icon: "cal", key: "rotina", why: "Muda como as séries se distribuem nos dias em que você realmente vai.", resumo: () => `${pr().daysTarget} dias · ${pr().minutes} min · semana começa ${DAYS_LONG.find((d) => d[0] === pr().weekStart)?.[1].toLowerCase() ?? ""}` },
-  { id: "preferencias", nm: "Preferências por músculo", icon: "swap", key: "preferencias", why: "Muda quais exercícios entram e em que aparelho.", resumo: () => `${Object.values(pr().prefs).filter((v) => v && v !== "tanto_faz").length} músculo(s) com preferência · formato ${pr().dynamics}` },
-  { id: "mobilidade", nm: "Mobilidade", icon: "body", key: "mobilidade", why: "Tira os exercícios que doem ao agachar fundo ou levantar o braço.", resumo: () => `agachar ${pr().mobility.squat ? "sem dor" : "com dor"} · braço acima da cabeça ${pr().mobility.overhead ? "sem dor" : "com dor"}` },
+  { id: "voce", nm: "Você", icon: "user", key: "voce", why: "Calibra o ritmo de ganho e o alerta de cintura.", resumo: () => `${ou(pr().age, " anos")} · ${ou(pr().heightCm, " cm")} · ${ou(pr().weightKg, " kg")} · ${BODY.find((b) => b[0] === pr().bodyType)?.[1] ?? ""}` },
+  { id: "experiencia", nm: "Experiência e cargas", icon: "clock", key: "experiencia", why: "Muda quantas séries você faz e a carga do 1º treino.", resumo: () => `${LV[pr().level ?? -1] ?? "não respondido"} · ${pr().remembered.length ? `${pr().remembered.length} carga(s) lembrada(s)` : "calibra no 1º treino"}` },
+  { id: "rotina", nm: "Rotina da semana", icon: "cal", key: "rotina", why: "Muda como as séries se distribuem nos dias em que você realmente vai.", resumo: () => `${ou(pr().daysTarget, " dias")} · ${ou(pr().minutes, " min")} · semana começa ${DAYS_LONG.find((d) => d[0] === pr().weekStart)?.[1].toLowerCase() ?? ""}` },
+  { id: "preferencias", nm: "Preferências por músculo", icon: "swap", key: "preferencias", why: "Muda quais exercícios entram e em que aparelho.", resumo: () => `${Object.values(pr().prefs).filter((v) => v && v !== "tanto_faz").length} músculo(s) com preferência · formato ${ou(pr().dynamics)}` },
+  { id: "mobilidade", nm: "Mobilidade", icon: "body", key: "mobilidade", why: "Tira os exercícios que doem ao agachar fundo ou levantar o braço.", resumo: () => `agachar ${pr().mobility.squat == null ? "—" : pr().mobility.squat ? "sem dor" : "com dor"} · braço acima da cabeça ${pr().mobility.overhead == null ? "—" : pr().mobility.overhead ? "sem dor" : "com dor"}` },
   { id: "claude", nm: "Como o Chat trabalha com você", icon: "chat", key: "claude", why: "Define o que ele muda sozinho, o tom e qual modelo responde cada pedido.", resumo: () => `${({ so_sugere: "só sugere", carga_sozinho: "carga sozinho, plano com aprovação", tudo: "tudo automático" } as Record<string, string>)[pr().autonomy]} · tom ${pr().tone}` },
 ];
-const FORA: Bloco = { id: "comida", nm: "Comida e registro", icon: "food", why: "Define como você registra o que come (a tela Comida usa isto).", resumo: () => `registro ${pr().diet.mode} · ${pr().diet.kcal} kcal · ${pr().diet.protein} g` };
+const FORA: Bloco = { id: "comida", nm: "Comida e registro", icon: "food", why: "Define como você registra o que come (a tela Comida usa isto).", resumo: () => `registro ${ou(pr().diet.mode)} · ${ou(pr().diet.kcal, " kcal")} · ${ou(pr().diet.protein, " g")}` };
 
 function Corpo() {
   const p = pr();

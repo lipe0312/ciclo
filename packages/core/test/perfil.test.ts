@@ -141,11 +141,10 @@ test("contexto: um formato só (texto compacto) com objetivo, prioridades, rotin
 // ---------- frase do plano, completo/melhorar, CTA ----------
 import { isFingerprintStale, normalizeProfile, planFreezeAction, planSentence, profileCompleteness } from "../src/index.ts";
 
-test("frase do plano: dias, tempo, foco nas subdivisões e meta", () => {
+test("frase do plano: meta (foco escrito), dias, tempo e foco nas subdivisões", () => {
   const s = planSentence({ ...DEFAULT_PROFILE, daysTarget: 3, minutes: 45, subPriorities: ["ombro_lat", "biceps", "triceps_longa"] });
-  assert.match(s, /^3 dias por semana, cerca de 45 min/);
-  assert.match(s, /foco em ombro lateral, bíceps e tríceps · cabeça longa/);
-  assert.match(s, /Meta: braços e ombros maiores mantendo a cintura\.$/);
+  assert.match(s, /^Braços e ombros maiores mantendo a cintura\. 3 dias por semana, cerca de 45 min/);
+  assert.match(s, /foco em ombro lateral, bíceps e tríceps · cabeça longa\.$/);
   assert.match(planSentence({ ...DEFAULT_PROFILE, subPriorities: [] }), /o corpo todo, sem foco/);
   assert.ok(!/undefined|NaN/.test(planSentence({})));
 });

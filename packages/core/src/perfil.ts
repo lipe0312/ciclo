@@ -92,7 +92,8 @@ const int = (min: number, max: number): Rule => (v, p, err) => (typeof v === "nu
 const num = (min: number, max: number): Rule => (v, p, err) => (typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? v : (err(`${p} deve ser número de ${min} a ${max}`), undefined));
 const bool: Rule = (v, p, err) => (typeof v === "boolean" ? v : (err(`${p} deve ser verdadeiro/falso`), undefined));
 const oneOf = (opts: readonly (string | number)[]): Rule => (v, p, err) => (opts.includes(v as never) ? v : (err(`${p} deve ser ${opts.join("|")}`), undefined));
-const text = (max: number): Rule => (v, p, err) => (typeof v === "string" && v.length <= max ? v : (err(`${p} deve ser texto de até ${max} caracteres`), undefined));
+/** Texto aceita "" como valor (apagar a frase); `vazioOk` avisa o rascunho para não tratar "" como "não respondido". */
+const text = (max: number): Rule => Object.assign((v: unknown, p: string, err: Err) => (typeof v === "string" && v.length <= max ? v : (err(`${p} deve ser texto de até ${max} caracteres`), undefined)), { vazioOk: true });
 const slug: Rule = (v, p, err) => (typeof v === "string" && /^[a-z0-9_-]{1,40}$/.test(v) ? v : (err(`${p} inválido`), undefined));
 const exerciseId: Rule = (v, p, err) => (typeof v === "string" && own(EXERCISE_BY_ID, v) ? v : (err(`${p}: exercício "${typeof v === "string" ? v.slice(0, 60) : typeof v}" não existe no catálogo`), undefined));
 const list = (item: Rule, max: number, unique = true): Rule => (v, p, err) => {
@@ -117,11 +118,15 @@ const record = (key: Rule, val: Rule, max: number): Rule => (v, p, err) => {
   }
   return out;
 };
-const shape = (fields: Record<string, Rule>): Rule => (v, p, err) => {
+/** #71 Campo não respondido do rascunho: `null` ou `""`. Não é erro e não vira valor (fica de fora). */
+const naoRespondido = (v: unknown, rule?: Rule) => v === null || (v === "" && !(rule as { vazioOk?: boolean } | undefined)?.vazioOk);
+/** `tolerante`: campo não respondido é ignorado (perfil e seus objetos); nos itens de lista, não (lá vazio é erro). */
+const shape = (fields: Record<string, Rule>, tolerante = false): Rule => (v, p, err) => {
   if (!isObj(v)) return err(`${p} deve ser um objeto`), undefined;
   const out: Record<string, unknown> = {};
   for (const k of Object.keys(v)) {
     if (!own(fields, k)) { err(`${p ? p + "." : ""}${k.slice(0, 40)}: campo desconhecido`); continue; }
+    if (tolerante && naoRespondido(v[k], fields[k])) continue;
     const r = fields[k](v[k], p ? `${p}.${k}` : k, err);
     if (r !== undefined) out[k] = r;
   }
@@ -139,7 +144,7 @@ const musclePriorities: Rule = (v, p, err) => {
 const yes: Rule = (v, p, err) => (v === true ? v : (err(`${p} deve ser verdadeiro`), undefined));
 const isoDay: Rule = (v, p, err) => (typeof v === "string" && /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(v) ? v : (err(`${p} deve ser uma data AAAA-MM-DD`), undefined));
 const dowKey: Rule = (v, p, err) => (typeof v === "string" && (DOWS as readonly string[]).includes(v) ? v : (err(`${p}: dia inválido`), undefined));
-const objectKeys = shape;
+const objectKeys = (fields: Record<string, Rule>) => shape(fields, true);
 
 const SCHEMA: Record<string, Rule> = {
   sex: oneOf(["m", "f"]), age: int(12, 90), heightCm: int(120, 230), weightKg: num(30, 250),
@@ -150,7 +155,7 @@ const SCHEMA: Record<string, Rule> = {
   }),
   priorities: musclePriorities,
   subPriorities: (v, p, err) => { const c = validatePriorities(v); c.errors.forEach(err); return c.ok ? v : undefined; },
-  remembered: list(objectKeys({ exerciseId, kg: num(0, 600), reps: int(1, 30), confidence: oneOf(["certeza", "aproximado"]) }), 4, false),
+  remembered: list(shape({ exerciseId, kg: num(0, 600), reps: int(1, 30), confidence: oneOf(["certeza", "aproximado"]) }), 4, false),
   calibrate: bool,
   daysUsual: list(dowKey, 7), daysTarget: int(1, 7), minutes: int(20, 180), weekStart: oneOf(DOWS), flexWeek: bool, hour: oneOf(HOURS),
   prefs: record(musclesOnly, oneOf(["livre", "maquina", "cabo", "tanto_faz"]), 11),
@@ -161,18 +166,48 @@ const SCHEMA: Record<string, Rule> = {
   diet: objectKeys({ mode: oneOf(DIET_MODES), typical: text(1000), restrictions: list(text(40), 10), supplements: list(text(40), 10), kcal: int(800, 8000), protein: int(20, 500), pace: oneOf(["lento", "moderado", "rapido"]), waterMl: int(500, 8000) }),
   autonomy: oneOf(["so_sugere", "carga_sozinho", "tudo"]), tone: oneOf(["direto", "motivador", "tecnico"]), reviewTime: oneOf(["dom20", "seg7"]),
   tiers: record((v, p, err) => ((TIER_CATS as readonly string[]).includes(v as string) ? v : (err(`${p}: tipo de pedido inválido`), undefined)), oneOf(["haiku", "sonnet", "opus"]), 5),
-  places: (v, p, err) => { const r = list(oneOf(PLACES), 2)(v, p, err); return Array.isArray(r) && !r.length ? (err(`${p}: escolha academia, casa ou os dois`), undefined) : r; },
+  // #71 lista vazia = ainda não respondeu (rascunho); fica de fora em vez de dar erro
+  places: (v, p, err) => { const r = list(oneOf(PLACES), 2)(v, p, err); return Array.isArray(r) && !r.length ? undefined : r; },
   meta: objectKeys({ filledBy: oneOf(["app", "claude"]), confirmed: bool, checkup: oneOf(["feito", "pulado"]), assistentes: record(slug, yes, 12) }),
 };
-const PATCH_SHAPE = shape(SCHEMA);
-
-export type Validation<T> = { ok: true; value: T; errors: [] } | { ok: false; errors: string[] };
-/** Confere (campo a campo) um perfil inteiro OU parcial. Devolve só o que veio, limpo; qualquer erro recusa tudo. */
+/** `campos`: os campos (de 1º nível) com erro, para a mensagem humana (`mensagemPerfil`); `errors` é o texto técnico (Chat e console). */
+export type Validation<T> = { ok: true; value: T; errors: [] } | { ok: false; errors: string[]; campos: string[] };
+/**
+ * Confere (campo a campo) um perfil inteiro OU parcial (rascunho). Devolve só o que veio, limpo; qualquer erro recusa tudo.
+ * #71: campo `null` ou `""` é "não respondido" (fica de fora, sem erro), assim como `places: []` e `goal.id: ""`.
+ */
 export function validateProfilePatch(patch: unknown): Validation<Record<string, any>> {
-  if (!isObj(patch)) return { ok: false, errors: ["perfil deve ser um objeto"] };
-  const errors: string[] = [];
-  const value = PATCH_SHAPE(patch, "", (m) => { if (errors.length < 12) errors.push(m); }) as Record<string, any>;
-  return errors.length ? { ok: false, errors } : { ok: true, value, errors: [] };
+  if (!isObj(patch)) return { ok: false, errors: ["perfil deve ser um objeto"], campos: [] };
+  const errors: string[] = [], campos: string[] = [];
+  const value: Record<string, any> = {};
+  for (const k of Object.keys(patch)) {
+    const nome = k.slice(0, 40);
+    let bad = false;
+    const err = (m: string) => { bad = true; if (errors.length < 12) errors.push(m); };
+    if (!own(SCHEMA, k)) err(`${nome}: campo desconhecido`);
+    else if (!naoRespondido(patch[k])) { const r = SCHEMA[k](patch[k], k, err); if (r !== undefined) value[k] = r; }
+    if (bad && !campos.includes(nome)) campos.push(nome);
+  }
+  return errors.length ? { ok: false, errors, campos } : { ok: true, value, errors: [] };
+}
+
+// ---------- mensagens humanas (#71) ----------
+/** Nome de cada campo do perfil como a pessoa conhece (na tela). */
+export const PERFIL_ROTULO: Record<string, string> = {
+  sex: "sexo", age: "idade", heightCm: "altura", weightKg: "peso", bodyType: "como você se vê", fatWhere: "onde acumula gordura",
+  level: "há quanto tempo você treina", goal: "objetivo", priorities: "músculos que mais importam", subPriorities: "músculos que mais importam",
+  remembered: "cargas que você lembra", calibrate: "calibrar cargas", daysUsual: "dias em que você treina", daysTarget: "dias por semana",
+  minutes: "duração do treino", weekStart: "início da semana", flexWeek: "semana flexível", hour: "horário", prefs: "preferências por músculo",
+  pinned: "exercícios fixos", avoid: "exercícios que você evita", dynamics: "formato do treino", crowdedStrategy: "academia cheia",
+  mobility: "mobilidade", dayGym: "lugar de cada dia", diet: "comida", autonomy: "o que o Chat muda sozinho", tone: "tom do Chat",
+  reviewTime: "horário da revisão", tiers: "modelos do Chat", places: "academia, casa ou os dois", meta: "dados do perfil",
+};
+const juntar = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}`);
+const maiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** O que a pessoa lê quando o perfil não salva: nunca o texto técnico do validador (ex.: "goal.id deve ser …"). */
+export function mensagemPerfil(campos: readonly string[]): string {
+  const nomes = [...new Set(campos.map((c) => PERFIL_ROTULO[c] ?? "um campo"))];
+  return nomes.length ? `Não deu para salvar: confira ${juntar(nomes)}.` : "Não deu para salvar agora. Tente de novo.";
 }
 
 const MAPS = ["prefs", "pinned", "dayGym", "tiers"] as const;
@@ -196,16 +231,18 @@ function merge(base: Record<string, any>, patch: Record<string, any>): Record<st
 }
 
 /** Valida o patch, mescla na base e deixa prioridades × subdivisões coerentes. */
-export type Applied = { ok: true; profile: ProfileData; errors: [] } | { ok: false; errors: string[] };
+export type Applied = { ok: true; profile: ProfileData; errors: [] } | { ok: false; errors: string[]; campos: string[] };
 export function applyProfilePatch(base: Partial<ProfileData> | Record<string, any>, patch: unknown): Applied {
   const v = validateProfilePatch(patch);
-  if (!v.ok) return { ok: false, errors: v.errors };
+  if (!v.ok) return { ok: false, errors: v.errors, campos: v.campos };
   const p = merge(base as Record<string, any>, v.value);
   const hasSubs = own(v.value, "subPriorities"), hasPri = own(v.value, "priorities");
   if (hasSubs && !hasPri) p.priorities = prioritiesFromSubs(p.subPriorities);
-  else if (hasPri && !hasSubs) p.subPriorities = (p.subPriorities ?? []).filter((s: SubMuscleId) => p.priorities.includes(SUB_MUSCLES[s]?.muscle));
-  const bad = (p.subPriorities ?? []).filter((s: SubMuscleId) => !p.priorities.includes(SUB_MUSCLES[s]?.muscle));
-  if (bad.length) return { ok: false, errors: [`subPriorities: ${bad.join(", ")} não pertence(m) aos músculos prioritários`] };
+  else if (hasPri && !hasSubs) p.subPriorities = p.subPriorities
+    ? p.subPriorities.filter((s: SubMuscleId) => p.priorities.includes(SUB_MUSCLES[s]?.muscle))
+    : p.priorities.map((m: MuscleId) => DEFAULT_SUB[m]); // #71 base vazia: a subdivisão padrão de cada músculo
+  const bad = (p.subPriorities ?? []).filter((s: SubMuscleId) => !(p.priorities ?? []).includes(SUB_MUSCLES[s]?.muscle));
+  if (bad.length) return { ok: false, errors: [`subPriorities: ${bad.join(", ")} não pertence(m) aos músculos prioritários`], campos: ["subPriorities"] };
   return { ok: true, profile: p as ProfileData, errors: [] };
 }
 
@@ -256,11 +293,17 @@ export function planFreezeAction(fp: string | null | undefined, now: Partial<Pro
 // ---------- "seu plano em uma frase" ----------
 const DOW_FULL: Record<string, string> = { seg: "segunda", ter: "terça", qua: "quarta", qui: "quinta", sex: "sexta", sab: "sábado", dom: "domingo" };
 export const dowName = (d: string) => DOW_FULL[d] ?? d;
+/** #71: começa pelo foco escrito (`goal.statement`); dias, tempo e músculos só entram se foram respondidos. Sem objetivo, pede um. */
 export function planSentence(profile: Partial<ProfileData> | Record<string, any>): string {
-  const p = { ...DEFAULT_PROFILE, ...(profile as object) } as ProfileData;
-  const subs = (p.subPriorities ?? []).filter((s) => SUB_MUSCLES[s]).map((s) => SUB_MUSCLES[s].nm.toLowerCase());
-  const foco = subs.length ? `foco em ${subs.join(", ").replace(/, ([^,]*)$/, " e $1")}` : "o corpo todo, sem foco";
-  return `${p.daysTarget} dias por semana, cerca de ${p.minutes} min por treino, ${foco}. Meta: ${String(p.goal?.statement ?? "").toLowerCase()}.`;
+  const p = (profile ?? {}) as Record<string, any>;
+  if (!(GOAL_IDS as readonly string[]).includes(p.goal?.id)) return "Escolha um objetivo para ver o seu plano.";
+  const subs = (Array.isArray(p.subPriorities) ? p.subPriorities : []).filter((s: SubMuscleId) => SUB_MUSCLES[s]).map((s: SubMuscleId) => SUB_MUSCLES[s].nm.toLowerCase());
+  const partes = [
+    p.daysTarget ? `${p.daysTarget} dias por semana` : "", p.minutes ? `cerca de ${p.minutes} min por treino` : "",
+    subs.length ? `foco em ${juntar(subs)}` : "o corpo todo, sem foco",
+  ].filter(Boolean);
+  const foco = String(p.goal?.statement ?? "").trim().replace(/[.!]+$/, "");
+  return `${foco ? maiuscula(foco) + ". " : ""}${maiuscula(partes.join(", "))}.`;
 }
 
 // ---------- completo / dá para melhorar + próximo passo recomendado ----------
@@ -321,4 +364,101 @@ export function normalizeProfile(raw: unknown): Record<string, any> {
   final = limitSubs(uniq(final));
   out.subPriorities = final; out.priorities = prioritiesFromSubs(final);
   return out;
+}
+
+// ---------- #71 rascunho da conta nova e Primeiros passos ----------
+/** Respostas de pessoa que não têm padrão: `null` até a pessoa responder (nada aparece marcado). */
+export const CAMPOS_PESSOA = ["sex", "age", "heightCm", "weightKg", "bodyType", "level", "minutes", "daysTarget", "hour", "dynamics", "crowdedStrategy"] as const;
+type CampoPessoa = (typeof CAMPOS_PESSOA)[number];
+type Dieta = ProfileData["diet"];
+/** O que o servidor guarda de uma conta que ainda está respondendo: só o que a pessoa respondeu. */
+export type PerfilRascunho = Partial<ProfileData>;
+/** O perfil como o app usa: o formato completo, mas resposta não dada é `null`/`""`/lista vazia (nunca um padrão de outra pessoa). */
+export type PerfilApp = Omit<ProfileData, CampoPessoa | "diet" | "mobility" | "level" | "sex"> & { [K in CampoPessoa]: ProfileData[K] | null } & {
+  sex: "m" | "f" | string | null; level: 0 | 1 | 2 | 3 | null;
+  diet: Omit<Dieta, "kcal" | "protein" | "pace" | "waterMl"> & { kcal: number | null; protein: number | null; pace: Dieta["pace"] | null; waterMl: number | null };
+  mobility: Partial<ProfileData["mobility"]>;
+};
+
+/** Ponto de partida do app numa conta sem respostas. Só padrões técnicos (semana, Chat); nada de sexo, idade, peso, dieta, gordura, horário ou nível. */
+export function perfilVazio(): PerfilApp {
+  return {
+    sex: null, age: null, heightCm: null, weightKg: null, bodyType: null, fatWhere: [], level: null,
+    goal: { id: "", statement: "", horizonWeeks: 12, metrics: { bracoCm: 0, cinturaCm: 0, pesoKg: 0, aderenciaPct: 80 } },
+    priorities: [], remembered: [], calibrate: true,
+    daysUsual: [], daysTarget: null, minutes: null, weekStart: "seg", flexWeek: true, hour: null,
+    prefs: {}, pinned: {}, avoid: [], dynamics: null, crowdedStrategy: null, mobility: {}, dayGym: {},
+    diet: { mode: "", typical: "", restrictions: [], supplements: [], kcal: null, protein: null, pace: null, waterMl: null },
+    autonomy: DEFAULT_PROFILE.autonomy, tone: DEFAULT_PROFILE.tone, reviewTime: DEFAULT_PROFILE.reviewTime, tiers: { ...DEFAULT_PROFILE.tiers },
+    subPriorities: [], places: [], meta: { filledBy: "app", confirmed: true },
+  };
+}
+
+/** Os passos dos Primeiros passos, na ordem da tela. */
+export const PASSOS_PP = ["objetivo", "musculos", "experiencia", "rotina", "onde", "dores", "corpo", "comovoce", "comida", "resumo"] as const;
+export type PassoPP = (typeof PASSOS_PP)[number];
+const temValor = (v: unknown) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && !v.length);
+const so = (p: Record<string, any>, ks: string[]) => Object.fromEntries(ks.filter((k) => temValor(p[k])).map((k) => [k, structuredClone(p[k])]));
+/**
+ * O que salvar ao sair de um passo (Continuar, Voltar, Pular etapa): só os campos daquele passo e só o que foi respondido.
+ * O app manda isso num PATCH /api/profile; nada de perfil inteiro.
+ */
+export function patchDoPasso(passo: string, perfil: Partial<PerfilApp> | Record<string, any>): Record<string, any> {
+  const p = (perfil ?? {}) as Record<string, any>;
+  switch (passo) {
+    case "objetivo": {
+      const g = isObj(p.goal) ? p.goal : {};
+      if (!(GOAL_IDS as readonly string[]).includes(g.id as string)) return {};
+      return { goal: so(g, ["id", "statement", "horizonWeeks", "metrics", "since"]) };
+    }
+    // listas do passo vão mesmo vazias ("nenhum"), para desmarcar tudo também ficar salvo
+    case "musculos": return Array.isArray(p.subPriorities) ? { subPriorities: [...p.subPriorities] } : {};
+    case "experiencia": return so(p, ["level"]);
+    case "rotina": return { ...(Array.isArray(p.daysUsual) ? { daysUsual: [...p.daysUsual] } : {}), ...so(p, ["daysTarget", "minutes"]) };
+    case "onde": return so(p, ["places"]);
+    case "corpo": return so(p, ["sex", "age", "heightCm", "weightKg"]);
+    case "comovoce": return so(p, ["bodyType"]);
+    case "comida": { const m = isObj(p.diet) ? p.diet.mode : null; return temValor(m) ? { diet: { mode: m } } : {}; }
+    default: return {};
+  }
+}
+
+const PASSO_DO_CAMPO: Record<string, PassoPP> = {
+  goal: "objetivo", subPriorities: "musculos", priorities: "musculos", level: "experiencia", daysUsual: "rotina", daysTarget: "rotina", minutes: "rotina",
+  places: "onde", sex: "corpo", age: "corpo", heightCm: "corpo", weightKg: "corpo", bodyType: "comovoce", diet: "comida",
+};
+export interface Falta { passo: PassoPP | null; rotulo: string }
+/** O mínimo para gerar a semana: objetivo, experiência, dias, duração e onde treina. Corpo, comida e músculos não travam. */
+export function faltaParaGerar(perfil: Partial<PerfilApp> | Record<string, any>): Falta[] {
+  const p = (perfil ?? {}) as Record<string, any>, out: Falta[] = [];
+  if (!(GOAL_IDS as readonly string[]).includes(p.goal?.id)) out.push({ passo: "objetivo", rotulo: "Objetivo" });
+  if (![0, 1, 2, 3].includes(p.level)) out.push({ passo: "experiencia", rotulo: "Há quanto tempo você treina" });
+  if (!(Array.isArray(p.daysUsual) && p.daysUsual.length)) out.push({ passo: "rotina", rotulo: "Dias em que você treina" });
+  if (!(typeof p.minutes === "number" && p.minutes > 0)) out.push({ passo: "rotina", rotulo: "Duração do treino" });
+  if (!(Array.isArray(p.places) && p.places.length)) out.push({ passo: "onde", rotulo: "Academia, casa ou os dois" });
+  return out;
+}
+/** Validação completa, só ao "Gerar semana": o que falta + o que foi respondido fora da regra, tudo como lista legível. */
+export function validarParaGerar(perfil: Partial<PerfilApp> | Record<string, any>): { ok: boolean; faltando: Falta[] } {
+  const faltando = faltaParaGerar(perfil);
+  const v = validateProfilePatch(perfil);
+  if (!v.ok) for (const c of v.campos) {
+    const rotulo = maiuscula(PERFIL_ROTULO[c] ?? c);
+    if (!faltando.some((f) => f.rotulo === rotulo)) faltando.push({ passo: PASSO_DO_CAMPO[c] ?? null, rotulo });
+  }
+  return { ok: !faltando.length, faltando };
+}
+
+/**
+ * Para CALCULAR (metas da comida, volume, cardio): o perfil com o que não foi respondido preenchido por um valor técnico.
+ * Nunca para mostrar como resposta marcada nem para salvar; o perfil guardado continua sem esses campos.
+ */
+export function perfilCalculo(p: Partial<PerfilApp> | Record<string, any>): ProfileData {
+  const d = DEFAULT_PROFILE, src = (p ?? {}) as Record<string, any>;
+  const out = { ...d, ...src } as Record<string, any>;
+  for (const k of CAMPOS_PESSOA) if (out[k] == null) out[k] = d[k];
+  out.diet = { ...d.diet, ...Object.fromEntries(Object.entries(isObj(src.diet) ? src.diet : {}).filter(([, v]) => v != null && v !== "")) };
+  out.mobility = { ...d.mobility, ...(isObj(src.mobility) ? src.mobility : {}) };
+  for (const k of ["fatWhere", "priorities", "subPriorities", "daysUsual", "places", "remembered", "avoid"]) if (!Array.isArray(out[k])) out[k] = [];
+  return out as ProfileData;
 }

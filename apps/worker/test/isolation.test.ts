@@ -105,6 +105,7 @@ async function matriz(env: any, ana: string, bia: string) {
     ["POST /api/account/people/:id/reset", () => a("POST", `/api/account/people/${B.uid}/reset`, {}), 403],
     ["PUT /api/measurements/:date", () => a("PUT", `/api/measurements/${D}`, { armCm: 40 })],
     ["PUT /api/profile", () => a("PUT", "/api/profile", profile("A2"))],
+    ["PATCH /api/profile", () => a("PATCH", "/api/profile", profile("A3"))], // #71 passo dos Primeiros passos
     ["GET /api/gyms", () => a("GET", "/api/gyms")],
     ["PUT /api/gyms/:id", () => a("PUT", "/api/gyms/acad1", { name: "A2", equipment: ["halteres"] })],
     ["DELETE /api/gyms/:id", () => a("DELETE", `/api/gyms/${B.lug}`), 404],

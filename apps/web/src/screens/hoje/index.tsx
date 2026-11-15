@@ -3,12 +3,12 @@
 // cada card tem um CTA para alterar e outro para ver o detalhe. O lembrete do Diário (check-in/checkout) é a faixa fina do shell.
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { today } from "../../lib/store/index.ts";
+import { C, S, today } from "../../lib/store/index.ts";
 import { mName } from "../../lib/store/regras.ts";
 import { SERVER } from "../../lib/api/index.ts";
 import { Card, Icon } from "../../lib/ui/index.tsx";
 import { longDate } from "../../lib/util.ts";
-import { FaixaCheckup } from "../../lib/faixa-checkup/index.tsx";
+import { FaixaCheckup, estadoDoCheckup } from "../../lib/faixa-checkup/index.tsx";
 import { AvisoFalta } from "../semana/aviso.tsx";
 import { garantirSemana, getSemana } from "../semana/estado.ts";
 import { SemanaCarrossel } from "./carrossel-semana.tsx";
@@ -40,6 +40,20 @@ function Vazia() {
     <a class="btn pri full" href="#primeiros-passos">Começar pelos Primeiros passos<Icon id="arrow" /></a></Card>;
 }
 
+/** #71 Pulou os Primeiros passos e a Home está vazia: o que falta para o app montar a semana e o caminho de volta (a #63 refina). */
+function CompletePerfil() {
+  const falta = C.faltaParaGerar(S.profile), primeiro = falta[0]?.passo ? C.PASSOS_PP.indexOf(falta[0].passo) : 0;
+  return <Card cls="hm-vazia"><p class="kicker">Primeiros passos</p><h2 style="margin-top:4px">Complete o Perfil de treino</h2>
+    <p class="small sub" style="margin-top:6px">Você pulou o checkup. O que já respondeu está salvo; falta pouco para o app montar a sua semana.</p>
+    {falta.length > 0 && <ul class="hm-passos">{falta.map((f) => <li key={f.rotulo}><Icon id="target" /><span class="small">{f.rotulo}</span></li>)}</ul>}
+    <a class="btn pri full" href={`#primeiros-passos/${primeiro}`}>Continuar de onde parei<Icon id="arrow" /></a></Card>;
+}
+
+/** #71 Checkup feito e ainda sem dado de evolução: a semana já existe; o próximo passo é o 1º treino (não voltar aos Primeiros passos). */
+const Pronta = () => <Card cls="hm-vazia"><p class="kicker">Primeiros passos feitos</p><h2 style="margin-top:4px">Sua semana está pronta</h2>
+  <p class="small sub" style="margin-top:6px">Os gráficos da sua evolução aparecem aqui depois do 1º treino.</p>
+  <a class="btn pri full" style="margin-top:12px" href="#treino">Ver o treino de hoje<Icon id="arrow" /></a></Card>;
+
 const Esqueleto = () => <div class="stack" aria-busy="true" aria-label="Carregando a Home"><div class="hm-esq" style="height:210px" /><div class="hm-esq" style="height:150px" /><div class="hm-esq" style="height:130px" /></div>;
 
 /** Em tela larga, duas colunas independentes (sem buracos de linha); no celular, uma só, na ordem de importância. */
@@ -54,7 +68,8 @@ export default function Hoje() {
   const larga = useLarga();
   const v = H.view;
   const cab = <div class="row between" style="margin-bottom:14px"><div><p class="kicker">{longDate(today)}{SERVER ? "" : " · demonstração"}</p><h1>Hoje</h1></div><AvatarMenu /></div>;
-  const topo = <><FaixaCheckup /><AvisoFalta /></>;
+  const checkup = SERVER ? estadoDoCheckup() : "nunca", pulou = checkup === "pulado" && !!v?.vazio;
+  const topo = <>{!pulou && <FaixaCheckup />}<AvisoFalta /></>;
   if (!v) return <>{cab}{topo}{H.erro
     ? <Card><h2>Não deu para carregar</h2><p class="small sub" style="margin-top:4px">Sem conexão ou o servidor não respondeu. Seus registros estão salvos.</p><button type="button" class="btn pri" style="margin-top:10px" onClick={() => void carregarHome(true)}>Tentar de novo</button></Card>
     : <Esqueleto />}</>;
@@ -63,7 +78,7 @@ export default function Hoje() {
   const comp = <Compensa />;
   const col = (xs: ComponentChildren[]) => <div class="stack hm-col">{xs.map((x, i) => <div key={i}>{x}</div>)}</div>;
   const A = [comp, sem, ...(v.vazio ? [] : [obj]), ...paineis.slice(0, 2)], B = [lac, com, ...paineis.slice(2), cla];
-  return <>{cab}{topo}{v.vazio && <div style="margin-bottom:12px"><Vazia /></div>}
+  return <>{cab}{topo}{v.vazio && <div style="margin-bottom:12px">{pulou ? <CompletePerfil /> : checkup === "feito" ? <Pronta /> : <Vazia />}</div>}
     {larga ? <div class="grid dash">{col(A)}{col(B)}</div>
       : col([comp, sem, ...(v.vazio ? [] : [obj]), lac, com, ...paineis, cla])}</>;
 }

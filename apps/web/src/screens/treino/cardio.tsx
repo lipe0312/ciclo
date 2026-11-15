@@ -1,7 +1,7 @@
 // Cardio por modalidade (#44): lista com ícone (esporte → qual?), duração, intensidade leve/moderado/forte e distância opcional.
 // A kcal vem da estimativa por MET (Compendium) e entra no gasto do dia; conta no resumo da semana, no Histórico e na Home.
 import { useState } from "preact/hooks";
-import { C, S, commit, dates, today } from "../../lib/store/index.ts";
+import { C, S, calc, commit, dates, today } from "../../lib/store/index.ts";
 import { send } from "../../lib/api/index.ts";
 import { Card, Chip, Icon, Seg, Stepper, toast } from "../../lib/ui/index.tsx";
 import { fmt, longDate, uid } from "../../lib/util.ts";
@@ -20,7 +20,7 @@ export function Cardio() {
   const kmNum = parseFloat(km.replace(",", "."));
   const draft = { type, minutes, intensity, distanceKm: hasKm && km.trim() && Number.isFinite(kmNum) ? kmNum : null };
   const err = C.checkCardio(draft) ?? (km.trim() && hasKm && !Number.isFinite(kmNum) ? "distância inválida" : null);
-  const w = C.cardioWeekSummary(S.week.cardio, dates[0], dates[6], S.profile.weightKg);
+  const w = C.cardioWeekSummary(S.week.cardio, dates[0], dates[6], calc().weightKg);
   const save = () => {
     if (err) return toast(err);
     const e: C.CardioEntry = { id: uid(), date: today, ...draft };
@@ -42,14 +42,14 @@ export function Cardio() {
         <span class="f" style="margin-top:12px;display:block">Intensidade</span>
         <Seg opts={(Object.keys(C.INTENSITIES) as C.Intensity[]).map((k) => [k, C.INTENSITIES[k].nm] as [C.Intensity, string])} value={intensity} onPick={setIntensity} label="Intensidade" />
         <p class="tiny sub" style="margin-top:6px">{C.INTENSITIES[intensity].desc}</p>
-        <p class="small num" style="margin-top:10px">≈ {fmt(C.cardioKcalOf({ type, intensity, minutes }, S.profile.weightKg))} kcal <span class="sub">(estimativa: MET × peso × tempo, Compendium of Physical Activities)</span></p>
+        <p class="small num" style="margin-top:10px">≈ {fmt(C.cardioKcalOf({ type, intensity, minutes }, calc().weightKg))} kcal <span class="sub">(estimativa: MET × peso × tempo, Compendium of Physical Activities)</span></p>
         {err && <p class="small" role="alert" style="color:var(--bad);margin-top:6px">{err}</p>}
         <button type="button" class="btn pri lg full" style="margin-top:12px" onClick={save} disabled={!!err}><Icon id="check" />Registrar</button></Card></div>
       <div class="stack"><Card><p class="kicker">Cardio da semana</p>
         <p class="big num" style="margin-top:6px">{w.minutes}<span class="small sub"> min</span></p>
         <p class="small sub num" style="margin-top:4px">{w.sessions} {w.sessions === 1 ? "sessão" : "sessões"}{w.km ? ` · ${fmt(w.km, 1)} km` : ""} · ≈ {fmt(w.kcal)} kcal</p>
-        {(() => { const k = C.cardioDayKcal(S.week.cardio, today, S.profile.weightKg); return k > 0 ? <p class="small num" style="margin-top:8px"><b>Gasto do cardio hoje: ≈ {fmt(k)} kcal</b> <span class="sub">(soma no gasto do dia)</span></p> : <p class="small sub" style="margin-top:8px">Nenhum cardio hoje.</p>; })()}</Card>
+        {(() => { const k = C.cardioDayKcal(S.week.cardio, today, calc().weightKg); return k > 0 ? <p class="small num" style="margin-top:8px"><b>Gasto do cardio hoje: ≈ {fmt(k)} kcal</b> <span class="sub">(soma no gasto do dia)</span></p> : <p class="small sub" style="margin-top:8px">Nenhum cardio hoje.</p>; })()}</Card>
         <Card><h2 style="margin-bottom:8px">Registros da semana</h2>{S.week.cardio.length ? [...S.week.cardio].sort((a, b) => (a.date < b.date ? 1 : -1)).map((e) => <div class="row between" key={e.id} style="padding:8px 0;border-top:1px solid var(--borda)">
-          <div><b>{cardioName(e.type)}</b><p class="small sub num">{longDate(e.date)} · {cardioLine(e)} · ≈ {fmt(C.cardioKcalOf(e, S.profile.weightKg))} kcal</p></div>
+          <div><b>{cardioName(e.type)}</b><p class="small sub num">{longDate(e.date)} · {cardioLine(e)} · ≈ {fmt(C.cardioKcalOf(e, calc().weightKg))} kcal</p></div>
           <button type="button" class="iconbtn" onClick={() => del(e)} aria-label={`Apagar ${cardioName(e.type)} de ${longDate(e.date)}`}><Icon id="x" /></button></div>) : <p class="small sub" style="margin-top:6px">Nenhum cardio registrado nesta semana.</p>}</Card></div></div></>;
 }

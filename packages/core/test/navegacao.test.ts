@@ -52,3 +52,12 @@ test("abas e Mais: no máximo 5 abas, e a aba de conversa se chama Chat", () => 
   assert.ok((TELAS_ABA as readonly string[]).includes("chat") && !(TELAS_ABA as readonly string[]).includes("claude"));
   for (const t of [...TELAS_ABA, ...TELAS_MAIS]) assert.ok(TELAS.includes(t), t);
 });
+
+test("#71 checkup pendente: tudo cai nos Primeiros passos, menos Conta e o menu ⋯", async () => {
+  const { telaComCheckupPendente } = await import("../src/index.ts");
+  assert.equal(telaComCheckupPendente("hoje", true), "primeiros-passos");
+  assert.equal(telaComCheckupPendente("perfil", true), "primeiros-passos");
+  assert.equal(telaComCheckupPendente("mais", true), "mais", "o ⋯ abre");
+  assert.equal(telaComCheckupPendente("conta", true), "conta");
+  assert.equal(telaComCheckupPendente("perfil", false), "perfil");
+});

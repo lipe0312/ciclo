@@ -176,7 +176,10 @@ test("objetivos: goal.since só aceita data", () => {
 test("onde treina: academia, casa ou os dois (multi), nada de aparelho no perfil", () => {
   assert.deepEqual(DEFAULT_PROFILE.places, ["academia"]);
   for (const v of [["academia"], ["casa"], ["academia", "casa"]]) assert.equal(validateProfilePatch({ places: v }).ok, true, v.join());
-  for (const v of [[], ["hotel"], ["casa", "casa"], ["academia", "casa", "casa"], "casa"]) assert.equal(validateProfilePatch({ places: v }).ok, false, JSON.stringify(v));
+  for (const v of [["hotel"], ["casa", "casa"], ["academia", "casa", "casa"], "casa"]) assert.equal(validateProfilePatch({ places: v }).ok, false, JSON.stringify(v));
+  // #71 lista vazia = rascunho ainda sem resposta: passa e fica de fora
+  const vazio = validateProfilePatch({ places: [] });
+  assert.equal(vazio.ok, true); if (vazio.ok) assert.equal("places" in vazio.value, false);
 });
 
 test("mini-assistente: meta.assistentes guarda 'visto' por tela e mescla com o resto do meta", () => {

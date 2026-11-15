@@ -1,6 +1,6 @@
 // Repositório: todo SQL fica aqui (ou nas rotas), sempre com parâmetros (bind) e SEMPRE filtrado por user_id.
 // O uid vem da autenticação (auth.ts), nunca do corpo da requisição.
-import { DEFAULT_PROFILE, DOWS, MAX_SESSION_MS, assignWeekdays, reassignDays, MUSCLE_IDS, PAIN_REGIONS, applyProfilePatch, mondayOf, normalizeProfile, planFingerprint, sessionSummary, weekDates, weeklyTargets } from "@ciclo/core";
+import { DEFAULT_PROFILE, DOWS, MAX_SESSION_MS, assignWeekdays, reassignDays, MUSCLE_IDS, PAIN_REGIONS, applyProfilePatch, completarObjetivo, mensagemPerfil, mondayOf, normalizeProfile, planFingerprint, sessionSummary, weekDates, weeklyTargets } from "@ciclo/core";
 import { HttpError, int, oneOf, str } from "./http.ts";
 import type { DayInput, Group, Mode, MuscleId, Pain, SetLog } from "@ciclo/core";
 import type { Env } from "./env.ts";
@@ -38,17 +38,21 @@ export async function putProfile(env: Env, uid: string, data: unknown): Promise<
   return (r[2].results as { n: number }[])[0]?.n ?? 1;
 }
 
-/** Perfil bruto da conta (sem preencher padrões) ou null. */
-async function rawProfile(env: Env, uid: string): Promise<Record<string, unknown> | null> {
+/** Perfil bruto da conta (sem preencher padrões) ou null. #71: é o que o app recebe em /api/state (resposta não dada fica de fora). */
+export async function rawProfile(env: Env, uid: string): Promise<Record<string, unknown> | null> {
   const r = await env.DB.prepare("SELECT data FROM profile WHERE user_id = ?1").bind(uid).first<{ data: string }>();
   return r ? normalizeProfile(parse<unknown>(r.data, {})) : null;
 }
-/** Valida e grava. `replace`: o corpo é o perfil inteiro (app); senão é parcial e mescla no que já existe (Claude). Erro de validação → 400 com a lista. */
-export async function saveProfile(env: Env, uid: string, input: unknown, mode: "replace" | "merge", extra: Record<string, unknown> = {}) {
-  const base = mode === "merge" ? { ...DEFAULT_PROFILE, ...((await rawProfile(env, uid)) ?? {}) } : DEFAULT_PROFILE;
+/**
+ * Valida e grava. `replace`: o corpo é o perfil inteiro (app); `merge`: parcial, mescla no que já existe (passos do app e Claude).
+ * #71: nada de DEFAULT_PROFILE por baixo (rascunho guarda só o que a pessoa respondeu). Erro de validação → 400: com `humano`,
+ * a mensagem é a da tela (`mensagemPerfil`, nunca "goal.id deve ser …"); sem, é a lista técnica (o Chat corrige com ela).
+ */
+export async function saveProfile(env: Env, uid: string, input: unknown, mode: "replace" | "merge", extra: Record<string, unknown> = {}, humano = false) {
+  const base = mode === "merge" ? ((await rawProfile(env, uid)) ?? {}) : {};
   const r = applyProfilePatch(base, input);
-  if (!r.ok) throw new HttpError(400, r.errors.join("; "));
-  const data = { ...r.profile, ...extra };
+  if (!r.ok) throw new HttpError(400, humano ? mensagemPerfil(r.campos) : r.errors.join("; "), humano ? "perfil_invalido" : undefined);
+  const data = { ...completarObjetivo(r.profile), ...extra };
   const versao = await putProfile(env, uid, data);
   await syncGymWeekdays(env, uid, (data as { dayGym?: Record<string, string> }).dayGym ?? {});
   return { data, versao };
@@ -138,7 +142,7 @@ export async function trashGym(env: Env, uid: string, gid: string, to: string | 
   let days: D1PreparedStatement[] = [];
   if (Object.keys(ch.patch).length) {
     if (hasProfile) {
-      const r = applyProfilePatch({ ...DEFAULT_PROFILE, ...((await rawProfile(env, uid)) ?? {}) }, { dayGym: ch.patch });
+      const r = applyProfilePatch((await rawProfile(env, uid)) ?? {}, { dayGym: ch.patch }); // #71 sem padrão por baixo
       if (!r.ok) throw new HttpError(400, r.errors.join("; "));
       days = [...profileStmts(env, uid, r.profile, now), ...weekdayStmts(env, uid, (r.profile as { dayGym?: Record<string, string> }).dayGym ?? {})];
     } else days = weekdayStmts(env, uid, ch.dayGym);

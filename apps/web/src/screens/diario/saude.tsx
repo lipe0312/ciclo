@@ -1,5 +1,5 @@
 // Saúde da semana: sono, álcool, fumo, cafeína, água e cardio (médias do core) + a regra de manutenção por saúde.
-import { C, S, dates } from "../../lib/store/index.ts";
+import { C, S, calc, dates } from "../../lib/store/index.ts";
 import { Card, Icon } from "../../lib/ui/index.tsx";
 import { fmt } from "../../lib/util.ts";
 import { href } from "../../lib/roteador/index.ts";
@@ -10,7 +10,7 @@ const lite = (c: Checkout): C.CheckoutLite => ({ date: c.date, alcohol: c.alcoho
 
 export function semanaSaude() {
   const ci = dates.map((d) => ({ date: d, ck: checkinOf(d) })).filter((x) => x.ck).map((x) => ({ date: x.date, sleepH: x.ck!.sleepH }));
-  const cardio = C.cardioWeekSummary(S.week.cardio, dates[0], dates[6], S.profile.weightKg).minutes;
+  const cardio = C.cardioWeekSummary(S.week.cardio, dates[0], dates[6], calc().weightKg).minutes;
   const h = C.healthWeek(dates, ci, Object.values(D.checkouts).map(lite), cardio);
   return { h, m: C.healthMaintenance(h) };
 }

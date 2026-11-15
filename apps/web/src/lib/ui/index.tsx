@@ -13,15 +13,16 @@ export const Chip = ({ on, onClick, children, label }: { on?: boolean; onClick?:
   <button type="button" class="chip" aria-pressed={on == null ? undefined : on} onClick={onClick} aria-label={label}>{children}</button>;
 
 /** Segmento: opções [valor, rótulo]; compara por JSON para aceitar número/booleano. */
-export function Seg<T>({ opts, value, onPick, label, cls = "" }: { opts: [T, string][]; value: T; onPick: (v: T) => void; label?: string; cls?: string }) {
+export function Seg<T>({ opts, value, onPick, label, cls = "" }: { opts: [T, string][]; value: T | null; onPick: (v: T) => void; label?: string; cls?: string }) {
   return <div class={`seg ${cls}`} role="group" aria-label={label}>
     {opts.map(([v, l]) => <button type="button" key={String(v)} aria-pressed={JSON.stringify(v) === JSON.stringify(value)} onClick={() => onPick(v)}>{l}</button>)}
   </div>;
 }
 
-export const Stepper = ({ value, step, unit = "", onStep }: { value: number; step: number; unit?: string; onStep: (d: number) => void }) =>
+/** `value` null = ainda não respondido (#71): mostra "—" e o 1º toque começa de um valor do meio (quem chama decide). */
+export const Stepper = ({ value, step, unit = "", onStep }: { value: number | null; step: number; unit?: string; onStep: (d: number) => void }) =>
   <span class="stepper"><button type="button" aria-label="menos" onClick={() => onStep(-step)}>−</button>
-    <span class="num">{fmt(value, step < 1 ? 1 : 0)}{unit}</span>
+    <span class="num">{value == null ? "—" : <>{fmt(value, step < 1 ? 1 : 0)}{unit}</>}</span>
     <button type="button" aria-label="mais" onClick={() => onStep(step)}>+</button></span>;
 
 // toast

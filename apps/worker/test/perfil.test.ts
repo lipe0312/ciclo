@@ -62,7 +62,8 @@ test("ciclo_salvar_perfil: respeita o usuário do token (não lê nem grava na c
   const r = await mcp(env, ta, "ciclo_salvar_perfil", { perfil: { minutes: 45 }, userId: bUid, user_id: bUid });
   assert.ok(!r.data.result.isError, r.text);
   const a = profileOf(env, "ana");
-  assert.equal(a.minutes, 45); assert.deepEqual(a.avoid, []); assert.equal(a.daysTarget, 4); assert.ok(!JSON.stringify(a).includes("MARCA_B"));
+  // #71: conta nova guarda só o que foi dito (nada de padrão por baixo, nem da outra conta)
+  assert.deepEqual(a, { minutes: 45, meta: { filledBy: "claude", confirmed: false } }); assert.ok(!JSON.stringify(a).includes("MARCA_B"));
   assert.ok(!r.text.includes("MARCA_B") && !r.text.includes(bUid));
   assert.equal(JSON.stringify(profileOf(env, "bia")), bBefore, "perfil da B mudou"); assert.equal(historyN(env, "bia"), bN);
   assert.equal(historyN(env, "ana"), 1);

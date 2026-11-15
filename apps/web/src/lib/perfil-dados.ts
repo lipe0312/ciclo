@@ -13,5 +13,7 @@ export const DIET: [string, string, string][] = [["zero", "Nada", "só acompanho
 export const DAYS_LONG: [string, string][] = [["seg", "Segunda"], ["ter", "Terça"], ["qua", "Quarta"], ["qui", "Quinta"], ["sex", "Sexta"], ["sab", "Sábado"], ["dom", "Domingo"]];
 export const ANCHORS = ["Barbell_Bench_Press_-_Medium_Grip", "Wide-Grip_Lat_Pulldown", "Barbell_Curl", "Machine_Shoulder_Military_Press", "Leg_Press", "Barbell_Full_Squat", "Seated_Cable_Rows", "Side_Lateral_Raise"];
 export const ANCHOR_DEFAULT: Record<string, [number, number]> = { "Barbell_Bench_Press_-_Medium_Grip": [40, 8], "Wide-Grip_Lat_Pulldown": [40, 10], Barbell_Curl: [20, 10], Machine_Shoulder_Military_Press: [30, 10], Leg_Press: [100, 12], Barbell_Full_Squat: [40, 8], Seated_Cable_Rows: [40, 10], Side_Lateral_Raise: [6, 12] };
+/** #71 Onde o stepper começa quando o campo ainda não foi respondido (não é resposta: só o 1º toque grava). */
+export const INICIO: Record<string, number> = { age: 30, heightCm: 170, weightKg: 70 };
 /** Limites dos steppers (iguais aos do servidor; ver packages/core/src/perfil.ts). */
 export const LIM: Record<string, [number, number]> = { age: [12, 90], heightCm: [120, 230], weightKg: [30, 250], "goal.metrics.bracoCm": [-5, 10], "goal.metrics.cinturaCm": [-20, 20], "goal.metrics.pesoKg": [-30, 30] };
