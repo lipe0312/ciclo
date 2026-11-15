@@ -22,7 +22,7 @@
     "test": "node --no-warnings --test packages/core/test/*.test.ts apps/worker/test/*.test.ts apps/web/test/*.test.ts",
     "typecheck": "tsc -p packages/core && tsc -p apps/web && npm run cf:types -w @ciclo/worker && tsc -p apps/worker",
     "check": "npm run typecheck && npm test && npm run build",
-    "gate": "npm run check && npm run e2e:primeiro-acesso && npm run e2e:pular",
+    "gate": "npm run check && npm run e2e:primeiro-acesso && npm run e2e:pular && npm run e2e:treino-atual",
     "cf:setup": "bash scripts/setup-cloudflare.sh",
     "predeploy:check": "node scripts/predeploy.mjs",
     "deploy:dry": "npm run build && node scripts/predeploy.mjs --static && npm run deploy:dry -w @ciclo/worker",
@@ -33,6 +33,7 @@
     "e2e": "node scripts/e2e-cenario.mjs",
     "e2e:primeiro-acesso": "node scripts/e2e-cenario.mjs primeiro-acesso",
     "e2e:pular": "node scripts/e2e-cenario.mjs pular",
+    "e2e:treino-atual": "node scripts/e2e-cenario.mjs treino-atual",
     "demo": "npm run dev -w @ciclo/web -- --open /?demo"
   },
   "devDependencies": {
