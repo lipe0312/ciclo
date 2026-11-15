@@ -1,7 +1,7 @@
 // Semana completa planejada (#24): monta a entrada do core a partir do D1, guarda versões (desfazer) e as escolhas
 // por dia. Todo SQL com bind e filtrado por user_id; o uid vem da autenticação.
 import {
-  EQUIPMENT_BY_ID, MUSCLE_IDS, applyDayAction, diffWeeks, mondayOf, planWeek, weekDates, weekProgression, weekView, weeklyTargets,
+  EQUIPMENT_BY_ID, MUSCLE_IDS, applyDayAction, diffWeeks, entradaTreinoAtual, mondayOf, planWeek, trocasDoDia, weekDates, weekProgression, weekView, weeklyTargets,
 } from "@ciclo/core";
 import type { CardioEntry, DayAction, DayOpts, DayOverride, DayPlan, Intensity, MuscleId, Progression, Sets, WeekInput, WeekPlan, WeekProfile } from "@ciclo/core";
 import type { Env } from "./env.ts";
@@ -11,7 +11,11 @@ import type { EmptyReason } from "./db.ts";
 
 export type Source = "auto" | "regenerar" | "ajuste" | "falta" | "extra" | "desfazer";
 /** O que vai no plan_json de cada versão. */
-export interface Stored { plan: WeekPlan; overrides: Record<string, DayOverride>; progression: Progression; basis: string[] }
+export interface Stored {
+  plan: WeekPlan; overrides: Record<string, DayOverride>; progression: Progression; basis: string[];
+  /** #74 trocas forçadas já consideradas (data:planejado>feito): uma troca nova reorganiza o resto da semana */
+  trocas?: string;
+}
 
 const addDays = (iso: string, k: number) => new Date(Date.parse(iso + "T12:00:00Z") + k * 864e5).toISOString().slice(0, 10);
 const MAX_VERSIONS = 20;
@@ -25,6 +29,8 @@ interface Ctx {
   versions: { version: number; source: Source; createdAt: number }[];
   gymIds: string[];
   cardioLog: CardioEntry[];
+  /** #74 séries por dia e exercício (o que foi FEITO), para achar a troca forçada */
+  feitos: Record<string, Record<string, number>>;
 }
 
 export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx | { empty: EmptyReason }> {
@@ -32,7 +38,7 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
   const [profile, gyms, week] = await Promise.all([getProfile(env, uid), listGyms(env, uid), weekState(env, uid, today)]);
   if (!profile) return { empty: "sem_perfil" };
   if (!gyms.length) return { empty: "sem_academia" };
-  const [sets, ovr, fixed, vers, latest, cardio] = await env.DB.batch([
+  const [sets, ovr, fixed, vers, latest, cardio, porEx] = await env.DB.batch([
     env.DB.prepare(`SELECT s.date AS date, l.muscle AS muscle, COUNT(*) AS n FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
       WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 GROUP BY s.date, l.muscle`).bind(uid, from, to),
     env.DB.prepare("SELECT date, kind, opts FROM day_override WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3").bind(uid, from, to),
@@ -40,7 +46,11 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
     env.DB.prepare("SELECT version, source, created_at FROM week_plan WHERE user_id = ?1 AND week_start = ?2 ORDER BY version DESC LIMIT ?3").bind(uid, weekStart, MAX_VERSIONS),
     env.DB.prepare("SELECT version, plan_json, created_at FROM week_plan WHERE user_id = ?1 AND week_start = ?2 ORDER BY version DESC LIMIT 1").bind(uid, weekStart),
     env.DB.prepare("SELECT id, date, type, minutes, intensity, distance_km FROM cardio_log WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date, created_at").bind(uid, from, to),
+    env.DB.prepare(`SELECT s.date AS date, l.exercise_id AS ex, COUNT(*) AS n FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
+      WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 GROUP BY s.date, l.exercise_id`).bind(uid, from, to),
   ]);
+  const feitos: Record<string, Record<string, number>> = {};
+  for (const r of porEx.results as { date: string; ex: string; n: number }[]) (feitos[r.date] ??= {})[r.ex] = r.n;
   const setsBy: Record<string, Sets> = {};
   for (const r of sets.results as { date: string; muscle: MuscleId; n: number }[]) if (MUSCLE_IDS.includes(r.muscle)) (setsBy[r.date] ??= {})[r.muscle] = r.n;
   const lr = (latest.results as { version: number; plan_json: string; created_at: number }[])[0];
@@ -54,6 +64,7 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
       gyms: gyms.map((g) => ({ id: g.id, equipment: g.equipment })), prefs: p.prefs, pinned: p.pinned, avoid: p.avoid,
       pains: week.pains.map((x) => ({ region: x.region, intensity: x.intensity })),
       goalId: typeof (p.goal as { id?: unknown } | undefined)?.id === "string" ? (p.goal as { id: string }).id : null,
+      ...entradaTreinoAtual(p), // #74 "Meu treino atual": só prioriza; sem cadastro, igual a antes
     },
     base: weeklyTargets(([0, 1, 2, 3].includes(p.level) ? p.level : 1) as 0 | 1 | 2 | 3, (p.priorities ?? []).filter((m) => MUSCLE_IDS.includes(m))),
     sets: setsBy,
@@ -68,6 +79,7 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
     gymIds: gyms.map((g) => g.id),
     cardioLog: (cardio.results as { id: string; date: string; type: string; minutes: number; intensity: Intensity; distance_km: number | null }[])
       .map((r) => ({ id: r.id, date: r.date, type: r.type, minutes: r.minutes, intensity: r.intensity, distanceKm: r.distance_km })),
+    feitos,
   };
 }
 
@@ -106,13 +118,16 @@ async function progression(env: Env, c: Ctx): Promise<Progression> {
 
 const input = (c: Ctx, s: { overrides: Record<string, DayOverride>; progression: Progression }, prev: WeekPlan | null): WeekInput => ({
   weekStart: c.weekStart, today: c.today, sets: c.sets, attendance: c.attendance, profile: c.profile,
-  targets: s.progression.targets, overrides: s.overrides, fixed: c.fixed, cardioLog: c.cardioLog, prev,
+  targets: s.progression.targets, overrides: s.overrides, fixed: c.fixed, cardioLog: c.cardioLog, prev, feitos: c.feitos,
 });
+/** Assinatura das trocas forçadas da semana até hoje (o dia guardado tem o planejado; `feitos`, o que foi feito). */
+const trocasSig = (c: Ctx, plan: WeekPlan) => plan.days.filter((d) => d.date <= c.today)
+  .flatMap((d) => trocasDoDia(d.plan, c.feitos[d.date], d.date)).map((t) => `${t.date}:${t.planejado}>${t.feito}`).join("|");
 
 async function generate(env: Env, c: Ctx, overrides: Record<string, DayOverride>, fresh: boolean): Promise<Stored> {
   const prog = !fresh && c.latest?.stored?.progression ? c.latest.stored.progression : await progression(env, c);
   const plan = planWeek(input(c, { overrides, progression: prog }, c.latest?.stored?.plan ?? null));
-  return { plan, overrides, progression: prog, basis: Object.keys(c.sets).sort() };
+  return { plan, overrides, progression: prog, basis: Object.keys(c.sets).sort(), trocas: trocasSig(c, plan) };
 }
 
 /** Grava uma versão nova (e as escolhas vivas, se mudaram). "auto" só entra se a semana ainda não tem versão. */
@@ -153,6 +168,8 @@ export async function getWeek(env: Env, uid: string, today: string) {
     const st = c.latest.stored;
     const extra = Object.keys(c.sets).filter((d) => !st.basis?.includes(d) && st.plan.days.find((x) => x.date === d)?.kind === "folga");
     if (extra.length) await persist(env, c, await generate(env, c, c.overrides, false), "extra", false);
+    // #74 troca forçada nova (ex.: desenvolvimento no lugar do crucifixo inverso): repõe a subparte nos próximos dias
+    else if (trocasSig(c, st.plan) !== (st.trocas ?? "")) await persist(env, c, await generate(env, c, c.overrides, false), "ajuste", false);
     else return { week: view(c, st, c.latest.version) };
   }
   c = (await loadCtx(env, uid, today)) as Ctx;

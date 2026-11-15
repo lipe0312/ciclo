@@ -8,6 +8,8 @@ import { MAX_PRIORITIES, MAX_PRIORITY_SUBS, groupsOfSubs, limitSubs, priorityGro
 import type { PriorityGroupId } from "./prioridades.ts";
 
 import { DOWS } from "./semana.ts";
+import { validarTreinoAtual } from "./treino-atual.ts";
+import type { TreinoAtual } from "./treino-atual.ts";
 export const GOAL_IDS = ["bracos_ombros", "massa_geral", "definir", "recompor", "forca", "constancia", "shape_v", "perder_barriga", "saude", "retorno"] as const;
 export const PLACES = ["academia", "casa"] as const;
 export type PlaceChoice = (typeof PLACES)[number];
@@ -40,7 +42,8 @@ export const DEFAULT_PROFILE = {
   /** `assistentes`: telas cujo mini-assistente de 1ª vez já foi visto (ou dispensado com "Fazer manual") */
   meta: { filledBy: "app" as "app" | "claude", confirmed: true } as { filledBy: "app" | "claude"; confirmed: boolean; checkup?: "feito" | "pulado"; assistentes?: Record<string, boolean> },
 };
-export type ProfileData = typeof DEFAULT_PROFILE;
+/** `treinoAtual` (#74) é opcional e não tem padrão: sem cadastro, o gerador funciona igual. */
+export type ProfileData = typeof DEFAULT_PROFILE & { treinoAtual?: TreinoAtual };
 
 // ---------- prioridades ----------
 export interface Check { ok: boolean; errors: string[] }
@@ -169,6 +172,8 @@ const SCHEMA: Record<string, Rule> = {
   // #71 lista vazia = ainda não respondeu (rascunho); fica de fora em vez de dar erro
   places: (v, p, err) => { const r = list(oneOf(PLACES), 2)(v, p, err); return Array.isArray(r) && !r.length ? undefined : r; },
   meta: objectKeys({ filledBy: oneOf(["app", "claude"]), confirmed: bool, checkup: oneOf(["feito", "pulado"]), assistentes: record(slug, yes, 12) }),
+  // #74 "Meu treino atual" (opcional; nunca entra no faltaParaGerar): divisões por grupo grande, IDs só do catálogo
+  treinoAtual: (v, p, err) => { const r = validarTreinoAtual(v, p); if (!r.ok) { r.errors.forEach(err); return undefined; } return r.value; },
 };
 /** `campos`: os campos (de 1º nível) com erro, para a mensagem humana (`mensagemPerfil`); `errors` é o texto técnico (Chat e console). */
 export type Validation<T> = { ok: true; value: T; errors: [] } | { ok: false; errors: string[]; campos: string[] };
@@ -201,6 +206,7 @@ export const PERFIL_ROTULO: Record<string, string> = {
   pinned: "exercícios fixos", avoid: "exercícios que você evita", dynamics: "formato do treino", crowdedStrategy: "academia cheia",
   mobility: "mobilidade", dayGym: "lugar de cada dia", diet: "comida", autonomy: "o que o Chat muda sozinho", tone: "tom do Chat",
   reviewTime: "horário da revisão", tiers: "modelos do Chat", places: "academia, casa ou os dois", meta: "dados do perfil",
+  treinoAtual: "meu treino atual",
 };
 const juntar = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}`);
 const maiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -248,7 +254,7 @@ export function applyProfilePatch(base: Partial<ProfileData> | Record<string, an
 
 // ---------- treino desatualizado ----------
 /** O que, no perfil, muda o treino gerado. Tom do Claude, comida, corpo e metas não entram. */
-const PLAN_FIELDS = ["level", "priorities", "subPriorities", "minutes", "daysTarget", "daysUsual", "flexWeek", "weekStart", "prefs", "pinned", "avoid", "dynamics", "crowdedStrategy", "mobility", "dayGym", "remembered"] as const;
+const PLAN_FIELDS = ["level", "priorities", "subPriorities", "minutes", "daysTarget", "daysUsual", "flexWeek", "weekStart", "prefs", "pinned", "avoid", "dynamics", "crowdedStrategy", "mobility", "dayGym", "remembered", "treinoAtual"] as const;
 const stable = (v: unknown): string => Array.isArray(v) ? `[${v.map(stable).join(",")}]`
   : isObj(v) ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable(v[k])}`).join(",")}}` : JSON.stringify(v) ?? "null";
 export function planFingerprint(p: Partial<ProfileData> | Record<string, any>): string {

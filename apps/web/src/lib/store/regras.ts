@@ -24,6 +24,7 @@ export function dayInput(ui = S.ui, extraPains: any[] = []): C.DayInput {
     daysLeft: ui.daysLeft, minutes: ui.minutes, lastGroup: lastGroup(), mode: ui.mode, focus: ui.focus.length ? ui.focus : null,
     equipment: gym ? gym.equipment : [], crowded: ui.crowded, prefs: p.prefs, pinned: { ...p.pinned, ...ui.swapsToday }, avoid: p.avoid,
     pains: [...S.pains, ...extraPains].map((x) => ({ region: x.region, intensity: x.intensity })),
+    ...C.entradaTreinoAtual(S.profile), // #74 "Meu treino atual": só prioriza o que a pessoa já faz
   };
 }
 export function computePlan(force = false): C.DayPlan {
@@ -38,7 +39,8 @@ export function suggestFor(it: C.PlanItem): { kg: number | null; reps: number; n
   const ex = EXB[it.exerciseId];
   const last = S.history[it.exerciseId];
   if (last?.length && ex) { const t = C.nextTarget(last, it.reps, ex.inc); if (t) return { kg: t.kg, reps: t.reps, note: t.reason }; }
-  const sl = C.startLoad(it.exerciseId, S.profile.remembered ?? [], it.reps[1]);
+  // #74 o "como faz" do Meu treino atual (kg × reps) também vale como carga lembrada
+  const sl = C.startLoad(it.exerciseId, [...(S.profile.remembered ?? []), ...C.lembradasDoTreino(S.profile.treinoAtual)], it.reps[1]);
   return { kg: sl.kg, reps: it.reps[0], note: sl.note };
 }
 

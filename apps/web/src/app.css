@@ -242,6 +242,12 @@ textarea.input{min-height:84px;resize:vertical}
 @media (min-width:720px){.sheet{left:50%;right:auto;width:600px;margin-left:-300px;bottom:24px;border-radius:16px}}
 .alt{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--borda)}
 .alt img{width:56px;height:56px;border-radius:10px;object-fit:cover;background:var(--sup-3)}
+/* #74 Trocar: selo "você já faz", bolinhas de eficiência e o link discreto de outra parte */
+.alt-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:2px}
+.ef-dots{display:inline-flex;gap:3px;align-items:center}
+.ef-dots i{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--sub)}
+.ef-dots i.on{background:var(--txt);border-color:var(--txt)}
+.alt-outra{display:inline-flex;align-items:center;min-height:44px;margin-top:8px;padding:0 2px;border:0;background:none;color:var(--sub);font:inherit;font-size:13px;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .toast{position:fixed;left:50%;bottom:96px;transform:translate(-50%,20px);opacity:0;background:var(--txt);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;font-size:14px;z-index:60;transition:all .2s;pointer-events:none;max-width:calc(100% - 32px)}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .view{display:none} .view.on{display:block}
