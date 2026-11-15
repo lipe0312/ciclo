@@ -35,5 +35,9 @@ export function demoRaw(hoje: string): HomeRaw {
   // comida: registrada em 3 dos 7 últimos dias; check-in em 4
   raw.comida = [-1, -2, -4].map((n, i) => ({ date: addDays(hoje, n), kcal: 2450 + i * 120, prot: 118 + i * 9 }));
   raw.checkins = [0, -1, -2, -4].map((n) => addDays(hoje, n));
+  // #73 sono (check-in) e água (checkout) dos últimos 14 dias, com buracos; marcos do caminho
+  raw.sono = [0, -1, -2, -4, -5, -8, -9, -10, -12].map((n, i) => ({ date: addDays(hoje, n), horas: 6 + (i % 3) * 0.5 + (n > -7 ? 0.5 : 0) }));
+  raw.agua = [-1, -2, -3, -5, -6, -8, -9, -11].map((n, i) => ({ date: addDays(hoje, n), litros: 2 + (i % 4) * 0.25 }));
+  Object.assign(raw, { contaEm: addDays(ini, -3), perfilEm: addDays(ini, -3), semanaEm: addDays(ini, -2), checkupEm: addDays(ini, -3) });
   return raw;
 }

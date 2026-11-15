@@ -11,7 +11,7 @@ import { contaNovaVazia } from "@ciclo/core";
 import { USER_TABLES } from "../src/db.ts";
 import { call, makeEnv } from "./fakes.ts";
 // scripts JS (sem tipos)
-import { CENARIOS, NOMES, comandos, dirCenario, garantirLocal, lerArgs, textoLista, urlAbertura } from "../../../scripts/cenarios/index.mjs";
+import { CENARIOS, NOMES, PORTA_CTRL, comandos, dirCenario, garantirLocal, lerArgs, textoLista, urlAbertura } from "../../../scripts/cenarios/index.mjs";
 import { hojeSP, limparTudo, somarDias } from "../../../scripts/cenarios/lib.mjs";
 import { wranglerEnv } from "../../../scripts/limpar-legado.mjs";
 
@@ -37,7 +37,7 @@ test("lerArgs: cenário, --tela, --reset, --lista, --com-login; recusa o que nã
   assert.deepEqual(lerArgs(["vazio", "--tela", "primeiros-passos/0"]), { nome: "vazio", tela: "primeiros-passos/0", reset: false, lista: false, comLogin: false, semAbrir: false, porta: 8791 });
   assert.equal(lerArgs(["semi", "--tela", "#hoje", "--reset", "--com-login", "--sem-abrir", "--porta", "8800"]).tela, "hoje");
   assert.equal(lerArgs(["--lista"]).lista, true);
-  for (const ruim of [[], ["nao-existe"], ["vazio", "semi"], ["vazio", "--tela"], ["vazio", "--tela", "//evil.com"], ["vazio", "--tela", "a b"], ["vazio", "--porta", "80"], ["vazio", "--porta", "8795"], ["vazio", "--x"]])
+  for (const ruim of [[], ["nao-existe"], ["vazio", "semi"], ["vazio", "--tela"], ["vazio", "--tela", "//evil.com"], ["vazio", "--tela", "a b"], ["vazio", "--porta", "80"], ["vazio", "--porta", String(PORTA_CTRL)], ["vazio", "--x"]])
     assert.throws(() => lerArgs(ruim as string[]), undefined, JSON.stringify(ruim));
   for (const r of ["--remote", "-r", "--env", "--remote=true"]) assert.throws(() => lerArgs(["vazio", r]), /só local/, r);
   for (const nome of NOMES) assert.match(textoLista(), new RegExp(`^${nome}$`, "m"));

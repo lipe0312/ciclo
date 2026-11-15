@@ -4,8 +4,8 @@ import { DEFAULT_PROFILE } from "@ciclo/core";
 import { criarConta, diaSemana, somarDias } from "./lib.mjs";
 
 export const slug = "cenario-semi";
-export const descricao = "Conta em uso: Perfil respondido, 1 academia, 2 semanas de treinos, check-ins, 1 dor leve e comida de 3 dias.";
-export const tem = ["conta de 'Bia Teste'", "Perfil de treino respondido (braços e ombros)", "1 academia com aparelhos", "treinos de 2 semanas (seg/ter/qui/sex)", "check-ins", "dor leve no ombro esquerdo", "comida de 3 dias"];
+export const descricao = "Conta em uso: Perfil respondido, 1 academia, 2 semanas de treinos, check-ins (sono), água, 1 dor leve e comida de 3 dias.";
+export const tem = ["conta de 'Bia Teste'", "Perfil de treino respondido (braços e ombros)", "1 academia com aparelhos", "treinos de 2 semanas (seg/ter/qui/sex)", "check-ins com sono", "água no checkout de 8 noites", "dor leve no ombro esquerdo", "comida de 3 dias"];
 
 const DIAS_TREINO = new Set(["seg", "ter", "qui", "sex"]);
 const COMIDA = [["cafe", "2 ovos mexidos e 1 pão francês"], ["almoco", "arroz, feijão e 150 g de frango grelhado"]];
@@ -31,8 +31,11 @@ export async function criarSemi(ctx, opts = {}) {
     const { id } = await ctx.api("POST", "/api/sessions", { date: d, gymId, plan }, { status: 201 });
     for (const it of plan.items.slice(0, 3)) for (let s = 1; s <= 2; s++) await ctx.api("POST", `/api/sessions/${id}/sets`, { exerciseId: it.exerciseId, setNo: s, kg: 8 + s, reps: 10, rir: 2 });
     await ctx.api("POST", `/api/sessions/${id}/finish`, { feedback: { feel: "bom" } });
-    await ctx.api("PUT", `/api/checkin/${d}`, { sleepH: 7, energy: 2, soreness: 1, stress: 2, food: 0, weightKg: 62 });
+    await ctx.api("PUT", `/api/checkin/${d}`, { sleepH: 6 + (n % 3), energy: 2, soreness: 1, stress: 2, food: 0, weightKg: 62 });
   }
+  // #73 água no checkout da noite (8 das últimas 10 noites) e o sono de hoje: as médias da Home têm o que mostrar
+  for (const n of [10, 9, 8, 6, 5, 3, 2, 1]) await ctx.api("PUT", `/api/checkout/${somarDias(ctx.hoje, -n)}`, { trained: DIAS_TREINO.has(diaSemana(somarDias(ctx.hoje, -n))), waterMl: 1500 + (n % 4) * 250 });
+  await ctx.api("PUT", `/api/checkin/${ctx.hoje}`, { sleepH: 7, energy: 2, soreness: 1, stress: 2, food: 0 });
   await ctx.api("POST", "/api/pains", { region: "ombro_e", intensity: 1, context: "incômodo leve (fictício)" }, { status: 201 });
   for (let n = 2; n >= 0; n--) for (const [meal, text] of COMIDA) await ctx.api("POST", "/api/food", { date: somarDias(ctx.hoje, -n), text, meal }, { status: 201 });
   return uid;

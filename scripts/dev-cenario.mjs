@@ -51,11 +51,14 @@ async function main() {
   try { o = lerArgs(process.argv.slice(2)); } catch (e) { console.error(`✖ ${e.message}`); process.exit(2); }
   if (o.lista) { console.log(textoLista()); return; }
   const base = `http://localhost:${o.porta}`, cen = CENARIOS[o.nome], codigo = o.comLogin ? randomBytes(12).toString("hex") : "";
-  const cmd = comandos(o.nome, { porta: o.porta, comLogin: o.comLogin, codigo });
+  // porta de controle: CENARIO_CTRL_PORTA ou --porta + 4 (dois cenários abertos não colidem); o filho herda pelo env
+  const ctrlPorta = process.env.CENARIO_CTRL_PORTA ? PORTA_CTRL : o.porta + 4;
+  process.env.CENARIO_CTRL_PORTA = String(ctrlPorta);
+  const cmd = comandos(o.nome, { porta: o.porta, comLogin: o.comLogin, codigo, ctrl: ctrlPorta });
 
   if (o.reset) { // servidor deste cenário no ar: pede o reset a ele (sem derrubar nada)
     try {
-      const r = await fetch(`http://127.0.0.1:${PORTA_CTRL}/reset`, { method: "POST", headers: { "x-ciclo-cenario": "reset" } });
+      const r = await fetch(`http://127.0.0.1:${ctrlPorta}/reset`, { method: "POST", headers: { "x-ciclo-cenario": "reset" } });
       if (r.ok) { console.log(`✔ cenário ${o.nome} voltou ao início`); return; }
     } catch { /* ninguém no ar: sobe do zero */ }
     console.log("ℹ nenhum cenário no ar: subindo do zero.");
@@ -88,7 +91,7 @@ async function main() {
       try { await limparTudo(ctx()); await cen.seed(ctx()); res.writeHead(200, { "Content-Type": "application/json" }).end('{"ok":true}'); console.log(`↺ cenário ${o.nome} voltou ao início`); }
       catch (e) { console.error(`✖ reset: ${e.message}`); res.writeHead(500).end("falhou"); }
       finally { ocupado = false; }
-    }).listen(PORTA_CTRL, "127.0.0.1");
+    }).listen(ctrlPorta, "127.0.0.1");
   }
   const alvo = o.comLogin ? `${base}/#${o.tela ?? "entrar"}` : urlAbertura(o.nome, o.tela, o.porta);
   console.log(`\n✔ ${base}  ·  cenário ${o.nome}${o.comLogin ? " (com login: banco vazio, 1º acesso)" : ` · conta ${cen.slug}`}`);

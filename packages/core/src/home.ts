@@ -7,6 +7,8 @@ import { mondayOf } from "./checkin.ts";
 import { foodAverages } from "./comida.ts";
 import { DEFAULT_PROFILE } from "./perfil.ts";
 import type { FoodAverages } from "./comida.ts";
+import { cartaoBoasVindas, marcosEvolucao, mediasSemana } from "./home-inicio.ts";
+import type { MarcosRaw, Marco, MediaCard, Visibilidade } from "./home-inicio.ts";
 
 const DAY = 864e5;
 const addDays = (iso: string, n: number) => new Date(Date.parse(iso + "T12:00:00Z") + n * DAY).toISOString().slice(0, 10);
@@ -92,6 +94,14 @@ export interface HomeRaw {
   checkouts: string[];
   /** última medida / peso de qualquer época (a janela dos painéis pode não alcançar) */
   ultimaMedida?: string | null; ultimoPeso?: string | null;
+  // #73 (opcionais: cache antigo e demonstração continuam valendo)
+  /** água do checkout e sono do check-in por dia (últimos 28 dias) */
+  agua?: { date: string; litros: number }[]; sono?: { date: string; horas: number }[];
+  /** dia (servidor, fuso do app) em que os Primeiros passos foram concluídos com o checkup feito */
+  checkupEm?: string | null;
+  boasVindasDispensadoEm?: string | null; perfilAdiadoEm?: string | null;
+  contaEm?: string | null; perfilEm?: string | null; semanaEm?: string | null; primeiroTreinoEm?: string | null; primeiraMedidaEm?: string | null;
+  diasComida?: string[]; diasTreino?: string[];
 }
 
 export interface ExercicioChave { exerciseId: string; muscle: MuscleId; serie: (number | null)[]; atual: number; delta: number }
@@ -237,6 +247,8 @@ export interface HomeCtx {
   dieta: { kcal: number; protein: number };
   /** dias que dá para cobrar de registro (7; menos numa conta com poucos dias) */
   diasDevidos: number; aparelhosSemMidia: number; cargasPreenchidas: boolean;
+  /** #73 dia do servidor (o prazo do cartão de boas-vindas não segue o relógio do aparelho) */
+  hojeServidor?: string;
 }
 export interface MetaCard {
   id: "braco" | "cintura" | "peso" | "freq"; nome: string; unidade: string;
@@ -247,6 +259,9 @@ export interface HomeView {
   vazio: boolean; series: HomeSeries; metas: MetaCard[];
   comida: { hoje: { kcal: number; prot: number; logged: boolean }; media: FoodAverages; avgKcal: number | null; avgProt: number | null; kcalPct: number | null; protPct: number | null; daysLogged: number; metaKcal: number; metaProt: number };
   gaps: Gap[];
+  /** #73 cartão "Sua semana está pronta", caminho de evolução, médias de 7 dias e o que os atalhos mostram */
+  boasVindas: Visibilidade; perfilAdiadoEm: string | null; marcos: Marco[]; medias: MediaCard[];
+  ultimaMedida: string | null; checkinHoje: boolean;
 }
 
 const semanaDa = (inicio: string | null, hoje: string) => (inicio ? Math.max(1, Math.floor(diffDays(inicio, hoje) / 7) + 1) : 1);
@@ -287,6 +302,23 @@ export function homeView(raw: HomeRaw, c: HomeCtx): HomeView {
     vazio: homeVazio(raw), series, metas,
     comida: { hoje: { kcal: hoje.kcal, prot: hoje.prot, logged: hoje.logged }, media, avgKcal: media.avgKcal, avgProt: media.avgProt, kcalPct: media.kcalPct, protPct: media.protPct, daysLogged: media.daysLogged, metaKcal: c.dieta.kcal, metaProt: c.dieta.protein },
     gaps: gaps(reg, c.hoje),
+    boasVindas: cartaoBoasVindas({ checkupEm: raw.checkupEm ?? null, primeiroTreinoEm: raw.primeiroTreinoEm ?? (raw.sets.length ? raw.sets.map((x) => x.date).sort()[0] : null), dispensadoEm: raw.boasVindasDispensadoEm ?? null, hoje: c.hojeServidor ?? c.hoje }),
+    perfilAdiadoEm: raw.perfilAdiadoEm ?? null,
+    marcos: marcosEvolucao(marcosDe(raw), c.hoje),
+    medias: mediasSemana({ comida: raw.comida, agua: raw.agua ?? [], sono: raw.sono ?? [] }, c.hoje, c.dieta.protein),
+    ultimaMedida: reg.ultimaMedida, checkinHoje: raw.checkins.includes(c.hoje),
+  };
+}
+
+/** Marcos a partir do HomeRaw; sem os campos do Worker (demonstração), deduz o que dá das próprias séries. */
+function marcosDe(raw: HomeRaw): MarcosRaw {
+  const min = (ds: (string | null | undefined)[]) => ds.filter((d): d is string => !!d).sort()[0] ?? null;
+  const treinos = raw.diasTreino ?? [...new Set(raw.sets.map((x) => x.date))];
+  return {
+    contaEm: raw.contaEm ?? null, perfilEm: raw.perfilEm ?? null, semanaEm: raw.semanaEm ?? null,
+    primeiroTreinoEm: raw.primeiroTreinoEm ?? min(treinos),
+    primeiraMedidaEm: raw.primeiraMedidaEm ?? min(raw.medidas.filter((m) => m.braco != null || m.cintura != null).map((m) => m.date)),
+    diasComida: raw.diasComida ?? raw.comida.map((x) => x.date), diasTreino: treinos,
   };
 }
 
