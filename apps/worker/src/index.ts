@@ -12,6 +12,7 @@ import { purgeExpiredExams } from "./diario.ts";
 import { purgeLimites } from "./limites.ts";
 import { handleOauth, purgeOauth } from "./oauth.ts";
 import { wwwAuthenticate } from "@ciclo/core";
+import { handleDevCenario } from "./dev-cenario.ts";
 
 const LIVRE_SEM_ACEITE = new Set(["GET /api/account", "POST /api/account/consent", "GET /api/account/export", "DELETE /api/account", "POST /api/account/logout-all"]);
 // #66: o 401 diz onde está a metadata OAuth (RFC 9728): o claude.ai descobre o login sozinho a partir da URL do /mcp.
@@ -53,8 +54,15 @@ export default {
       if (!isLocalDev(req, env)) return json({ error: "rota não encontrada" }, 404);
       const slug = url.searchParams.get("u") ?? "";
       if (!DEV_USER_RE.test(slug)) return json({ error: "u inválido (a-z, 0-9, _ e -)" }, 400);
-      return new Response(null, { status: 302, headers: { Location: "/", "Set-Cookie": `ciclo_dev_user=${slug}; Path=/; SameSite=Strict; HttpOnly`, "Cache-Control": "no-store" } });
+      // #70: `t` = tela para abrir já logado (npm run dev:cenario --tela); só rota simples, nunca URL externa
+      const t = url.searchParams.get("t") ?? "";
+      if (t && !/^[a-z0-9][a-z0-9/_-]{0,60}$/.test(t)) return json({ error: "t inválido" }, 400);
+      return new Response(null, { status: 302, headers: { Location: t ? `/#${t}` : "/", "Set-Cookie": `ciclo_dev_user=${slug}; Path=/; SameSite=Strict; HttpOnly`, "Cache-Control": "no-store" } });
     }
+
+    // #70 cenários de teste local: botão "↺ cenário" (só localhost; 404 fora do dev:cenario)
+    const dc = await handleDevCenario(req, env);
+    if (dc) return dc;
 
     // #54 login próprio (passkey, convite, recuperação). Mesma regra de origem da API; limite por IP dentro.
     if (url.pathname.startsWith("/auth/")) {

@@ -18,6 +18,7 @@
     "catalogo:imagens": "node scripts/catalogo-imagens.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:tunnel": "node scripts/dev-tunnel.mjs",
+    "dev:cenario": "node scripts/dev-cenario.mjs",
     "test": "node --no-warnings --test packages/core/test/*.test.ts apps/worker/test/*.test.ts apps/web/test/*.test.ts",
     "typecheck": "tsc -p packages/core && tsc -p apps/web && npm run cf:types -w @ciclo/worker && tsc -p apps/worker",
     "check": "npm run typecheck && npm test && npm run build",
@@ -28,6 +29,9 @@
     "staging": "node scripts/staging.mjs",
     "e2e:local": "node scripts/e2e-local.mjs",
     "e2e:pdf": "node scripts/e2e-pdf.mjs",
+    "e2e": "node scripts/e2e-cenario.mjs",
+    "e2e:primeiro-acesso": "node scripts/e2e-cenario.mjs primeiro-acesso",
+    "e2e:pular": "node scripts/e2e-cenario.mjs pular",
     "demo": "npm run dev -w @ciclo/web -- --open /?demo"
   },
   "devDependencies": {
