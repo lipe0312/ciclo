@@ -11,29 +11,8 @@ import { MediaBox } from "./midia.tsx";
 import { ExImgs } from "./biblioteca.tsx";
 import { OUTCOME_TXT, buildSummary, pastOf } from "./sessao.ts";
 
-export const openSwap = (idx: number) => openSheet(() => <Swap idx={idx} />);
-function pickSwap(idx: number, to: string, scope: "hoje" | "sempre") {
-  const plan = activePlan(), it = plan.items[idx];
-  if (scope === "sempre") { S.profile.pinned[it.muscle] = to; profileChanged(); }
-  if (S.session && !S.session.finishedAt) { const ex = EXB[to]; plan.items[idx] = { ...it, exerciseId: to, nm: ex.nm, kind: ex.kind, reps: ex.r, rest: ex.rest, alts: it.alts.filter((x) => x !== to).concat(it.exerciseId) }; }
-  else { S.ui.swapsToday[it.muscle] = to; S.ui.locked = false; }
-  closeSheet(); commit(); toast(scope === "sempre" ? "Trocado no plano (sempre)" : "Trocado só hoje");
-}
-function Swap({ idx }: { idx: number }) {
-  const plan = activePlan(), it = plan.items[idx];
-  if (!it) return null;
-  const all = C.candidates(it.muscle, dayInput());
-  const gym = gymById(S.session?.gymId ?? S.ui.gymId);
-  const unavailable = C.EXERCISES.filter((e) => e.m === it.muscle && e.id !== it.exerciseId && !e.eq.every((q) => gym.equipment.includes(q)));
-  return <><SheetHead kicker={`Trocar · ${mName(it.muscle)}`} title={it.nm} />
-    <p class="small sub" style="margin:8px 0 6px">Já calculado pelo app (sem gastar o Chat): mesmo músculo, aparelho disponível, sua preferência, dor e academia cheia.</p>
-    {all.filter((c) => c.ex.id !== it.exerciseId).map((c) => <div class="alt" key={c.ex.id} style={c.blockedByPain ? "opacity:.5" : ""}>
-      <img src={img(c.ex.id)} alt="" loading="lazy" width={56} height={56} />
-      <div><h3>{c.ex.nm}</h3><p class="tiny sub">{c.ex.r.join("–")} reps · {c.ex.kind}{c.ex.stretch ? " · alongado" : ""}{S.media[c.ex.id] ? " · você tem vídeo" : ""}{c.blockedByPain ? " · força região com dor" : ""}</p></div>
-      {c.blockedByPain ? <span class="badge bad">dor</span> : <div class="row" style="gap:6px"><button type="button" class="btn sm" onClick={() => pickSwap(idx, c.ex.id, "hoje")}>Hoje</button><button type="button" class="btn sm pri" onClick={() => pickSwap(idx, c.ex.id, "sempre")}>Sempre</button></div>}
-    </div>)}
-    {unavailable.length > 0 && <p class="tiny sub" style="margin-top:10px">Sem aparelho em {gym.name}: {unavailable.map((e) => e.nm).join(", ")}</p>}</>;
-}
+/** #74 A folha Trocar baixa só quando abre (fora do JS inicial). */
+export const openSwap = (idx: number) => { void import("./troca.tsx").then(({ Swap }) => openSheet(() => <Swap idx={idx} />)); };
 
 const editOf = (d: any) => ({ index: d.index, sets: d.sets, reps: d.reps, ...(d.exerciseId === "__proprio" ? { exerciseId: "proprio_" + (d.nm || "x").toLowerCase().replace(/\W+/g, "_"), nm: d.nm || "Exercício meu" } : { exerciseId: d.exerciseId }) });
 export function openEdit(idx: number) {

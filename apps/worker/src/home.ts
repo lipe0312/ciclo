@@ -1,18 +1,22 @@
 // Home de evolução (#29): GET /api/home agrega as séries semanais e as lacunas de registro numa chamada só (um batch no D1).
 // Todo SQL com bind e filtrado por user_id; só números e datas saem daqui (nenhum texto livre do dono). A conta fica no core (homeView).
-import { HOME_SEMANAS, aparelhosSemMidia, ctxDoPerfil, homeView, semanasAte } from "@ciclo/core";
+// #73: + água/sono (28 dias), os marcos do caminho de evolução e o estado do cartão de boas-vindas (prazo pela data do servidor).
+import { HOME_SEMANAS, aparelhosSemMidia, ctxDoPerfil, dataSP, estadoCheckup, faltaParaGerar, homeView, semanasAte } from "@ciclo/core";
 import type { HomeRaw } from "@ciclo/core";
-import type { Env } from "./env.ts";
-import { date } from "./http.ts";
+import type { AuthUser, Env } from "./env.ts";
+import { HttpError, date, json, oneOf, readJson } from "./http.ts";
 import { getProfile, listGyms } from "./db.ts";
 import type { Handler } from "./comida.ts";
-import { json } from "./http.ts";
 
 const addDays = (iso: string, n: number) => new Date(Date.parse(iso + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 const diffDays = (a: string, b: string) => Math.round((Date.parse(b + "T12:00:00Z") - Date.parse(a + "T12:00:00Z")) / 864e5);
 const PERIODO_REGISTRO = 28;
 
-export async function getHome(env: Env, uid: string, createdAt: number, hoje: string) {
+/** Com uma série registrada (sessão vazia não conta como 1º treino). */
+const COM_SERIE = "EXISTS (SELECT 1 FROM set_log l WHERE l.user_id = s.user_id AND l.session_id = s.id)";
+
+export async function getHome(env: Env, u: Pick<AuthUser, "id" | "createdAt" | "onboardingDoneAt">, hoje: string) {
+  const uid = u.id, createdAt = u.createdAt;
   const from = semanasAte(hoje, HOME_SEMANAS)[0], recente = addDays(hoje, -(PERIODO_REGISTRO - 1));
   const [profile, gyms, r] = await Promise.all([
     getProfile(env, uid), listGyms(env, uid),
@@ -32,6 +36,15 @@ export async function getHome(env: Env, uid: string, createdAt: number, hoje: st
       env.DB.prepare("SELECT MAX(date) AS d FROM measurement WHERE user_id = ?1 AND (arm_cm IS NOT NULL OR waist_cm IS NOT NULL) AND date <= ?2").bind(uid, hoje),
       env.DB.prepare("SELECT MAX(date) AS d FROM checkin WHERE user_id = ?1 AND weight_kg IS NOT NULL AND date <= ?2").bind(uid, hoje),
       env.DB.prepare("SELECT gym_id AS gymId, equipment_id AS equipmentId FROM media WHERE user_id = ?1 AND deleted_at IS NULL AND gym_id IS NOT NULL AND equipment_id IS NOT NULL LIMIT 500").bind(uid),
+      // #73 (13 em diante)
+      env.DB.prepare("SELECT date, water_ml AS ml FROM checkout WHERE user_id = ?1 AND water_ml IS NOT NULL AND date BETWEEN ?2 AND ?3 LIMIT 60").bind(uid, recente, hoje),
+      env.DB.prepare("SELECT date, sleep_h AS horas FROM checkin WHERE user_id = ?1 AND sleep_h IS NOT NULL AND date BETWEEN ?2 AND ?3 LIMIT 60").bind(uid, recente, hoje),
+      env.DB.prepare(`SELECT MIN(s.date) AS d FROM session s WHERE s.user_id = ?1 AND ${COM_SERIE}`).bind(uid),
+      env.DB.prepare(`SELECT DISTINCT s.date AS date FROM session s WHERE s.user_id = ?1 AND s.date <= ?2 AND ${COM_SERIE} ORDER BY s.date DESC LIMIT 400`).bind(uid, hoje),
+      env.DB.prepare("SELECT MIN(date) AS d FROM measurement WHERE user_id = ?1 AND (arm_cm IS NOT NULL OR waist_cm IS NOT NULL)").bind(uid),
+      env.DB.prepare("SELECT DISTINCT date FROM food_log WHERE user_id = ?1 ORDER BY date LIMIT 7").bind(uid),
+      env.DB.prepare("SELECT MIN(created_at) AS t FROM week_plan WHERE user_id = ?1").bind(uid),
+      env.DB.prepare("SELECT boas_vindas_dispensado_em AS bv, perfil_adiado_em AS pa FROM ui_pref WHERE user_id = ?1").bind(uid),
     ]),
   ]);
   const rows = <T>(i: number) => r[i].results as T[];
@@ -49,12 +62,44 @@ export async function getHome(env: Env, uid: string, createdAt: number, hoje: st
     ultimaMedida: rows<{ d: string | null }>(10)[0]?.d ?? null,
     ultimoPeso: rows<{ d: string | null }>(11)[0]?.d ?? null,
   };
+  const pref = rows<{ bv: string | null; pa: string | null }>(20)[0];
+  const feitoEm = dataSP(u.onboardingDoneAt);
+  const checkupFeito = estadoCheckup(u.onboardingDoneAt != null, (profile as Record<string, any> | null)?.meta) === "feito";
+  Object.assign(raw, {
+    agua: rows<{ date: string; ml: number }>(13).map((x) => ({ date: x.date, litros: x.ml / 1000 })),
+    sono: rows<{ date: string; horas: number }>(14),
+    checkupEm: checkupFeito ? feitoEm : null,
+    primeiroTreinoEm: rows<{ d: string | null }>(15)[0]?.d ?? null,
+    diasTreino: rows<{ date: string }>(16).map((x) => x.date),
+    primeiraMedidaEm: rows<{ d: string | null }>(17)[0]?.d ?? null,
+    diasComida: rows<{ date: string }>(18).map((x) => x.date),
+    semanaEm: dataSP(rows<{ t: number | null }>(19)[0]?.t ?? null),
+    contaEm: dataSP(createdAt),
+    perfilEm: feitoEm && profile && (checkupFeito || !faltaParaGerar(profile).length) ? feitoEm : null,
+    boasVindasDispensadoEm: pref?.bv ?? null, perfilAdiadoEm: pref?.pa ?? null,
+  } satisfies Partial<HomeRaw>);
   const ctx = ctxDoPerfil(profile);
   const criada = new Date(createdAt).toISOString().slice(0, 10);
   const diasDevidos = Math.max(1, Math.min(7, diffDays(criada, hoje) + 1));
-  return homeView(raw, { ...ctx, hoje, diasDevidos, aparelhosSemMidia: aparelhosSemMidia(gyms, rows<{ gymId: string; equipmentId: string }>(12), ctx.prioridades) });
+  return homeView(raw, { ...ctx, hoje, hojeServidor: dataSP(Date.now())!, diasDevidos, aparelhosSemMidia: aparelhosSemMidia(gyms, rows<{ gymId: string; equipmentId: string }>(12), ctx.prioridades) });
+}
+
+/** #73 PATCH /api/home/preferencias: { boasVindas: "dispensar" } e/ou { perfil: "adiar" }. A data é a do servidor. */
+export async function salvarPreferencias(env: Env, uid: string, body: Record<string, unknown>, agora = Date.now()) {
+  const bv = body.boasVindas == null ? null : oneOf(body.boasVindas, "boasVindas", ["dispensar"] as const);
+  const pa = body.perfil == null ? null : oneOf(body.perfil, "perfil", ["adiar"] as const);
+  if (!bv && !pa) throw new HttpError(400, "diga boasVindas ou perfil");
+  const hoje = dataSP(agora)!;
+  // dispensar é para sempre: a 1ª data fica (COALESCE); adiar o perfil recomeça os 7 dias
+  await env.DB.prepare(`INSERT INTO ui_pref (user_id, boas_vindas_dispensado_em, perfil_adiado_em, updated_at) VALUES (?1, ?2, ?3, ?4)
+    ON CONFLICT(user_id) DO UPDATE SET boas_vindas_dispensado_em = COALESCE(ui_pref.boas_vindas_dispensado_em, excluded.boas_vindas_dispensado_em),
+      perfil_adiado_em = COALESCE(excluded.perfil_adiado_em, ui_pref.perfil_adiado_em), updated_at = excluded.updated_at`)
+    .bind(uid, bv ? hoje : null, pa ? hoje : null, agora).run();
+  const r = await env.DB.prepare("SELECT boas_vindas_dispensado_em AS bv, perfil_adiado_em AS pa FROM ui_pref WHERE user_id = ?1").bind(uid).first<{ bv: string | null; pa: string | null }>();
+  return { boasVindasDispensadoEm: r?.bv ?? null, perfilAdiadoEm: r?.pa ?? null };
 }
 
 export function registerHome(on: (method: string, path: string, h: Handler) => void) {
-  on("GET", "/api/home", async (req, env, _p, u) => json({ home: await getHome(env, u.id, u.createdAt, date(new URL(req.url).searchParams.get("date"))) }));
+  on("GET", "/api/home", async (req, env, _p, u) => json({ home: await getHome(env, u, date(new URL(req.url).searchParams.get("date"))) }));
+  on("PATCH", "/api/home/preferencias", async (req, env, _p, u) => json({ ok: true, ...(await salvarPreferencias(env, u.id, await readJson<Record<string, unknown>>(req, 1024))) }));
 }

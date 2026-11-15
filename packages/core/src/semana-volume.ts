@@ -3,8 +3,8 @@
 // - deload: fim do bloco (4 semanas de carga) ou antes, com ≥ 3 exercícios estagnados ou 2 semanas de prontidão "segurar".
 // O motivo vira texto curto para a tela da semana ("+1 série de tríceps: pouca dor, progrediu").
 
-import { MUSCLES, MUSCLE_IDS } from "./catalog.ts";
-import type { MuscleId } from "./catalog.ts";
+import { EXERCISE_BY_ID, MUSCLES, MUSCLE_IDS } from "./catalog.ts";
+import type { MuscleId, SubMuscleId } from "./catalog.ts";
 import { readiness } from "./checkin.ts";
 import type { Checkin } from "./checkin.ts";
 import { stalled } from "./loads.ts";
@@ -131,4 +131,31 @@ export function weekProgression(p: ProgressionInput): Progression {
   if (useSignals) for (const m of MUSCLE_IDS) signals[m] = { pump: avg(p.pump[m] ?? []), soreness, perf: perf[m] ?? null, freq: p.freq[m] ?? 0 };
   const adj = adjustVolume(p.base, offsets, signals);
   return { ...adj, targets: deload.on ? deloadTargets(adj.targets) : adj.targets, deload, stalled: stalledN };
+}
+
+// ---------- #74 volume por subparte (troca forçada credita pelo exercício FEITO) ----------
+/** Quanto cada série vale para a subparte, pela nota de eficiência: 3 = série direta (1), 2 = indireta (0,5), 1 = quase nada (0).
+ *  Contagem fracionada: docs/09-base-cientifica.md, seção "Volume por subparte". */
+export const CREDITO_NOTA: Record<1 | 2 | 3, number> = { 3: 1, 2: 0.5, 1: 0 };
+export type SubSets = Partial<Record<SubMuscleId, number>>;
+
+/** Séries de um exercício creditadas por subparte (as subpartes reais do exercício feito, não as do planejado). */
+export function creditoSubpartes(exId: string, series: number): SubSets {
+  const out: SubSets = {};
+  const ef = EXERCISE_BY_ID[exId]?.eficiencia;
+  if (!ef || !(series > 0)) return out;
+  for (const [s, nota] of Object.entries(ef) as [SubMuscleId, 1 | 2 | 3][]) { const v = series * CREDITO_NOTA[nota]; if (v > 0) out[s] = v; }
+  return out;
+}
+/** Volume por subparte de um conjunto de séries feitas (exercício → nº de séries). */
+export function volumeSubpartes(feitos: Record<string, number> | undefined): SubSets {
+  const out: SubSets = {};
+  for (const [id, k] of Object.entries(feitos ?? {})) for (const [s, v] of Object.entries(creditoSubpartes(id, k)) as [SubMuscleId, number][]) out[s] = (out[s] ?? 0) + v;
+  return out;
+}
+/** Séries por músculo do orçamento, sempre pelo músculo do exercício FEITO (igual ao que o Worker grava em set_log.muscle). */
+export function creditoMusculos(feitos: Record<string, number> | undefined): Partial<Record<MuscleId, number>> {
+  const out: Partial<Record<MuscleId, number>> = {};
+  for (const [id, k] of Object.entries(feitos ?? {})) { const m = EXERCISE_BY_ID[id]?.m; if (m && k > 0) out[m] = (out[m] ?? 0) + k; }
+  return out;
 }

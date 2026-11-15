@@ -4,6 +4,8 @@
 
 
 import { CARDIO_INFO, INFO } from "./catalog-info.ts";
+import { EFICIENCIA_POP } from "./catalog-eficiencia.ts";
+import type { Eficiencia, Popularidade } from "./catalog-eficiencia.ts";
 
 export type MuscleId =
   | "peito" | "costas" | "ombro" | "post" | "biceps" | "triceps"
@@ -122,6 +124,10 @@ export interface Exercise extends ExerciseInfo {
   fam?: string; ratio?: number; inc: number; prehab?: Joint[];
   /** Fora da montagem automática (acessório/isolado demais); continua na biblioteca e na edição manual. */
   planOff?: boolean;
+  /** #74 nota por subparte (3 principal · 2 pega bem · 1 pega pouco). docs/09-base-cientifica.md#eficiência-por-subparte */
+  eficiencia?: Eficiencia;
+  /** #74 1..5, de logs de apps de treino; só ordena listas e desempata. docs/09-base-cientifica.md#exercícios-mais-comuns */
+  popularidade?: Popularidade;
   type: "forca";
   images: ImageIdx[];
 }
@@ -274,7 +280,10 @@ const RAW: Exercise[] = [
   X("Ab_Roller", "Roda abdominal", "core", ["roda"], "corpo", [8, 12], 60, 2, { lombar: 2, ombro: 1 }, { inc: 0 }),
 ];
 /** Catálogo completo: dados do exercício + texto didático e músculos (catalog-info.ts). Imagens 0 (início) e 1 (fim). */
-export const EXERCISES: Exercise[] = RAW.map((e) => ({ ...e, ...INFO[e.id] }));
+export const EXERCISES: Exercise[] = RAW.map((e) => {
+  const ep = EFICIENCIA_POP[e.id];
+  return { ...e, ...INFO[e.id], ...(ep ? { eficiencia: ep[0], popularidade: ep[1] } : {}) };
+});
 export const EXERCISE_BY_ID: Record<string, Exercise> = Object.fromEntries(EXERCISES.map((e) => [e.id, e]));
 
 // ---------- cardio ----------

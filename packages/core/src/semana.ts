@@ -3,8 +3,10 @@
 // Regras: 2× por músculo antes de volume; 48 h entre estímulos do mesmo músculo; nunca compensar dobrado;
 // compensatório só aparece quando a regra diz (e só vira treino a pedido). Funções puras e determinísticas.
 
-import { EQUIPMENT_BY_ID, INTENSITIES, MUSCLES, MUSCLE_IDS } from "./catalog.ts";
-import type { Group, MuscleId } from "./catalog.ts";
+import { EQUIPMENT_BY_ID, EXERCISE_BY_ID, INTENSITIES, MUSCLES, MUSCLE_IDS, SUB_MUSCLES } from "./catalog.ts";
+import type { Group, MuscleId, SubMuscleId } from "./catalog.ts";
+import { creditoSubpartes } from "./semana-volume.ts";
+import { grupoDoExercicio, grupoDoMusculo, partePrincipal } from "./treino-atual.ts";
 import { cardioCounts, cardioDoseFor, placeCardio } from "./cardio.ts";
 import type { CardioDose, CardioEntry, CardioPlanned } from "./cardio.ts";
 import { planDay } from "./plan-day.ts";
@@ -36,6 +38,8 @@ export interface WeekProfile {
   prefs?: DayInput["prefs"]; pinned?: DayInput["pinned"]; avoid?: string[]; pains?: Pain[];
   /** objetivo do perfil (id) e o ajuste de cardio que o dono fez: a dose do cardio vem daí (#44) */
   goalId?: string | null; cardio?: Partial<CardioDose> | null;
+  /** #74 "Meu treino atual" (familiares fortes e fracos), iniciante e subparte alvo por músculo: só mudam a escolha do exercício */
+  familiar?: string[]; familiarFraco?: string[]; iniciante?: boolean; subAlvo?: DayInput["subAlvo"];
 }
 /** O que já aconteceu na semana: séries registradas por dia e presença marcada. */
 export interface WeekCtx {
@@ -50,12 +54,16 @@ export interface WeekInput extends WeekCtx {
   fixed?: Record<string, { plan: DayPlan; source: "claude" | "manual" }>; // treino salvo pelo Claude ou editado à mão
   cardioLog?: CardioEntry[];                                           // cardio registrado na semana (esporte conta): abate o planejado
   prev?: WeekPlan | null;                                              // versão anterior: dias que já passaram mantêm o plano
+  /** #74 séries feitas por dia e exercício (data → id → nº de séries): acha a troca forçada e repõe a subparte que faltou */
+  feitos?: Record<string, Record<string, number>>;
 }
 export interface WeekDay {
   date: string; dow: Dow; kind: DayKind; plan: DayPlan | null; gymId: string | null;
   opts: DayOpts; source: "auto" | "voce" | "claude"; warn: string[];
   /** cardio previsto para o dia pela dose do objetivo (só dias que ainda não passaram) */
   cardio?: CardioPlanned | null;
+  /** #74 subparte que entrou neste dia para repor uma troca forçada de um dia anterior, com o porquê */
+  repoe?: Reposicao[];
 }
 export interface WeekPlan { weekStart: string; targets: Record<MuscleId, number>; days: WeekDay[] }
 
@@ -116,6 +124,7 @@ function dayInputFor(inp: WeekInput, d: WeekDay, run: { done: Sets; freq: Sets }
     equipment: (p.gyms.find((g) => g.id === d.gymId)?.equipment ?? []).filter((q) => !d.opts.ocupados?.includes(q)), crowded: !!d.opts.crowded,
     prefs: p.prefs, pinned: p.pinned, avoid: p.avoid, pains: p.pains,
     estilo: d.opts.estilo ?? null, leve: !!d.opts.leve, adiantar: d.opts.adiantar ?? null,
+    familiar: p.familiar, familiarFraco: p.familiarFraco, iniciante: p.iniciante, subAlvo: p.subAlvo,
   };
 }
 
@@ -196,6 +205,7 @@ export function planWeek(inp: WeekInput): WeekPlan {
   const { groups, split } = decideSplits(inp, days, open);
   const run = baseline(inp, days);
   const openDays = days.filter((d) => open.has(d.date));
+  const repor = reposicoes(inp, days, openDays, groups);
   openDays.forEach((d, k) => {
     const i = days.indexOf(d);
     const fx = inp.fixed?.[d.date];
@@ -207,7 +217,16 @@ export function planWeek(inp: WeekInput): WeekPlan {
     } else {
       const rest = openDays.slice(k).filter((x) => x.kind === "treino" && !inp.fixed?.[x.date]);
       const groupDaysLeft = Object.fromEntries(GROUPS.map((g) => [g, Math.max(1, rest.filter((x) => groups.get(x.date)?.includes(g)).length)]));
-      plan = planDay({ ...dayInputFor(inp, d, run), daysLeft: Math.max(1, rest.length), split: split.get(d.date) ?? null, groupDaysLeft });
+      const rp = repor.get(d.date);
+      plan = planDay({ ...dayInputFor(inp, d, run), daysLeft: Math.max(1, rest.length), split: split.get(d.date) ?? null, groupDaysLeft,
+        ...(rp ? { repor: Object.fromEntries(rp.map((x) => [x.m, { sub: x.troca.parte, sets: x.sets }])) } : {}) });
+      if (rp) {
+        const feitas = rp.filter((x) => plan.items.some((i) => partePrincipal(EXERCISE_BY_ID[i.exerciseId] ?? {}) === x.troca.parte));
+        if (feitas.length) {
+          d.repoe = feitas.map((x) => ({ parte: x.troca.parte, troca: x.troca, texto: motivoReposicao(x.troca, d.date) }));
+          plan = { ...plan, why: [...d.repoe.map((r) => r.texto), ...plan.why] };
+        }
+      }
     }
     d.plan = plan;
     for (const m of musclesOf(plan.perMuscle)) { run.done[m] = n(run.done[m]) + n(plan.perMuscle[m]); run.freq[m] = n(run.freq[m]) + 1; }
@@ -216,6 +235,65 @@ export function planWeek(inp: WeekInput): WeekPlan {
   });
   planCardioWeek(inp, days);
   return { weekStart: inp.weekStart, targets: inp.targets, days };
+}
+
+// ---------- #74 troca forçada: credita pelo exercício feito e repõe a subparte que faltou ----------
+export interface Troca {
+  date: string; planejado: string; feito: string;
+  /** subparte principal do planejado que o feito não trabalha (ex.: ombro_post) */
+  parte: SubMuscleId;
+  /** séries planejadas que ficaram sem crédito nessa subparte */
+  falta: number;
+}
+export interface Reposicao { parte: SubMuscleId; troca: Troca; texto: string }
+
+/** Trocas do dia: exercício planejado não feito + exercício feito fora do plano no mesmo grupo grande (ombro, peito…),
+ *  quando o feito não tem a mesma subparte principal. O crédito vem das subpartes reais do feito (eficiência). */
+export function trocasDoDia(plan: DayPlan | null | undefined, feitos: Record<string, number> | undefined, date: string): Troca[] {
+  if (!plan?.items?.length || !feitos) return [];
+  const planejados = plan.items.filter((i) => !i.prehab);
+  const ids = new Set(planejados.map((i) => i.exerciseId));
+  const extras = Object.keys(feitos).filter((id) => n(feitos[id]) > 0 && !ids.has(id) && EXERCISE_BY_ID[id]);
+  const usados = new Set<string>(), out: Troca[] = [];
+  for (const p of planejados) {
+    if (n(feitos[p.exerciseId]) > 0) continue;
+    const pe = EXERCISE_BY_ID[p.exerciseId], parte = pe ? partePrincipal(pe) : null;
+    if (!pe || !parte) continue;
+    const g = grupoDoMusculo(p.muscle);
+    const feito = extras.find((id) => !usados.has(id) && grupoDoExercicio(EXERCISE_BY_ID[id]) === g);
+    if (!feito) continue; // pulou sem trocar: o orçamento da semana já cobra
+    usados.add(feito);
+    if (partePrincipal(EXERCISE_BY_ID[feito]) === parte) continue; // trocou na mesma parte: nada falta
+    const falta = Math.ceil(p.sets - n(creditoSubpartes(feito, n(feitos[feito]))[parte]));
+    if (falta > 0) out.push({ date, planejado: p.exerciseId, feito, parte, falta });
+  }
+  return out;
+}
+
+const DIA_NM: Record<Dow, string> = { seg: "na segunda", ter: "na terça", qua: "na quarta", qui: "na quinta", sex: "na sexta", sab: "no sábado", dom: "no domingo" };
+const dowOf = (iso: string): Dow => DOWS[(new Date(iso + "T12:00:00Z").getUTCDay() + 6) % 7];
+const exNm = (id: string) => { const x = EXERCISE_BY_ID[id]?.nm ?? id; return x.charAt(0).toLowerCase() + x.slice(1); };
+/** O porquê, em uma frase (Semana, Treino e, depois, o Hoje): "Ombro posterior entrou na quinta: na terça você trocou … por …". */
+export function motivoReposicao(t: Troca, diaRepoe: string): string {
+  const quando = DIA_NM[dowOf(diaRepoe)], antes = DIA_NM[dowOf(t.date)];
+  return `${SUB_MUSCLES[t.parte].nm} entrou ${quando}: ${antes} você trocou ${exNm(t.planejado)} por ${exNm(t.feito)}.`;
+}
+
+/** Em que dia aberto cada troca é reposta: o 1º dia de treino depois dela que já treina o grupo do músculo (sem dia fixado à mão). */
+function reposicoes(inp: WeekInput, days: WeekDay[], openDays: WeekDay[], groups: Map<string, Group[]>) {
+  const out = new Map<string, { m: MuscleId; sets: number; troca: Troca }[]>();
+  if (!inp.feitos) return out;
+  const trocas = days.filter((d) => isClosed(d.date, inp)).flatMap((d) => trocasDoDia(d.plan, inp.feitos?.[d.date], d.date));
+  for (const t of trocas) {
+    const m = SUB_MUSCLES[t.parte].muscle, g = MUSCLES[m].group;
+    const dia = openDays.find((d) => d.date > t.date && d.kind === "treino" && !inp.fixed?.[d.date] && (groups.get(d.date) ?? []).includes(g));
+    if (!dia) continue;
+    const lista = out.get(dia.date) ?? [];
+    const ja = lista.find((x) => x.m === m);
+    if (ja) ja.sets += t.falta; else lista.push({ m, sets: t.falta, troca: t });
+    out.set(dia.date, lista);
+  }
+  return out;
 }
 
 /** Cardio da semana (#44): a dose vem do objetivo do perfil; o que já foi registrado (futsal conta) abate;

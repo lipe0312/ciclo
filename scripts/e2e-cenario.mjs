@@ -4,15 +4,19 @@
 // Só localhost. Roteiro manual equivalente: docs/11-testar-antes-de-subir.md
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { CENARIOS, PORTA_CTRL, urlAbertura } from "./cenarios/index.mjs";
+import { CENARIOS, urlAbertura } from "./cenarios/index.mjs";
 import { abrirChrome, sleep } from "./cenarios/cdp.mjs";
 
-const PORTA = 8793;
-const ROTEIROS = { "primeiro-acesso": primeiroAcesso, pular };
+const PORTA = Number(process.env.CENARIO_PORTA) || 8793;
+const ROTEIROS = { "primeiro-acesso": primeiroAcesso, pular, "treino-atual": treinoAtual };
+/** Cenário de cada roteiro (padrão: vazio). #74: o "Meu treino atual" roda na conta em uso (semi). */
+const CENARIO_DO = { "treino-atual": "semi" };
+const CENARIO = CENARIO_DO[process.argv[2]] ?? "vazio";
 const nome = process.argv[2];
 if (!ROTEIROS[nome]) { console.error(`✖ roteiro: ${Object.keys(ROTEIROS).join(" | ")}`); process.exit(2); }
 const BASE = (process.env.CICLO_URL ?? `http://localhost:${PORTA}`).replace(/\/$/, "");
 if (!["localhost", "127.0.0.1"].includes(new URL(BASE).hostname)) { console.error("✖ só roda em localhost"); process.exit(2); }
+const CTRL = Number(process.env.CENARIO_CTRL_PORTA) || Number(new URL(BASE).port || 80) + 4; // controle do cenário (reset)
 
 let n = 0;
 async function passo(titulo, fn, c) {
@@ -28,11 +32,11 @@ const ok = (cond, msg) => { if (!cond) throw new Error(msg); };
 
 async function subir() {
   if (process.env.CICLO_URL) { // cenário vazio já no ar: reseta
-    const r = await fetch(`http://127.0.0.1:${PORTA_CTRL}/reset`, { method: "POST", headers: { "x-ciclo-cenario": "reset" } }).catch(() => null);
-    if (!r?.ok) throw new Error("não achei o dev:cenario vazio no ar (npm run dev:cenario -- vazio)");
+    const r = await fetch(`http://127.0.0.1:${CTRL}/reset`, { method: "POST", headers: { "x-ciclo-cenario": "reset" } }).catch(() => null);
+    if (!r?.ok) throw new Error(`não achei o dev:cenario ${CENARIO} no ar (npm run dev:cenario -- ${CENARIO})`);
     return () => {};
   }
-  const filho = spawn(process.execPath, [fileURLToPath(new URL("./dev-cenario.mjs", import.meta.url)), "vazio", "--sem-abrir", "--porta", String(PORTA)], { stdio: ["ignore", "pipe", "pipe"] });
+  const filho = spawn(process.execPath, [fileURLToPath(new URL("./dev-cenario.mjs", import.meta.url)), CENARIO, "--sem-abrir", "--porta", String(PORTA)], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, CENARIO_CTRL_PORTA: String(CTRL) } });
   let log = ""; filho.stdout.on("data", (d) => { log += d; }); filho.stderr.on("data", (d) => { log += d; });
   // #71 espera a porta liberar: no `npm run gate` o próximo roteiro sobe o cenário na mesma porta logo em seguida
   const parar = async () => {
@@ -40,9 +44,9 @@ async function subir() {
     for (let i = 0; i < 50; i++) { if (!(await fetch(`${BASE}/api/health`).then(() => true, () => false))) return; await sleep(200); }
     filho.kill("SIGKILL");
   };
-  const fim = Date.now() + 180_000;
+  const fim = Date.now() + 300_000; // #74 o semi grava 2 semanas de treinos pela API (limite de escritas por minuto)
   while (!log.includes("Resetar:") && Date.now() < fim && filho.exitCode === null) await sleep(300);
-  if (!log.includes("Resetar:")) { parar(); throw new Error(`o cenário vazio não subiu:\n${log.split("\n").slice(-15).join("\n")}`); }
+  if (!log.includes("Resetar:")) { parar(); throw new Error(`o cenário ${CENARIO} não subiu:\n${log.split("\n").slice(-15).join("\n")}`); }
   return parar;
 }
 
@@ -56,7 +60,7 @@ async function escrever(c, seletor, valor) {
 }
 const abrirNoCenario = async (c, tela) => { // 1 nova tentativa: a primeira navegação do Chrome recém-aberto às vezes perde o redirecionamento
   for (let t = 0; t < 2; t++) {
-    await c.abrir(urlAbertura("vazio", tela, new URL(BASE).port));
+    await c.abrir(urlAbertura(CENARIO, tela, new URL(BASE).port));
     if (await c.esperar(`location.hash === '#${tela}' && document.querySelector('.pp, .view.on')`)) return;
   }
 };
@@ -180,6 +184,54 @@ async function primeiroAcesso(c) {
       await c.abrir(`${BASE}/#mais`); await c.esperar("location.hash === '#mais'");
     }
   }, c);
+  await boasVindas(c);
+}
+
+// #73 O cartão "Sua semana está pronta" some sozinho e não volta: depois de "Dispensar" e depois de registrar uma série.
+const HOJE_JS = "new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())";
+const CARTAO = "Sua semana está pronta";
+const temCartao = (c) => c.ev(`(document.querySelector('#app')?.innerText ?? '').includes(${JSON.stringify(CARTAO)})`);
+const homePronta = (c) => c.esperar("location.hash === '#hoje' && (document.querySelector('#app')?.innerText ?? '').includes('O caminho até aqui')", 10000);
+const boasVindasServidor = (c) => c.ev(`fetch('/api/home?date=' + ${HOJE_JS}).then((r) => r.json()).then((j) => j.home.boasVindas)`);
+
+async function boasVindas(c) {
+  await passo("11. Hoje: o cartão 'Sua semana está pronta' aparece depois dos Primeiros passos, abaixo do treino de hoje", async () => {
+    await c.abrir(`${BASE}/#hoje`);
+    ok(await homePronta(c), `o Hoje não carregou (${(await c.texto()).replace(/\s+/g, " ").slice(0, 160)})`);
+    ok(await temCartao(c), "sem o cartão de boas-vindas");
+    ok(await c.ev(`(() => { const t = document.querySelector('#app').innerText; return t.indexOf('Sua semana') < t.indexOf(${JSON.stringify(CARTAO)}); })()`), "o treino de hoje não está acima do cartão");
+  }, c);
+  await passo("11. ✕ Dispensar: o cartão some, o servidor grava e ele não volta ao recarregar", async () => {
+    await c.clicar("Dispensar o cartão de boas-vindas");
+    ok(await c.esperar(`!(document.querySelector('#app')?.innerText ?? '').includes(${JSON.stringify(CARTAO)})`, 3000), "o cartão continua na tela");
+    ok(await c.esperar(`fetch('/api/home?date=' + ${HOJE_JS}).then((r) => r.json()).then((j) => j.home.boasVindas === 'oculto')`, 5000), "o servidor não gravou a dispensa");
+    await c.recarregar(); ok(await homePronta(c), "o Hoje não recarregou");
+    ok(!(await temCartao(c)), "o cartão voltou ao recarregar");
+  }, c);
+  await passo("11. em outro aparelho (sem o cache do navegador) o cartão também não volta", async () => {
+    await c.ev("localStorage.clear()"); await c.recarregar(); ok(await homePronta(c), "o Hoje não recarregou");
+    ok(!(await temCartao(c)), "o cartão voltou sem o cache do aparelho");
+  }, c);
+  await passo("12. outra conta com o checkup feito: o cartão aparece e o servidor diz 'mostrar'", async () => {
+    const perfil = await c.ev(`fetch('/api/state?date=' + ${HOJE_JS}).then((r) => r.json()).then((j) => j.profile)`);
+    await c.send("Network.setExtraHTTPHeaders", { headers: { "x-dev-user": "cenario-vazio-serie" } });
+    const r = await c.ev(`(async () => { const j = async (m, p, b) => { const r = await fetch(p, { method: m, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }); if (!r.ok) throw new Error(m + ' ' + p + ' → ' + r.status); return r.json(); };
+      await j('PUT', '/api/profile', { data: ${JSON.stringify(perfil)} }); await j('PATCH', '/api/account', { onboarding: 'concluido' }); return (await fetch('/api/account').then((x) => x.json())).account?.email; })()`);
+    ok(String(r).startsWith("cenario-vazio-serie@"), `não trocou de conta (${r})`);
+    await c.ev("localStorage.clear()"); await c.recarregar(); ok(await homePronta(c), `o Hoje da 2ª conta não carregou (${(await c.texto()).replace(/\s+/g, " ").slice(0, 160)})`);
+    igual(await boasVindasServidor(c), "mostrar", "boasVindas no servidor");
+    ok(await temCartao(c), "sem o cartão na 2ª conta");
+  }, c);
+  await passo("12. registra uma série: o cartão some e não volta ao recarregar", async () => {
+    const st = await c.ev(`(async () => { const j = async (m, p, b) => { const r = await fetch(p, { method: m, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }); if (!r.ok) throw new Error(m + ' ' + p + ' → ' + r.status); return r.json(); };
+      const s = await j('POST', '/api/sessions', { date: ${HOJE_JS}, plan: { name: 'teste e2e', items: [] } });
+      await j('POST', '/api/sessions/' + s.id + '/sets', { exerciseId: 'Cable_Seated_Lateral_Raise', setNo: 1, kg: 6, reps: 12 });
+      await j('POST', '/api/sessions/' + s.id + '/finish', { feedback: { feel: 'bom' } }); return 'ok'; })()`);
+    igual(st, "ok", "série registrada");
+    igual(await boasVindasServidor(c), "oculto", "boasVindas no servidor depois da série");
+    await c.abrir(`${BASE}/#hoje`); await c.recarregar(); ok(await homePronta(c), "o Hoje não recarregou");
+    ok(!(await temCartao(c)), "o cartão continua depois da 1ª série");
+  }, c);
 }
 
 async function pular(c) {
@@ -200,8 +252,65 @@ async function pular(c) {
   await passo("Hoje mostra o cartão 'Complete o Perfil de treino'", async () => ok((await c.texto()).includes("Complete o Perfil de treino"), "sem o cartão"), c);
 }
 
+// #74 "Meu treino atual" (cenário semi): sem cadastro a geração segue igual; cadastrando "A: Ombro" com o crucifixo inverso
+// apoiado no banco (que não é o padrão do gerador), a semana passa a usar ele.
+const CRUCIFIXO = "Bent_Over_Dumbbell_Rear_Delt_Raise_With_Head_On_Bench";
+const hojeSP = "new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())";
+/** Treino de hoje da semana com foco em ombro posterior (o dia de hoje está sempre aberto no semi). */
+const diaComPosterior = (c) => c.ev(`(async () => { const d = ${hojeSP};
+  const r = await fetch('/api/week/day/' + d, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'gerar', today: d, opts: { focus: ['post'], minutes: 90 } }) });
+  const w = (await r.json()).week; return (w?.days.find((x) => x.date === d)?.plan?.items ?? []).map((i) => i.exerciseId); })()`);
+
+async function treinoAtual(c) {
+  let antes = [];
+  await passo("abre o Treino da conta em uso; há o atalho opcional 'Registrar meu treino atual'", async () => {
+    await abrirNoCenario(c, "treino");
+    ok(await c.esperar("document.querySelector('#app')?.innerText.includes('Registrar meu treino atual')", 10000), "sem o atalho no Treino");
+  }, c);
+  await passo("sem cadastro, a semana continua sendo gerada (e não usa o crucifixo apoiado no banco)", async () => {
+    antes = await diaComPosterior(c);
+    ok(antes.length >= 3, `treino de hoje vazio: ${JSON.stringify(antes)}`);
+    ok(!antes.includes(CRUCIFIXO), "o padrão já era o crucifixo apoiado: o roteiro não prova nada");
+  }, c);
+  await passo("o atalho abre o Meu treino atual; nada marcado ao abrir", async () => {
+    await c.clicar("Registrar meu treino atual");
+    ok(await c.esperar("location.hash === '#perfil/treino-atual' && !!document.querySelector('.ta')"), `tela: ${await c.hash()}`);
+    igual(await marcados(c, ".ta"), [], "pré-marcado");
+  }, c);
+  await passo("'Sim' cria o Treino A; o 1º nível só tem grupos grandes (nunca subparte)", async () => {
+    await c.clicar("Sim", ".ta");
+    const grupos = await c.ev("[...document.querySelectorAll('.ta-grupos .chip')].map((b) => b.textContent.trim())");
+    igual(grupos, ["Peito", "Costas", "Ombro", "Bíceps", "Tríceps", "Pernas", "Abdômen"], "grupos");
+  }, c);
+  await passo("monta 'A: Ombro': nome A e o grupo Ombro, com a lista por popularidade e foto", async () => {
+    ok(await escrever(c, "#ta-nome-0", "A"), "sem o campo do nome");
+    await c.clicar("Ombro", ".ta-grupos");
+    ok(await c.esperar("document.querySelectorAll('#ta-g-ombro .ta-ex img').length >= 4"), "sem a lista do grupo com foto");
+  }, c);
+  await passo("'Digite você mesmo' acha o crucifixo inverso apoiado (busca em tudo) e Enter adiciona", async () => {
+    await c.clicar("Não achou? Digite você mesmo", "#ta-g-ombro");
+    ok(await escrever(c, "#ta-0-ombro-in", "crucifixo inverso apoiado"), "sem o campo de busca");
+    ok(await c.esperar("document.querySelector('#ta-0-ombro-in')?.getAttribute('aria-expanded') === 'true' && document.querySelectorAll('#ta-0-ombro-lb [role=option]').length > 0"), "sem sugestões");
+    await c.ev("document.querySelector('#ta-0-ombro-in').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))");
+    ok(await c.esperar("document.querySelector('.ta-sel')?.innerText.includes('Crucifixo inverso apoiado no banco')"), "o exercício não entrou no treino");
+  }, c);
+  await passo("a cobertura marca Ombro como informado", async () => {
+    ok(await c.ev("document.querySelector('.ta-cob-c.on')?.textContent.includes('Ombro')"), "Ombro sem ✓");
+  }, c);
+  await passo("'Salvar e refazer a semana' grava o perfil e abre a Semana", async () => {
+    await c.clicar("Salvar e refazer a semana");
+    ok(await c.esperar("location.hash === '#semana'", 15000), `ficou em ${await c.hash()}`);
+    const st = await c.ev(`fetch('/api/state?date=' + ${hojeSP}).then((r) => r.json())`);
+    igual(st.profile?.treinoAtual, { divisoes: [{ nome: "A", grupos: ["ombro"], exercicios: [{ id: CRUCIFIXO }] }] }, "treinoAtual salvo");
+  }, c);
+  await passo("a semana gerada usa o crucifixo inverso que ela já faz", async () => {
+    const depois = await diaComPosterior(c);
+    ok(depois.includes(CRUCIFIXO), `não usou: ${JSON.stringify(depois)}`);
+  }, c);
+}
+
 const parar = await subir();
-const chrome = await abrirChrome({ usuario: CENARIOS.vazio.slug });
+const chrome = await abrirChrome({ usuario: CENARIOS[CENARIO].slug });
 let falhou = false;
 try { await ROTEIROS[nome](chrome); }
 catch { falhou = true; }

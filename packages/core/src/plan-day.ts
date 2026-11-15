@@ -2,8 +2,9 @@
 // planDay monta a sessão de HOJE a partir do que falta, dos dias restantes, do tempo,
 // da academia ativa, das preferências e do mapa de dor. Função pura e determinística.
 
-import { EXERCISES, EXERCISE_BY_ID, EQUIPMENT_BY_ID, MUSCLES, MUSCLE_IDS, REGION_BY_ID } from "./catalog.ts";
-import type { Exercise, Group, Joint, Kind, MuscleId } from "./catalog.ts";
+import { EXERCISES, EXERCISE_BY_ID, EQUIPMENT_BY_ID, MUSCLES, MUSCLE_IDS, REGION_BY_ID, SUB_MUSCLES } from "./catalog.ts";
+import type { Exercise, Group, Joint, Kind, MuscleId, SubMuscleId } from "./catalog.ts";
+
 
 export type Mode = "normal" | "compensatorio" | "expresso";
 export type Pref = "livre" | "maquina" | "cabo" | "tanto_faz";
@@ -34,6 +35,15 @@ export interface DayInput {
   estilo?: "livre" | "maquina" | null;
   leve?: boolean;
   adiantar?: MuscleId | null;
+  /** #74 "Meu treino atual": exercícios que a pessoa já faz (fortes) e os que só casam com o texto livre dela (fracos). */
+  familiar?: string[];
+  familiarFraco?: string[];
+  /** #74 iniciante (nunca treinou / "estou começando"): a popularidade desempata. */
+  iniciante?: boolean;
+  /** #74 subparte alvo por músculo (padrão: ALVO_PADRAO; sem alvo = a melhor subparte do músculo). */
+  subAlvo?: Partial<Record<MuscleId, SubMuscleId>>;
+  /** #74 troca forçada: subparte que ficou sem estímulo e quantas séries repor (nunca passa do que falta na semana). */
+  repor?: Partial<Record<MuscleId, { sub: SubMuscleId; sets: number }>>;
 }
 
 export interface PlanItem {
@@ -66,6 +76,30 @@ export const PREHAB: Partial<Record<Joint, string[]>> = {
 };
 const n = (v: number | undefined) => v ?? 0;
 
+// #74 Termos do ranqueamento (docs/09-base-cientifica.md, seção "Como o gerador usa as notas").
+/** Já está no "Meu treino atual" (forte: abaixo só do "sempre esse" fixado, +5). */
+export const FAMILIAR = 4;
+/** O texto livre da pessoa casa com o nome/apelido do exercício (sinal fraco). */
+export const FAMILIAR_FRACO = 1.5;
+/** × nota de eficiência (1–3) na subparte alvo. docs/09-base-cientifica.md#eficiência-por-subparte */
+export const EFICIENCIA_PESO = 1;
+/** × popularidade (1–5), só para iniciante e só como desempate. docs/09-base-cientifica.md#exercícios-mais-comuns */
+export const POPULAR_PESO = 0.05;
+/** Exercício principal da subparte que uma troca forçada deixou sem estímulo (acima do familiar, abaixo do fixado). */
+export const REPOSICAO = 4.5;
+/** Alvo padrão: o orçamento "ombro" é o ombro LATERAL (o anterior já vem dos supinos e desenvolvimentos). */
+export const ALVO_PADRAO: Partial<Record<MuscleId, SubMuscleId>> = { ombro: "ombro_lat" };
+
+/** Nota do exercício na subparte alvo; sem alvo, a melhor nota entre as subpartes que contam no músculo. */
+export function notaAlvo(ex: Exercise, m: MuscleId, alvo?: SubMuscleId | null): number {
+  const ef = ex.eficiencia;
+  if (!ef) return 2;
+  if (alvo) return ef[alvo] ?? 0;
+  let best = 0;
+  for (const [s, v] of Object.entries(ef) as [SubMuscleId, number][]) if (SUB_MUSCLES[s]?.muscle === m && v > best) best = v;
+  return best;
+}
+
 /** Exercício é permitido com estas dores? intensidade 3 bloqueia qualquer estresse; 1 só o alto. */
 export function painBlocks(ex: Exercise, pains: Pain[]): boolean {
   for (const p of pains) {
@@ -77,10 +111,14 @@ export function painBlocks(ex: Exercise, pains: Pain[]): boolean {
   return false;
 }
 
-export function candidates(m: MuscleId, inp: Pick<DayInput, "equipment" | "crowded" | "prefs" | "pains" | "pinned" | "avoid" | "estilo">): { ex: Exercise; score: number; blockedByPain: boolean }[] {
+type CandInput = Pick<DayInput, "equipment" | "crowded" | "prefs" | "pains" | "pinned" | "avoid" | "estilo" | "familiar" | "familiarFraco" | "iniciante" | "subAlvo" | "repor">;
+export interface Candidate { ex: Exercise; score: number; blockedByPain: boolean; familiar: boolean; nota: number }
+export function candidates(m: MuscleId, inp: CandInput): Candidate[] {
   const eq = new Set(inp.equipment);
   const pref = inp.prefs?.[m];
-  const out: { ex: Exercise; score: number; blockedByPain: boolean }[] = [];
+  const rp = inp.repor?.[m];
+  const alvo = rp?.sub ?? inp.subAlvo?.[m] ?? ALVO_PADRAO[m] ?? null;
+  const out: Candidate[] = [];
   EXERCISES.forEach((ex, idx) => {
     if (ex.m !== m || ex.id === "Scapular_Pull-Up" || ex.planOff) return; // só aquecimento / acessório
     if (!ex.eq.every((q) => eq.has(q))) return;
@@ -93,7 +131,13 @@ export function candidates(m: MuscleId, inp: Pick<DayInput, "equipment" | "crowd
     if (ex.stretch) score += 1;
     if (inp.crowded) score -= 1.5 * ex.eq.reduce((s, q) => s + (EQUIPMENT_BY_ID[q]?.busy ?? 0), 0);
     if (ex.prehab) score -= 1.5; // prehab não é a 1ª escolha para hipertrofia
-    out.push({ ex, score, blockedByPain });
+    const nota = notaAlvo(ex, m, alvo);
+    score += EFICIENCIA_PESO * nota;
+    const familiar = !!inp.familiar?.includes(ex.id);
+    if (familiar) score += FAMILIAR; else if (inp.familiarFraco?.includes(ex.id)) score += FAMILIAR_FRACO;
+    if (inp.iniciante && !inp.familiar?.length) score += POPULAR_PESO * (ex.popularidade ?? 0);
+    if (rp && (ex.eficiencia?.[rp.sub] ?? 0) >= 3) score += REPOSICAO;
+    out.push({ ex, score, blockedByPain, familiar, nota });
   });
   return out.sort((a, b) => b.score - a.score);
 }
@@ -131,13 +175,16 @@ export function planDay(inp: DayInput): DayPlan {
     if (focus?.includes(m)) sets = Math.max(sets, 4);
     if (lowFreq && target > 0) sets = Math.max(sets, 2);
     sets = Math.min(sets, isPrio(m) ? caps.p : caps.o);
+    // troca forçada (#74): garante a subparte que faltou, só até o que falta na semana (nunca compensa em dobro)
+    const rp = inp.repor?.[m];
+    if (rp && deficit > 0) sets = Math.max(sets, Math.min(rp.sets, deficit, isPrio(m) ? caps.p : caps.o));
     // adiantar: +2 séries do que falta na semana (nunca passa do déficit, então nada dobra)
     const adiant = inp.adiantar === m && deficit > sets;
     if (adiant) sets = Math.min(deficit, sets + 2);
 
     const max = inp.maxPerMuscle?.[m];
     if (max != null) sets = Math.min(sets, Math.max(0, max));
-    if (sets > 0) alloc.push({ m, sets, deficit, lvl: focus?.includes(m) || adiant ? 2 : inp.priorities.includes(m) ? 1 : 0 });
+    if (sets > 0) alloc.push({ m, sets, deficit, lvl: focus?.includes(m) || adiant ? 2 : inp.priorities.includes(m) || rp ? 1 : 0 });
   }
 
   // 3. prehab pelas dores (reserva ~2 min por série)
@@ -193,7 +240,9 @@ export function planDay(inp: DayInput): DayPlan {
     const alts = (skip: string[]) => ok.filter((c) => !skip.includes(c.ex.id)).slice(0, 3).map((c) => c.ex.id);
     const first = ok[0].ex;
     if (a.sets >= 5 && ok.length > 1) {
-      const second = ok.find((c) => c.ex.kind !== first.kind)?.ex ?? ok[1].ex;
+      // quem já treina (#74): o 2º exercício também vem do treino atual quando houver
+      const famOk = ok[0].familiar ? ok.filter((c, k) => k > 0 && c.familiar) : [];
+      const second = (famOk.find((c) => c.ex.kind !== first.kind) ?? famOk[0] ?? ok.find((c) => c.ex.kind !== first.kind) ?? ok[1]).ex;
       const s1 = Math.ceil(a.sets / 2);
       items.push(item(first, s1, alts([first.id, second.id])));
       items.push(item(second, a.sets - s1, alts([first.id, second.id])));

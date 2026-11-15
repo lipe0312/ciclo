@@ -11,6 +11,7 @@ import { ANCHORS, ANCHOR_DEFAULT, BODY, DAYS_LONG, GOALS, INICIO, LIM } from "..
 import { Mic } from "../../lib/voz/index.tsx";
 import { DOW, DOW_NM, fmt, getPath, setPath } from "../../lib/util.ts";
 import { CATS } from "../claude/caixa.tsx";
+import TreinoAtual from "./treino-atual.tsx";
 
 const pr = () => S.profile;
 const pset = (k: string, v: unknown) => { setPath(S.profile, k, v); profileChanged(); commit(); };
@@ -33,6 +34,7 @@ const BLOCOS: Bloco[] = [
   { id: "voce", nm: "Você", icon: "user", key: "voce", why: "Calibra o ritmo de ganho e o alerta de cintura.", resumo: () => `${ou(pr().age, " anos")} · ${ou(pr().heightCm, " cm")} · ${ou(pr().weightKg, " kg")} · ${BODY.find((b) => b[0] === pr().bodyType)?.[1] ?? ""}` },
   { id: "experiencia", nm: "Experiência e cargas", icon: "clock", key: "experiencia", why: "Muda quantas séries você faz e a carga do 1º treino.", resumo: () => `${LV[pr().level ?? -1] ?? "não respondido"} · ${pr().remembered.length ? `${pr().remembered.length} carga(s) lembrada(s)` : "calibra no 1º treino"}` },
   { id: "rotina", nm: "Rotina da semana", icon: "cal", key: "rotina", why: "Muda como as séries se distribuem nos dias em que você realmente vai.", resumo: () => `${ou(pr().daysTarget, " dias")} · ${ou(pr().minutes, " min")} · semana começa ${DAYS_LONG.find((d) => d[0] === pr().weekStart)?.[1].toLowerCase() ?? ""}` },
+  { id: "treino-atual", nm: "Meu treino atual", icon: "dumb", why: "Opcional: o treino gerado prioriza os exercícios que você já faz.", resumo: () => { const t = pr().treinoAtual; if (!t) return "não informado"; if (!t.divisoes.length) return "estou começando"; const n = t.divisoes.reduce((a, d) => a + d.exercicios.length, 0); return `${t.divisoes.length} treino(s) · ${n} exercício(s) · ${t.divisoes.map((d) => d.nome).join(", ")}`; } },
   { id: "preferencias", nm: "Preferências por músculo", icon: "swap", key: "preferencias", why: "Muda quais exercícios entram e em que aparelho.", resumo: () => `${Object.values(pr().prefs).filter((v) => v && v !== "tanto_faz").length} músculo(s) com preferência · formato ${ou(pr().dynamics)}` },
   { id: "mobilidade", nm: "Mobilidade", icon: "body", key: "mobilidade", why: "Tira os exercícios que doem ao agachar fundo ou levantar o braço.", resumo: () => `agachar ${pr().mobility.squat == null ? "—" : pr().mobility.squat ? "sem dor" : "com dor"} · braço acima da cabeça ${pr().mobility.overhead == null ? "—" : pr().mobility.overhead ? "sem dor" : "com dor"}` },
   { id: "claude", nm: "Como o Chat trabalha com você", icon: "chat", key: "claude", why: "Define o que ele muda sozinho, o tom e qual modelo responde cada pedido.", resumo: () => `${({ so_sugere: "só sugere", carga_sozinho: "carga sozinho, plano com aprovação", tudo: "tudo automático" } as Record<string, string>)[pr().autonomy]} · tom ${pr().tone}` },
@@ -122,7 +124,7 @@ function Prioridades() {
       <SeletorPrioridades onChange={onChange} /></details></>;
 }
 
-const CORPO_BLOCO: Record<string, () => any> = { objetivo: Objetivo, prioridades: Prioridades, voce: Corpo, experiencia: Experiencia, rotina: Rotina, preferencias: Preferencias, mobilidade: Mobilidade, claude: Chat, comida: Comida };
+const CORPO_BLOCO: Record<string, () => any> = { "treino-atual": TreinoAtual, objetivo: Objetivo, prioridades: Prioridades, voce: Corpo, experiencia: Experiencia, rotina: Rotina, preferencias: Preferencias, mobilidade: Mobilidade, claude: Chat, comida: Comida };
 
 const Selo = ({ ok }: { ok: boolean }) => <span class={`badge ${ok ? "ok" : "warn"}`}>{ok ? <><Icon id="check" />completo</> : "dá para melhorar"}</span>;
 

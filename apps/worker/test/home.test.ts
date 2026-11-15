@@ -60,3 +60,72 @@ test("home: conta nova → vazio; data inválida → 400", async () => {
   assert.equal((await a("GET", "/api/home?date=ontem")).status, 400);
   assert.equal((await a("GET", "/api/home")).status, 400);
 });
+
+// ---------- #73 cartão de boas-vindas, caminho de evolução e médias ----------
+const PERFIL = { level: 1, priorities: ["ombro", "biceps"], minutes: 60, daysTarget: 4, daysUsual: ["seg", "qui"], places: ["academia"], goal: { id: "bracos_ombros" }, prefs: {}, pinned: {}, avoid: [], meta: { checkup: "feito" } };
+const hojeSrv = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+
+async function contaPronta(env: any, user: string) {
+  const c = as(env, user);
+  await ok(c("PUT", "/api/profile", { data: PERFIL }));
+  await ok(c("PATCH", "/api/account", { onboarding: "concluido" }));
+  return c;
+}
+
+test("home #73: checkup feito → cartão aparece; 'Dispensar' grava no servidor e não volta (outro aparelho = nova leitura)", async () => {
+  const env = makeEnv(), a = await contaPronta(env, "dani");
+  const hoje = hojeSrv();
+  const h0 = (await ok(a("GET", `/api/home?date=${hoje}`))).data.home;
+  assert.equal(h0.boasVindas, "mostrar");
+  assert.equal(h0.marcos.find((m: any) => m.id === "perfil").feito, true);
+  assert.equal(h0.marcos.find((m: any) => m.id === "treino").proximo || h0.marcos.find((m: any) => m.id === "semana").proximo, true);
+  const p = await ok(a("PATCH", "/api/home/preferencias", { boasVindas: "dispensar" }));
+  assert.equal(p.data.boasVindasDispensadoEm, hoje);
+  assert.equal((await ok(a("GET", `/api/home?date=${hoje}`))).data.home.boasVindas, "oculto");
+  // dispensar de novo não muda a data; adiar o perfil é outro campo
+  await ok(a("PATCH", "/api/home/preferencias", { perfil: "adiar" }));
+  const h2 = (await ok(a("GET", `/api/home?date=${hoje}`))).data.home;
+  assert.equal(h2.boasVindas, "oculto"); assert.equal(h2.perfilAdiadoEm, hoje);
+  // entrada validada
+  assert.equal((await a("PATCH", "/api/home/preferencias", {})).status, 400);
+  assert.equal((await a("PATCH", "/api/home/preferencias", { boasVindas: "sim" })).status, 400);
+  assert.equal((await a("PATCH", "/api/home/preferencias", { perfil: 1 })).status, 400);
+  // a preferência é da conta: a outra conta continua vendo o próprio cartão
+  const b = await contaPronta(env, "edu");
+  assert.equal((await ok(b("GET", `/api/home?date=${hoje}`))).data.home.boasVindas, "mostrar");
+  // sai no export
+  const ex = (await ok(a("GET", "/api/account/export"))).data;
+  assert.equal(ex.ui_pref[0].boas_vindas_dispensado_em, hoje);
+});
+
+test("home #73: a 1ª série esconde o cartão; água e sono viram médias; os marcos vêm do banco", async () => {
+  const env = makeEnv(), a = await contaPronta(env, "fabi");
+  const hoje = hojeSrv();
+  await ok(a("PUT", `/api/checkin/${hoje}`, { sleepH: 8, energy: 2, soreness: 0, stress: 1, food: 0 }));
+  await ok(a("PUT", `/api/checkin/${addDays(hoje, -1)}`, { sleepH: 6, energy: 2, soreness: 0, stress: 1, food: 0 }));
+  const co = await a("PUT", `/api/checkout/${addDays(hoje, -1)}`, { trained: false, waterMl: 2500 });
+  assert.ok(co.status < 300, co.text);
+  const h0 = (await ok(a("GET", `/api/home?date=${hoje}`))).data.home;
+  assert.equal(h0.boasVindas, "mostrar");
+  const [p, ag, so] = h0.medias;
+  assert.equal(p.media, null);
+  assert.equal(ag.media, 2.5);
+  assert.equal(so.media, 7);
+  // sessão sem série não conta como treino
+  await ok(a("POST", "/api/sessions", { id: SID(40), date: hoje, plan: { name: "t", items: [] } }), 201);
+  assert.equal((await ok(a("GET", `/api/home?date=${hoje}`))).data.home.boasVindas, "mostrar");
+  await ok(a("POST", `/api/sessions/${SID(40)}/sets`, { exerciseId: "Cable_Seated_Lateral_Raise", setNo: 1, kg: 6, reps: 12 }), 201);
+  const h1 = (await ok(a("GET", `/api/home?date=${hoje}`))).data.home;
+  assert.equal(h1.boasVindas, "oculto");
+  const treino = h1.marcos.find((m: any) => m.id === "treino");
+  assert.equal(treino.feito, true); assert.equal(treino.data, hoje);
+});
+
+test("home #73: conta que pulou o checkup não tem cartão de boas-vindas", async () => {
+  const env = makeEnv(), a = as(env, "gabi");
+  await ok(a("PUT", "/api/profile", { data: { meta: { checkup: "pulado" } } }));
+  await ok(a("PATCH", "/api/account", { onboarding: "concluido" }));
+  const h = (await ok(a("GET", `/api/home?date=${hojeSrv()}`))).data.home;
+  assert.equal(h.boasVindas, "oculto");
+  assert.equal(h.marcos.find((m: any) => m.id === "perfil").feito, false);
+});

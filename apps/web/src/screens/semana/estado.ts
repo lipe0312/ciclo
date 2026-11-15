@@ -102,7 +102,8 @@ const demo = (() => {
       weekStart: monday, today, sets, attendance: S.week.attendance as C.WeekInput["attendance"],
       profile: { daysUsual: p.daysUsual, daysTarget: p.daysTarget, minutes: p.minutes, priorities: p.priorities, dayGym: p.dayGym,
         gyms: S.gyms.map((g) => ({ id: g.id, equipment: g.equipment })), prefs: p.prefs, pinned: p.pinned, avoid: p.avoid,
-        pains: S.pains.map((x) => ({ region: x.region, intensity: x.intensity })), goalId: S.profile.goal?.id ?? null },
+        pains: S.pains.map((x) => ({ region: x.region, intensity: x.intensity })), goalId: S.profile.goal?.id ?? null,
+        ...C.entradaTreinoAtual(S.profile) },
       targets: prog().targets, overrides, prev, cardioLog: S.week.cardio,
     };
   };
