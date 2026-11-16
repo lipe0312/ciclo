@@ -3,7 +3,7 @@ import { useEffect, useState } from "preact/hooks";
 import { MEALS, MEAL_NM, guessMeal } from "@ciclo/core";
 import { faltaHojeVariada } from "@ciclo/core/alimentos-variedade";
 import type { Meal } from "@ciclo/core";
-import type { ItemPorcao, PorcaoPessoal } from "@ciclo/core/porcoes";
+import { TETO, type ItemPorcao, type PorcaoPessoal } from "@ciclo/core/porcoes";
 import { S, calc, commit, today } from "../../lib/store/index.ts";
 import { DIET, FOODBASE, addFood, deleteFood, deleteTemplate, editFood, estimarTexto, foodRows, foodTotals, hourNow, saveTemplate } from "../../lib/store/regras.ts";
 import { SERVER, api, send } from "../../lib/api/index.ts";
@@ -98,7 +98,9 @@ const chaveItem = (i: ItemPorcao, k: number) => `${k}:${i.key ?? i.nome}`;
 function aplicar(i: ItemPorcao, a?: Ajuste): ItemPorcao {
   if (!a || !i.g) return i;
   const g = a.g ?? Math.round(i.g * (a.fator ?? 1)), f = g / i.g;
-  return { ...i, g, kcal: Math.round(i.kcal * f), prot: Math.round(i.prot * f * 10) / 10, conf: Math.max(i.conf, 0.9), origem: "pessoal" };
+  const kcal = Math.round(i.kcal * f), prot = Math.round(i.prot * f * 10) / 10;
+  // o ajuste da pessoa vale, mas quantidade fora do plausível continua pedindo conferência (mesmo teto da prévia)
+  return { ...i, g, kcal, prot, conf: Math.max(i.conf, 0.9), origem: "pessoal", conferir: prot > TETO.protItem || kcal > TETO.kcalItem };
 }
 const FRACOES: [number, string][] = [[0.5, "½"], [1, "1"], [1.5, "1½"], [2, "2"]];
 const fmtFaixa = (f: [number, number] | null) => (f ? `${fmt(f[0])}–${fmt(f[1])} g` : "");
@@ -114,17 +116,19 @@ function abrirAjuste(i: ItemPorcao, atual: Ajuste | undefined, salvar: (a: Ajust
     salvar(a);
     // ensina: a porção por unidade/medida vira a porção pessoal (o texto não sai daqui, só o alimento e a medida)
     const final = aplicar(i, a).g;
+    let msg = a ? "Ajustado · a próxima vem assim" : "Mantido";
     if (a && i.key && i.medida !== "g" && final && i.qtd > 0) {
       const p: PorcaoPessoal = { alimento: i.key, medida: i.medida, gramas: Math.round(final / i.qtd) };
       const k = PESSOAIS.findIndex((x) => x.alimento === p.alimento && x.medida === p.medida);
       if (k >= 0) PESSOAIS[k] = p; else PESSOAIS.unshift(p);
       send("PUT", "/api/porcao-pessoal", p).catch(() => {});
+      msg = `Ajustado · na próxima, 1 ${i.medida} de ${curto} ≈ ${fmt(p.gramas)} g`;
     }
-    closeSheet(); toast(a ? "Ajustado · a próxima vem assim" : "Mantido");
+    closeSheet(); toast(msg);
   };
   const view = () => <>
     <SheetHead kicker="≈ estimativa média" title={`Ajustar: ${curto}`} />
-    <p class="small sub num" style="margin:8px 0">Estimei ≈ {fmt(i.g ?? 0)} g ({fmtFaixa(i.faixa)}). Ajustar deixa as próximas mais certas.</p>
+    <p class="small sub num" style="margin:8px 0">Estimei ≈ {fmt(i.g ?? 0)} g{i.faixa ? `, provavelmente entre ${fmt(i.faixa[0])} e ${fmt(i.faixa[1])} g` : ""}. Ajustar deixa as próximas mais certas.</p>
     <span class="f" style="display:block">Porção</span>
     <Seg opts={FRACOES} value={d.fator} onPick={(v) => { d.fator = v; d.g = ""; openSheet(view); }} label="Quantas porções" />
     <label class="f" for="aj-g" style="margin-top:12px;display:block">Ou em gramas</label>
