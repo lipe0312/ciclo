@@ -114,7 +114,7 @@ function ComoFaz({ it }: { it: C.ExercicioAtual }) {
 }
 
 function Divisao({ d, idx, onRemover }: { d: C.DivisaoAtual; idx: number; onRemover: () => void }) {
-  const [nome, setNome] = useState(d.nome), [gravando, setGravando] = useState(false);
+  const [nome, setNome] = useState(d.nome), [gravando, setGravando] = useState(false), [salvo, setSalvo] = useState<string | null>(null);
   useEffect(() => setNome(d.nome), [d]);
   const toggle = (g: G) => { d.grupos = d.grupos.includes(g) ? d.grupos.filter((x) => x !== g) : C.GRUPOS_TREINO.filter((x) => x === g || d.grupos.includes(x)); salvar(); };
   return <div class="ta-div" role="tabpanel" id={`ta-p-${idx}`} aria-labelledby={`ta-t-${idx}`}>
@@ -132,8 +132,8 @@ function Divisao({ d, idx, onRemover }: { d: C.DivisaoAtual; idx: number; onRemo
         {!C.ehLivre(it) && <ComoFaz it={it} />}
         <button type="button" class="btn ghost sm ta-x" aria-label={`Tirar ${nomeEx(it)}`} onClick={() => tirar(d, it)}><Icon id="x" /></button>
       </div>)}</div>}
-    <button type="button" class="btn pri full" style="margin-top:14px" disabled={gravando || !d.exercicios.length}
-      onClick={async () => { setGravando(true); try { await salvarTreino(d.nome); } finally { setGravando(false); } }}><Icon id="check" />{gravando ? "Salvando…" : `Concluir ${d.nome}`}</button>
+    <button type="button" class="btn full" style="margin-top:14px" disabled={gravando || !d.exercicios.length}
+      onClick={async () => { setGravando(true); try { if (await salvarTreino(d.nome)) { setSalvo(d.nome); setTimeout(() => setSalvo(null), 3000); } } finally { setGravando(false); } }}><Icon id="check" />{gravando ? "Salvando…" : salvo === d.nome ? `${d.nome} salvo` : `Concluir ${d.nome}`}</button>
     <button type="button" class="btn ghost sm" style="margin-top:14px" onClick={onRemover}>Remover este treino</button>
   </div>;
 }

@@ -45,6 +45,7 @@ export function suggestFor(it: C.PlanItem): { kg: number | null; reps: number; n
 }
 
 let profileTimer: ReturnType<typeof setTimeout> | undefined;
+let profileSeq = 0;
 /** Mudou o perfil: o treino já gerado NÃO se refaz sozinho; congela e fica "desatualizado" até o usuário regenerar. */
 export function profileChanged(sync = true) {
   if (S.plan && !(S.session && !S.session.finishedAt)) {
@@ -54,7 +55,9 @@ export function profileChanged(sync = true) {
   }
   if (sync) {
     clearTimeout(profileTimer); perfilSync.pendente = true;
-    profileTimer = setTimeout(() => { perfilSync.pendente = false; send("PUT", "/api/profile", { data: S.profile }); }, 600);
+    const n = ++profileSeq;
+    // só libera o sync depois que o PUT terminou e se nenhuma edição nova entrou nesse meio-tempo
+    profileTimer = setTimeout(() => { send("PUT", "/api/profile", { data: S.profile }).finally(() => { if (n === profileSeq) perfilSync.pendente = false; }); }, 600);
   }
 }
 /** Garante a base de comparação ANTES de qualquer mudança no perfil (demo, 1º acesso direto ao Perfil, recarregar). */
