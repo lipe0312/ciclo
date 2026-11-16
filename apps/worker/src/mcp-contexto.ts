@@ -1,7 +1,7 @@
 // #45 ciclo_contexto: busca só o que a fatia do pedido precisa (todo SQL com bind e filtrado por user_id) e entrega ao core
 // (contexto()), que monta a fatia enxuta. Notas, texto de comida, contexto da dor e pedidos não são lidos; o treino do dia
 // (day_plan) é lido, mas o core só aproveita IDs do catálogo e séries (o nome do treino, texto livre, é descartado).
-import { MEMORIA, MUSCLE_IDS, PEDIDOS, contexto, foodAverages, mondayOf, resumoClaude, weeklyTargets } from "@ciclo/core";
+import { MEMORIA, MUSCLE_IDS, PEDIDOS, academiaDoDia, academiasMcp, contexto, foodAverages, mondayOf, resumoClaude, weeklyTargets } from "@ciclo/core";
 import type { EstadoContexto, EstadoResumo, FoodEntry, Meal, MuscleId, Pedido } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { EMPTY_MSG, getProfile, listGyms, parse, weekState } from "./db.ts";
@@ -67,7 +67,12 @@ export async function ciclo_contexto(a: Args, env: Env, uid: string, today: stri
     series: series?.results.filter((r) => MUSCLE_IDS.includes(r.muscle)).map((r) => ({ date: r.date, exerciseId: r.exercise_id, muscle: r.muscle, kg: r.kg ?? 0, reps: r.reps ?? 0 })),
     medidas: medidas?.results.map((m) => ({ date: m.date, armCm: m.arm_cm, waistCm: m.waist_cm })),
   };
-  return contexto(pedido, e);
+  // #95 as academias com os aparelhos (IDs) e a do dia, para montar "na academia tal" sem errar a máquina
+  const [academias, planoGym] = precisa.treino ? [gyms, plan?.gym_id] : await Promise.all([
+    listGyms(env, uid),
+    env.DB.prepare("SELECT gym_id FROM day_plan WHERE user_id = ?1 AND date = ?2").bind(uid, d).first<{ gym_id: string | null }>().then((r) => r?.gym_id),
+  ]);
+  return { ...contexto(pedido, e), academias: academiasMcp(academias), academiaDoDia: academiaDoDia(academias, { date: d, planoGymId: planoGym, dayGym: profile.dayGym as Record<string, string> | undefined }) };
 }
 
 // #30 resumo geral (ciclo_contexto sem pedido e resource ciclo://contexto): só IDs, números e a memória (dado).

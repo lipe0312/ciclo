@@ -1,4 +1,4 @@
-# 12 · MCP do Ciclo: contrato (v1.2.0)
+# 12 · MCP do Ciclo: contrato (v1.2.1)
 
 O Ciclo é um servidor MCP remoto (Streamable HTTP, respostas JSON, sem estado) em `/mcp`. Qualquer cliente MCP com OAuth conecta: claude.ai, Claude Desktop/Code, ChatGPT (conectores), Gemini CLI, Cursor/VS Code. A rotina automática da caixa só existe no Claude (Claude Code agendado); as outras IAs funcionam no modo conversa.
 
@@ -26,11 +26,11 @@ L = lê (escopo `ler`), E = escreve (escopo `escrever`). Os schemas completos es
 ### Treino e semana
 | Ferramenta | L/E | O que faz · quando usar | Entrada principal | Saída / erros |
 |---|---|---|---|---|
-| `ciclo_estado` | L | Resumo completo da semana. Só na revisão semanal. | `date?` | volume, presença, check-ins, dores, pedidos |
-| `ciclo_contexto` | L | Fatia enxuta para o pedido (use antes de decidir). | `pedido?`, `date?`, `exercicioId?` | contexto com números prontos |
+| `ciclo_estado` | L | Resumo completo da semana. Só na revisão semanal. | `date?` | volume, presença, check-ins, dores, pedidos; `treinoAtual` compacto (`null` = não informado, `[]` = está começando, senão divisões com `"ID séries×reps kg"`/`"livre: nome (grupo)"`, até 12 por divisão + `mais`) e `treinoAtualPor` (você\|Chat); `academias[{id, nome, aparelhos}]` (IDs de `EQUIPMENT`) e `academiaDoDia` (#95) |
+| `ciclo_contexto` | L | Fatia enxuta para o pedido (use antes de decidir). | `pedido?`, `date?`, `exercicioId?`, `gymId?` | contexto com números prontos; com `pedido`, também `academias[{id, nome, aparelhos}]` e `academiaDoDia` (#95) |
 | `ciclo_catalogo` | L | Exercícios de UM músculo, paginados. | `muscle`, `gymId?`, `soDisponiveis?`, `limite?` (≤60, padrão 25), `cursor?` | `{ itens, total, proximo }` |
-| `ciclo_planejar_dia` | L | Calcula (não salva) o treino do dia. | `daysLeft`, `minutes?`, `mode?`, `focus?` | itens, porquê |
-| `ciclo_salvar_treino_do_dia` | E | Salva o treino do dia com itens `{id, sets}`; o servidor valida. | `itens`, `motivo`, `date?` | `salvo` ou `problemas` |
+| `ciclo_planejar_dia` | L | Calcula (não salva) o treino do dia, só com os aparelhos da academia. | `daysLeft`, `minutes?`, `mode?`, `focus?`, `gymId?` (sem ele, a do dia) | itens, porquê; `gymId` de outra conta/inexistente → erro |
+| `ciclo_salvar_treino_do_dia` | E | Salva o treino do dia com itens `{id, sets}`; o servidor valida. | `itens`, `motivo`, `date?`, `gymId?` (sem ele, a do dia) | `salvo` ou `problemas`; exercício cujo aparelho a academia não tem → erro com o que falta + "troque com `ciclo_treino_trocar`" (nada é gravado); `gymId` desconhecido → erro |
 | `ciclo_semana_ver` | L | Semana compacta (por dia: tipo, status, `"ID séries×reps"`, minutos). | `date?` | `{ semana, dias[], fechaSemana }` |
 | `ciclo_semana_gerar` | E · destrutiva | Refaz a semana pelo core. Semana com treino feito (ou `simular`) → prévia com as mudanças + `token`. Com `dia`: gera só aquele dia com `foco`/`minutos`. | `date?`, `dia?`, `foco?` (≤3), `minutos?`, `reset?`, `simular?`, `confirmar?` | prévia `{ mudancas, token }` ou `{ refeita, dias }`; 409 se o dia já passou |
 | `ciclo_treino_registrar` | E | Séries feitas de UM exercício (carga, reps, RIR). Abre a sessão do dia e marca presença. Exercício fora do plano = troca forçada (a semana repõe a parte que saiu, #74). | `exercicioId`, `series[{kg?, reps, rir?}]` (1–12), `date?` (≤7 dias) | `{ registrado, series }`; ID fora do catálogo → erro |
@@ -43,6 +43,7 @@ L = lê (escopo `ler`), E = escreve (escopo `escrever`). Os schemas completos es
 | Ferramenta | L/E | O que faz | Entrada | Saída |
 |---|---|---|---|---|
 | `ciclo_perfil_atualizar` (alias `ciclo_salvar_perfil`) | E | Patch do perfil (o mesmo do `PATCH /api/profile`), validado. | `perfil`, `concluirPrimeirosPassos?` | `salvo`, resumo |
+| `ciclo_treino_atual` | L | Lê o "Meu treino atual" completo (#95). Leia antes de gerar a semana, trocar exercícios ou salvar por cima. | — | `{ treinoAtual: { divisoes[{nome, grupos, exercicios[{id, nm, sets?, reps?, kg?} \| {livre, grupo}]}] }, por, aviso }`; não informado → `treinoAtual: null` |
 | `ciclo_treino_atual_salvar` | E | "Meu treino atual" (#74). | `treinoAtual{divisoes[]}` | `salvo`; inválido → erro com o campo |
 | `ciclo_preferencias` | L/E | Sem argumentos lê. Muda `fixar`, `desfixar`, `evitar`, `desevitar`, `preferir` e `comida_aprovacao`. | ver schema | preferências atuais |
 
@@ -100,11 +101,11 @@ No app, toda entrada vinda da IA mostra o selo **"via Chat, HH:MM · ≈ estimat
 - **Claude Code:** `claude mcp add --transport http ciclo https://<seu-ciclo>/mcp` (faz o OAuth no navegador).
 - **ChatGPT:** Configurações → Conectores (modo desenvolvedor) → criar com a URL `/mcp` e OAuth. O callback do ChatGPT (`https://chatgpt.com/connector_platform_oauth_redirect`, e o prefixo `https://chatgpt.com/connector/oauth/`) já está em `OAUTH_REDIRECT_HOSTS` (`wrangler.jsonc`).
 - **Gemini CLI:** em `~/.gemini/settings.json`, `"mcpServers": { "ciclo": { "httpUrl": "https://<seu-ciclo>/mcp" } }` e `/mcp auth ciclo` (callback loopback, aceito).
-- **Cursor / VS Code:** adicionar servidor MCP HTTP com a URL `/mcp`; o OAuth abre no navegador (callback loopback `http://localhost:8787/callback`, sempre aceito; o do Cursor web/agents `https://www.cursor.com/agents/mcp/oauth/callback` está em `OAUTH_REDIRECT_HOSTS`). O Cursor desktop também manda `cursor://…` no registro, que hoje é recusado: ver #95.
+- **Cursor / VS Code:** adicionar servidor MCP HTTP com a URL `/mcp`; o OAuth abre no navegador (callback loopback `http://localhost:8787/callback`, sempre aceito; o do Cursor web/agents `https://www.cursor.com/agents/mcp/oauth/callback` está em `OAUTH_REDIRECT_HOSTS`). O Cursor desktop manda também `cursor://…` no registro: desde a #95 o registro é aceito guardando **só** as URIs permitidas (≥ 1; as outras são descartadas e nunca valem no authorize); só URIs não permitidas → `invalid_redirect_uri`.
 
 ### Teste local (sem túnel)
 - `npm run mcp:local` sobe o cenário `semi` (conta fictícia) na porta 8811 e imprime `claude mcp add --transport http ciclo-local http://localhost:8811/mcp --header "Authorization: Bearer …"`.
-- `npm run e2e:mcp` (no `gate`) roda o cliente MCP de teste contra o Worker local: lista e orçamento, comida simular → confirmar, idempotência, isolamento A×B, token vencido e de outra conta, escopo ler bloqueando escrita, corrigir/desfazer e treino.
+- `npm run e2e:mcp` (no `gate`) roda o cliente MCP de teste contra o Worker local: lista e orçamento, comida simular → confirmar, idempotência, isolamento A×B, token vencido e de outra conta, escopo ler bloqueando escrita, corrigir/desfazer, treino e a leitura do treino atual e das academias (#95).
 
 ### 10 frases de teste (resultado esperado)
 1. "Use o Ciclo: o que treino hoje?" → treino do dia com IDs do catálogo, sem inventar exercício.
@@ -121,6 +122,7 @@ No app, toda entrada vinda da IA mostra o selo **"via Chat, HH:MM · ≈ estimat
 10. "Fiz 3×10 com 20 kg no supino" → séries registradas; "como evoluí no supino?" → `ciclo_historico`.
 
 ## CHANGELOG
+- **1.2.1 (#95):** `ciclo_treino_atual` (L, escopo `ler`): o "Meu treino atual" completo; `ciclo_estado` traz `treinoAtual` compacto + `treinoAtualPor`, `academias` (id, nome, aparelhos) e `academiaDoDia`; `ciclo_contexto` com pedido traz `academias` e `academiaDoDia`; `ciclo_planejar_dia` e `ciclo_salvar_treino_do_dia` recusam `gymId` que não é da conta (antes caía na primeira) e o salvar recusa exercício sem o aparelho na academia, sugerindo `ciclo_treino_trocar`; `instructions`: ler o treino atual antes de gerar/trocar e os aparelhos da outra academia antes de montar. OAuth: registro com várias `redirect_uris` guarda só as permitidas (Cursor desktop).
 - **1.2.0 (#87):** `ciclo_comida_editar` (registro inteiro: descrição + itens + kcal + proteína, em lote, com antes → depois por item) e `ciclo_comida_vagos`; `ciclo_comida_registrar` aceita `itens` (item informado vira item, total = soma) e vários dias (`dias` ou "sábado A, domingo B"/"fim de semana"/"dia 12"); `ciclo_comida_desfazer` também volta correções (`voltaAoQueEra`); par texto original → itens finais guardado (`raw_original`).
 - **1.1.0 (#81):** contrato versionado; schema = validação (campo desconhecido recusado); escopos `ler`/`escrever` com 403 `insufficient_scope`; prévia de uso único (simular/confirmar); comida por conversa (`ciclo_comida_registrar`, `_corrigir` com prévia, `_desfazer`, `_pendentes` stub); `ciclo_semana_ver`, `ciclo_semana_gerar`, `ciclo_treino_registrar`, `ciclo_treino_trocar`, `ciclo_treino_atual_salvar`, `ciclo_preferencias`, `ciclo_historico`; `ciclo_catalogo` paginado (`{ itens, total, proximo }`); `ciclo_salvar_perfil` → `ciclo_perfil_atualizar` (alias por uma versão); `ciclo_registrar_comida` vira legado oculto; `instructions` neutras de modelo; caixa com status lido.
 - **1.0.0 (#30/#66):** ferramentas iniciais, OAuth 2.1 + chave manual.
