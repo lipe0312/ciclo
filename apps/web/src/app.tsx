@@ -94,7 +94,8 @@ export function App() {
   if (route.screen === "termos" || route.screen === "privacidade") return <div class="app focus entrar-app"><main class="main"><div class="wrap"><Legal route={route} /></div></main><Toast /></div>;
   const Tela = SCREENS[screen];
   const route2 = route2Of(route, screen);
-  const cur = (id: string) => (id === screen || (id === "mais" && MAIS.some((d) => d.id === screen)) ? "page" : undefined);
+  // #77 Semana é aba do Treino: a barra marca Treino
+  const cur = (id: string) => (id === screen || (id === "treino" && screen === "semana") || (id === "mais" && MAIS.some((d) => d.id === screen)) ? "page" : undefined);
   void S;
   return <div class={`app${screen === "primeiros-passos" ? " focus" : ""}`}>
     <nav class="side" aria-label="Principal">
