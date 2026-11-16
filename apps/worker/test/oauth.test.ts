@@ -237,6 +237,22 @@ test("B1 phishing: redirect de atacante é recusado no registro e no authorize, 
   assert.equal(a.status, 400); assert.equal(a.headers.get("location"), null);
 });
 
+test("#95 Cursor desktop: registro com cursor://, https do Cursor web e loopback guarda só as permitidas; a descartada nunca redireciona", async () => {
+  const APP = "cursor://anysphere.cursor-mcp/oauth/callback", WEB = "https://www.cursor.com/agents/mcp/oauth/callback", LOOP = "http://localhost:8787/callback";
+  const env = envConta({ OAUTH_REDIRECT_HOSTS: `${CB},${WEB}` });
+  const r = await call(env, "POST", "/oauth/register", { body: { client_name: "Cursor", redirect_uris: [APP, WEB, LOOP] }, headers: ip() });
+  assert.equal(r.status, 201, r.text);
+  assert.deepEqual(r.data.redirect_uris, [WEB, LOOP]);
+  assert.deepEqual(JSON.parse(env.DB.raw.prepare("SELECT redirect_uris FROM oauth_client WHERE id = ?").get(r.data.client_id).redirect_uris), [WEB, LOOP]);
+  const q = (uri: string) => new URLSearchParams({ response_type: "code", client_id: r.data.client_id, redirect_uri: uri, code_challenge: "a".repeat(43), code_challenge_method: "S256" });
+  const app = await call(env, "GET", `/oauth/authorize?${q(APP)}`, { headers: ip() });
+  assert.equal(app.status, 400); assert.equal(app.headers.get("location"), null);
+  assert.equal((await call(env, "GET", `/oauth/authorize?${q(WEB)}`, { headers: ip() })).status, 302);
+  // só URIs não permitidas: recusa o registro inteiro
+  const so = await call(env, "POST", "/oauth/register", { body: { client_name: "Cursor", redirect_uris: [APP, "https://atacante.example/cb"] }, headers: ip() });
+  assert.equal(so.status, 400); assert.equal(so.data.error, "invalid_redirect_uri");
+});
+
 test("loopback (dev/CLI) é aceito, mas a tela marca \"app não verificado\"", async () => {
   const env = envConta();
   const r = await call(env, "POST", "/oauth/register", { body: { client_name: "Claude", redirect_uris: ["http://localhost:3118/callback"] }, headers: ip() });

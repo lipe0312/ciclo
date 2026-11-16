@@ -280,3 +280,18 @@ test("semana planejada usa os alvos ajustados (deload planeja menos séries)", (
   assert.ok(MUSCLE_IDS.reduce((a, m) => a + (dl[m] ?? 0), 0) < MUSCLE_IDS.reduce((a, m) => a + (full[m] ?? 0), 0));
   assert.equal(SUP.length + INF.length, MUSCLE_IDS.length);
 });
+
+// #98 resumo do dia calculado dos itens, nunca do plano antigo
+import { hydrate, resumirDia, planDay } from "../src/index.ts";
+test("#98 resumirDia: itens de superior → perMuscle só de superior e as séries somam igual à lista", () => {
+  const ids = ["ombro", "biceps", "triceps", "costas", "peito"].map((m) => Object.values(EXERCISE_BY_ID).find((e) => e.m === m && e.eq.every((q) => ["halteres", "banco", "polia", "barra"].includes(q)))!.id);
+  const inp = { equipment: ALL, minutes: 60, priorities: PRIOS, targets: {}, done: {}, freq: {}, pains: [], daysLeft: 2, mode: "normal" } as never;
+  const { items } = hydrate(ids.map((id, k) => ({ id, sets: 3 + (k % 2) })), inp);
+  const velho = { ...planDay({ ...(inp as object), equipment: ALL, mode: "normal" } as never), items: [] as never[] };
+  const r = resumirDia({ ...velho, items, prehab: [] });
+  const musc = Object.keys(r.perMuscle) as MuscleId[];
+  assert.ok(musc.length > 0 && musc.every((m) => MUSCLES[m].group === "sup"), `só superior: ${musc}`);
+  assert.equal(Object.values(r.perMuscle).reduce((a, b) => a + (b ?? 0), 0), items.reduce((a, i) => a + i.sets, 0));
+  assert.equal(r.setsTotal, items.reduce((a, i) => a + i.sets, 0));
+  assert.equal(r.estMinutes, r.setsTotal * 3);
+});

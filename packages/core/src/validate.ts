@@ -3,7 +3,7 @@
 
 import { EXERCISE_BY_ID, MUSCLES } from "./catalog.ts";
 import type { MuscleId } from "./catalog.ts";
-import { candidates, item, painBlocks } from "./plan-day.ts";
+import { candidates, item, painBlocks, resumirDia } from "./plan-day.ts";
 import type { DayInput, DayPlan, PlanItem } from "./plan-day.ts";
 
 export type Severity = "erro" | "aviso" | "info";
@@ -77,6 +77,5 @@ export function applyManualEdit(plan: DayPlan, edit: ManualEdit, inp: DayInput):
     if (edit.reps) { cur.reps = edit.reps; cur.manual = true; }
   }
   const issues = validateItems(items, inp);
-  const setsTotal = items.reduce((s, i) => s + i.sets, 0);
-  return { plan: { ...plan, items, setsTotal, estMinutes: setsTotal * 3 }, issues, needsReview: true };
+  return { plan: resumirDia({ ...plan, items }), issues, needsReview: true };
 }
