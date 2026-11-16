@@ -50,6 +50,8 @@ export interface PlanItem {
   exerciseId: string; nm: string; muscle: MuscleId; kind: Kind;
   sets: number; reps: [number, number]; rest: number; alts: string[];
   prehab?: boolean; manual?: boolean;
+  /** #107 exercício personalizado da conta (id `cus_`): nome é dado do usuário */
+  personalizado?: boolean;
   /** repetições em reserva pedidas (só no "mais leve hoje": 3); sem o campo vale o padrão de sobrar 1–2 */
   rir?: number;
 }
