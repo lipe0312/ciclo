@@ -43,8 +43,12 @@ export const TOOLS_CHAT: Tool[] = [
     run: async (a, env, uid) => {
       const tier = a.tier == null ? null : oneOf(a.tier, "tier", TIERS);
       const origem = a.origem == null ? "manual" : oneOf(a.origem, "origem", ORIGENS);
-      const [, rows, counts] = await env.DB.batch([
-        env.DB.prepare("INSERT INTO claude_heartbeat (user_id, origem, at) VALUES (?1, ?2, ?3) ON CONFLICT(user_id, origem) DO UPDATE SET at = ?3").bind(uid, origem, Date.now()),
+      const now = Date.now();
+      const [, , rows, counts] = await env.DB.batch([
+        env.DB.prepare("INSERT INTO claude_heartbeat (user_id, origem, at) VALUES (?1, ?2, ?3) ON CONFLICT(user_id, origem) DO UPDATE SET at = ?3").bind(uid, origem, now),
+        // #81 o app mostra "lido" para os pedidos que a IA acabou de receber (os mesmos 20 do SELECT abaixo)
+        env.DB.prepare(`UPDATE inbox SET read_at = COALESCE(read_at, ?3) WHERE user_id = ?1 AND id IN
+          (SELECT id FROM inbox WHERE user_id = ?1 AND status = 'pendente' AND (?2 IS NULL OR tier = ?2) ORDER BY created_at LIMIT 20)`).bind(uid, tier, now),
         env.DB.prepare("SELECT id, text, action, tier, created_at FROM inbox WHERE user_id = ?1 AND status = 'pendente' AND (?2 IS NULL OR tier = ?2) ORDER BY created_at LIMIT 20").bind(uid, tier),
         env.DB.prepare("SELECT tier, COUNT(*) AS n FROM inbox WHERE user_id = ?1 AND status = 'pendente' GROUP BY tier").bind(uid),
       ]);
@@ -97,7 +101,8 @@ export function registerClaude(on: (method: string, path: string, h: Handler) =>
     const at = (o: string) => beats.results.find((b) => b.origem === o)?.at ?? null;
     const pendentes = pend?.n ?? 0;
     // #66 openai: o dono ligou a IA de reserva (dados de treino e saúde vão para a OpenAI): a tela avisa
-    return json({ status: statusClaude({ agora: Date.now(), vigiaEm: at("vigia"), rotinaEm: at("rotina"), connectorEm: tok?.at ?? at("manual"), pendentes }), pendentes, memoria: mem, limite: MEMORIA.max, openai: configOpenai(env).ligado });
+    // #81 rotinaEm: hora da última passada da rotina (o app mostra junto do status de cada pedido)
+    return json({ status: statusClaude({ agora: Date.now(), vigiaEm: at("vigia"), rotinaEm: at("rotina"), connectorEm: tok?.at ?? at("manual"), pendentes }), pendentes, memoria: mem, limite: MEMORIA.max, openai: configOpenai(env).ligado, rotinaEm: at("rotina") });
   });
   on("POST", "/api/claude/memoria", async (req, env, _p, u) => json(await salvarFato(env, u.id, await readJson(req, 4 * 1024), "app"), 201));
   on("PUT", "/api/claude/memoria/:id", async (req, env, p, u) => {

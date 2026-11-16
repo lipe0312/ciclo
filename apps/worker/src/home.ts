@@ -1,7 +1,7 @@
 // Home de evolução (#29): GET /api/home agrega as séries semanais e as lacunas de registro numa chamada só (um batch no D1).
 // Todo SQL com bind e filtrado por user_id; só números e datas saem daqui (nenhum texto livre do dono). A conta fica no core (homeView).
 // #73: + água/sono (28 dias), os marcos do caminho de evolução e o estado do cartão de boas-vindas (prazo pela data do servidor).
-import { HOME_SEMANAS, aparelhosSemMidia, ctxDoPerfil, dataSP, estadoCheckup, faltaParaGerar, homeView, semanasAte } from "@ciclo/core";
+import { COMIDA_APROVACAO, HOME_SEMANAS, aparelhosSemMidia, ctxDoPerfil, dataSP, estadoCheckup, faltaParaGerar, homeView, semanasAte } from "@ciclo/core";
 import type { HomeRaw } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, json, oneOf, readJson } from "./http.ts";
@@ -88,15 +88,18 @@ export async function getHome(env: Env, u: Pick<AuthUser, "id" | "createdAt" | "
 export async function salvarPreferencias(env: Env, uid: string, body: Record<string, unknown>, agora = Date.now()) {
   const bv = body.boasVindas == null ? null : oneOf(body.boasVindas, "boasVindas", ["dispensar"] as const);
   const pa = body.perfil == null ? null : oneOf(body.perfil, "perfil", ["adiar"] as const);
-  if (!bv && !pa) throw new HttpError(400, "diga boasVindas ou perfil");
+  // #81 Comida → Ajustes: aprovação da comida dita na conversa (sempre | so_duvidas | nunca)
+  const ca = body.comidaAprovacao == null ? null : oneOf(body.comidaAprovacao, "comidaAprovacao", COMIDA_APROVACAO);
+  if (!bv && !pa && !ca) throw new HttpError(400, "diga boasVindas, perfil ou comidaAprovacao");
   const hoje = dataSP(agora)!;
   // dispensar é para sempre: a 1ª data fica (COALESCE); adiar o perfil recomeça os 7 dias
-  await env.DB.prepare(`INSERT INTO ui_pref (user_id, boas_vindas_dispensado_em, perfil_adiado_em, updated_at) VALUES (?1, ?2, ?3, ?4)
+  await env.DB.prepare(`INSERT INTO ui_pref (user_id, boas_vindas_dispensado_em, perfil_adiado_em, comida_aprovacao, updated_at) VALUES (?1, ?2, ?3, ?5, ?4)
     ON CONFLICT(user_id) DO UPDATE SET boas_vindas_dispensado_em = COALESCE(ui_pref.boas_vindas_dispensado_em, excluded.boas_vindas_dispensado_em),
-      perfil_adiado_em = COALESCE(excluded.perfil_adiado_em, ui_pref.perfil_adiado_em), updated_at = excluded.updated_at`)
-    .bind(uid, bv ? hoje : null, pa ? hoje : null, agora).run();
-  const r = await env.DB.prepare("SELECT boas_vindas_dispensado_em AS bv, perfil_adiado_em AS pa FROM ui_pref WHERE user_id = ?1").bind(uid).first<{ bv: string | null; pa: string | null }>();
-  return { boasVindasDispensadoEm: r?.bv ?? null, perfilAdiadoEm: r?.pa ?? null };
+      perfil_adiado_em = COALESCE(excluded.perfil_adiado_em, ui_pref.perfil_adiado_em), comida_aprovacao = COALESCE(excluded.comida_aprovacao, ui_pref.comida_aprovacao),
+      updated_at = excluded.updated_at`)
+    .bind(uid, bv ? hoje : null, pa ? hoje : null, agora, ca).run();
+  const r = await env.DB.prepare("SELECT boas_vindas_dispensado_em AS bv, perfil_adiado_em AS pa, comida_aprovacao AS ca FROM ui_pref WHERE user_id = ?1").bind(uid).first<{ bv: string | null; pa: string | null; ca: string | null }>();
+  return { boasVindasDispensadoEm: r?.bv ?? null, perfilAdiadoEm: r?.pa ?? null, comidaAprovacao: r?.ca ?? "sempre" };
 }
 
 export function registerHome(on: (method: string, path: string, h: Handler) => void) {
