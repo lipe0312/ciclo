@@ -1,0 +1,220 @@
+// #81 Ferramentas de treino, personalização e leitura do MCP. Só chamam a lógica que o app já usa (semana.ts, saveProfile,
+// alternativas da #74, planDay): nenhuma regra nova aqui. Respostas compactas (IDs + números) e paginadas.
+import { EXERCISE_BY_ID, MUSCLE_IDS, alternativas, paginar, validarTreinoAtual } from "@ciclo/core";
+import type { MuscleId, WeekDay } from "@ciclo/core";
+import type { Env } from "./env.ts";
+import { HttpError, date, int, str } from "./http.ts";
+import { EMPTY_MSG, buildDayInput, getProfile, rawProfile, saveProfile, weekState } from "./db.ts";
+import { dayAction, getWeek, regenerate } from "./semana.ts";
+import { confirmar, criarPrevia } from "./mcp-previa.ts";
+import { aprovacaoDe, salvarAprovacao } from "./mcp-comida.ts";
+import { S, addDays, obj, today } from "./mcp-tipos.ts";
+import type { Args, Tool } from "./mcp-tipos.ts";
+
+const EX_RE = "^[A-Za-z0-9_.-]{1,80}$";
+const MUSCULOS = { type: "array", maxItems: 3, items: { type: "string", enum: MUSCLE_IDS } };
+
+/** Semana enxuta: por dia, tipo, status e itens "ID séries". */
+function semanaCompacta(w: { weekStart: string; days: (WeekDay & { status?: string })[]; closePct?: number; misses?: string[]; version?: number }) {
+  return {
+    semana: w.weekStart, versao: w.version, fechaSemana: w.closePct != null ? `${w.closePct}%` : undefined, faltas: w.misses?.length ? w.misses : undefined,
+    dias: w.days.map((d) => ({
+      date: d.date, dia: d.dow, tipo: d.kind, status: d.status, academia: d.gymId ?? undefined,
+      nome: d.kind !== "folga" ? d.plan?.name : undefined,
+      itens: d.kind !== "folga" ? d.plan?.items.map((i) => `${i.exerciseId} ${i.sets}×${i.reps.join("–")}`) : undefined,
+      min: d.kind !== "folga" ? d.plan?.estMinutes : undefined,
+    })),
+  };
+}
+async function semanaAtual(env: Env, uid: string, d: string) {
+  const r = await getWeek(env, uid, d);
+  if (!r.week) return { vazio: r.empty, motivo: r.message };
+  return semanaCompacta(r.week as never);
+}
+
+interface PayloadSemana { date: string; reset: boolean }
+
+async function semanaGerar(a: Args, env: Env, uid: string) {
+  if (a.confirmar != null) return confirmar<PayloadSemana, unknown>(env, uid, "semana_gerar", a.confirmar, async (p) => {
+    const r = await regenerate(env, uid, { date: p.date, apply: true, reset: p.reset });
+    return { refeita: true, mudancas: r.diff, ...(r.week ? semanaCompacta(r.week as never) : {}) };
+  });
+  const hoje = a.date ? date(a.date) : today();
+  // um dia só (foco/minutos): é a mesma ação "Gerar" do app, que só mexe em dia que ainda não passou
+  if (a.dia != null) {
+    const opts: Record<string, unknown> = {};
+    if (Array.isArray(a.foco) && a.foco.length) opts.focus = a.foco;
+    if (a.minutos != null) opts.minutes = a.minutos;
+    const r = await dayAction(env, uid, date(a.dia, "dia"), { action: "gerar", today: hoje, opts });
+    return { gerado: true, dia: a.dia, ...semanaCompacta(r.week as never) };
+  }
+  const reset = a.reset === true;
+  const w = await weekState(env, uid, hoje);
+  const treinada = w.sessions.length > 0;
+  const prev = await regenerate(env, uid, { date: hoje, apply: false, reset });
+  if (a.simular === true || treinada) {
+    const token = await criarPrevia(env, uid, "semana_gerar", { date: hoje, reset } satisfies PayloadSemana);
+    return {
+      previa: true, token, expiraEmMin: 15, semanaJaTreinada: treinada || undefined, mudancas: prev.diff,
+      proximoPasso: treinada
+        ? "A semana já tem treino feito (o que passou não muda). Mostre as mudanças e só com o sim chame de novo com confirmar:<token>."
+        : "Mostre as mudanças e só com o sim chame de novo com confirmar:<token>.",
+    };
+  }
+  const r = await regenerate(env, uid, { date: hoje, apply: true, reset });
+  return { refeita: true, mudancas: r.diff, ...(r.week ? semanaCompacta(r.week as never) : {}) };
+}
+
+async function treinoRegistrar(a: Args, env: Env, uid: string) {
+  const d = a.date ? date(a.date) : today();
+  if (d > today() || d < addDays(today(), -7)) throw new HttpError(400, "date: de até 7 dias atrás até hoje");
+  const ex = str(a.exercicioId, "exercicioId", 80)!;
+  const e = EXERCISE_BY_ID[ex];
+  if (!e) throw new HttpError(400, "exercicioId: use um ID do ciclo_catalogo");
+  const series = a.series as { kg?: number; reps: number; rir?: number }[];
+  const now = Date.now();
+  let sess = await env.DB.prepare("SELECT id FROM session WHERE user_id = ?1 AND date = ?2 AND (finished_at IS NULL OR closed_by = 'auto') ORDER BY started_at DESC LIMIT 1").bind(uid, d).first<{ id: string }>();
+  if (!sess) {
+    const plan = await env.DB.prepare("SELECT plan, gym_id FROM day_plan WHERE user_id = ?1 AND date = ?2").bind(uid, d).first<{ plan: string; gym_id: string | null }>();
+    const sid = crypto.randomUUID();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO session (user_id, id, date, gym_id, plan, started_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(uid, sid, d, plan?.gym_id ?? null, plan?.plan ?? "{}", now),
+      env.DB.prepare("INSERT INTO attendance (user_id, date, status, source, updated_at) VALUES (?1, ?2, 'fui', 'claude', ?3) ON CONFLICT(user_id, date) DO UPDATE SET status = 'fui', source = 'claude', updated_at = ?3").bind(uid, d, now),
+    ]);
+    sess = { id: sid };
+  }
+  const max = await env.DB.prepare("SELECT COALESCE(MAX(set_no), 0) AS n FROM set_log WHERE user_id = ?1 AND session_id = ?2 AND exercise_id = ?3").bind(uid, sess.id, ex).first<{ n: number }>();
+  const ini = max?.n ?? 0;
+  if (ini + series.length > 12) throw new HttpError(400, "no máximo 12 séries por exercício na sessão");
+  await env.DB.batch(series.map((s, i) => env.DB.prepare(`INSERT INTO set_log (user_id, session_id, exercise_id, muscle, set_no, kg, reps, rir, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+    ON CONFLICT(user_id, session_id, exercise_id, set_no) DO UPDATE SET kg = ?6, reps = ?7, rir = ?8`).bind(uid, sess!.id, ex, e.m, ini + i + 1, s.kg ?? null, s.reps, s.rir ?? null, now + i)));
+  return {
+    registrado: series.length, sessao: sess.id, date: d, exercicio: `${ex} (${e.nm})`, series: series.map((s, i) => `${ini + i + 1}: ${s.kg ?? "-"} kg × ${s.reps}${s.rir != null ? ` RIR ${s.rir}` : ""}`),
+    nota: "exercício fora do plano do dia conta como troca forçada: a semana repõe a parte que saiu (ciclo_semana_ver)",
+  };
+}
+
+async function treinoTrocar(a: Args, env: Env, uid: string) {
+  const ex = str(a.exercicioId, "exercicioId", 80)!;
+  if (!EXERCISE_BY_ID[ex]) throw new HttpError(400, "exercicioId: use um ID do ciclo_catalogo");
+  const bi = await buildDayInput(env, uid, { date: a.date ? date(a.date) : today(), daysLeft: 2, gymId: str(a.gymId, "gymId", 40, false) ?? undefined });
+  if (bi.empty) return { vazio: bi.empty, motivo: EMPTY_MSG[bi.empty] };
+  const alt = alternativas(ex, bi.input);
+  const lim = int(a.limite, "limite", 1, 10, false) ?? 5;
+  const fmt = (x: (typeof alt.mesmaParte)[number]) => ({ id: x.ex.id, nm: x.ex.nm, nota: x.nota, jaFaz: x.familiar || undefined, dor: x.blockedByPain || undefined });
+  return {
+    academia: bi.gymId, parte: alt.parte, mesmaParte: alt.mesmaParte.slice(0, lim).map(fmt), outraParte: alt.outraParte.slice(0, lim).map(fmt),
+    semAparelho: alt.semAparelho.length,
+    nota: "mesmaParte preserva a subparte; trocar por outraParte faz a semana repor a parte que saiu. Para salvar: ciclo_salvar_treino_do_dia (itens com IDs).",
+  };
+}
+
+async function preferencias(a: Args, env: Env, uid: string) {
+  const mudou = a.fixar != null || a.evitar != null || a.preferir != null || a.desfixar != null || a.desevitar != null;
+  if (mudou) {
+    const p = (await rawProfile(env, uid)) ?? {};
+    const pinned = { ...((p.pinned as Record<string, string>) ?? {}) }, prefs = { ...((p.prefs as Record<string, string>) ?? {}) };
+    let avoid = Array.isArray(p.avoid) ? [...(p.avoid as string[])] : [];
+    for (const [m, id] of Object.entries((a.fixar as Record<string, string>) ?? {})) {
+      if (!EXERCISE_BY_ID[id] || EXERCISE_BY_ID[id].m !== m) throw new HttpError(400, `fixar.${m}: ${id} não é um exercício de ${m} no catálogo`);
+      pinned[m] = id;
+    }
+    for (const m of (a.desfixar as string[]) ?? []) delete pinned[m];
+    for (const id of (a.evitar as string[]) ?? []) { if (!EXERCISE_BY_ID[id]) throw new HttpError(400, `evitar: ${id} não está no catálogo`); if (!avoid.includes(id)) avoid.push(id); }
+    avoid = avoid.filter((x) => !((a.desevitar as string[]) ?? []).includes(x));
+    Object.assign(prefs, (a.preferir as Record<string, string>) ?? {});
+    await saveProfile(env, uid, { pinned, avoid, prefs }, "merge", { meta: { filledBy: "claude", confirmed: false } });
+  }
+  if (a.comida_aprovacao != null) await salvarAprovacao(env, uid, a.comida_aprovacao);
+  const prof = await getProfile(env, uid);
+  return {
+    salvo: mudou || a.comida_aprovacao != null || undefined,
+    fixados: prof?.pinned ?? {}, evitar: prof?.avoid ?? [], preferir: prof?.prefs ?? {}, comida_aprovacao: await aprovacaoDe(env, uid),
+  };
+}
+
+const TIPOS_HIST = ["series", "cargas", "medidas", "comida"] as const;
+async function historico(a: Args, env: Env, uid: string) {
+  const ate = a.ate ? date(a.ate, "ate") : today(), de = a.de ? date(a.de, "de") : addDays(ate, -27);
+  if (de > ate || de < addDays(ate, -92)) throw new HttpError(400, "período de até 92 dias (de ≤ ate)");
+  const lim = int(a.limite, "limite", 1, 50, false) ?? 30;
+  const tipo = a.tipo as (typeof TIPOS_HIST)[number];
+  const ex = a.exercicioId == null ? null : str(a.exercicioId, "exercicioId", 80);
+  let linhas: unknown[];
+  if (tipo === "series") {
+    linhas = (await env.DB.prepare(`SELECT s.date, l.exercise_id AS ex, l.set_no AS n, l.kg, l.reps, l.rir FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
+      WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 AND (?4 IS NULL OR l.exercise_id = ?4) ORDER BY s.date DESC, l.created_at LIMIT 600`).bind(uid, de, ate, ex).all()).results;
+  } else if (tipo === "cargas") {
+    linhas = (await env.DB.prepare(`SELECT s.date, l.exercise_id AS ex, MAX(l.kg) AS kgMax, MAX(l.reps) AS repsMax, COUNT(*) AS series FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
+      WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 AND (?4 IS NULL OR l.exercise_id = ?4) GROUP BY s.date, l.exercise_id ORDER BY s.date DESC LIMIT 600`).bind(uid, de, ate, ex).all()).results;
+  } else if (tipo === "medidas") {
+    const [m, p] = await env.DB.batch([
+      env.DB.prepare("SELECT date, arm_cm AS braco, waist_cm AS cintura, shoulder_cm AS ombro FROM measurement WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date DESC").bind(uid, de, ate),
+      env.DB.prepare("SELECT date, weight_kg AS peso FROM checkin WHERE user_id = ?1 AND weight_kg IS NOT NULL AND date BETWEEN ?2 AND ?3 ORDER BY date DESC").bind(uid, de, ate),
+    ]);
+    const by = new Map<string, Record<string, unknown>>();
+    for (const r of [...(m.results as Record<string, unknown>[]), ...(p.results as Record<string, unknown>[])]) by.set(r.date as string, { ...(by.get(r.date as string) ?? {}), ...r });
+    linhas = [...by.values()].sort((x, y) => String(y.date).localeCompare(String(x.date)));
+  } else {
+    linhas = (await env.DB.prepare(`SELECT date, COUNT(*) AS registros, ROUND(SUM(COALESCE(kcal, 0))) AS kcal, ROUND(SUM(COALESCE(protein, 0))) AS proteina FROM food_log
+      WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 GROUP BY date ORDER BY date DESC`).bind(uid, de, ate).all()).results;
+  }
+  return { tipo, de, ate, ...paginar(linhas, a.cursor, lim) };
+}
+
+export const TOOLS_TREINO: Tool[] = [
+  {
+    name: "ciclo_semana_ver", readOnly: true,
+    description: "A semana flexível atual, compacta: por dia o tipo (treino/folga), status, nome e itens \"ID séries×reps\", % que fecha a semana e faltas. Gera a versão 1 se ainda não existe.",
+    inputSchema: obj({ date: S.date }),
+    run: async (a, env, uid) => semanaAtual(env, uid, a.date ? date(a.date) : today()),
+  },
+  {
+    name: "ciclo_semana_gerar",
+    description: "Gera ou refaz a semana pelo core (a mesma lógica do app). Sem `dia`: refaz a semana; se ela já tem treino feito (ou com simular:true) devolve a prévia (mudanças por dia) + token e só grava com confirmar:<token>; o que já passou não muda; reset:true descarta as trocas dos dias que ainda não passaram. Com `dia` (YYYY-MM-DD desta semana, de hoje em diante): gera só aquele dia com foco (até 3 músculos) e/ou minutos, e o resto se reorganiza. Escreve.",
+    inputSchema: obj({ date: S.date, dia: S.date, foco: MUSCULOS, minutos: { type: "integer", minimum: 15, maximum: 150 }, reset: { type: "boolean" }, simular: S.simular, confirmar: S.confirmar }),
+    run: semanaGerar,
+  },
+  {
+    name: "ciclo_treino_registrar",
+    description: "Registra séries feitas de UM exercício (ID do ciclo_catalogo) num dia (padrão hoje; até 7 dias atrás): carga, reps e RIR. Abre a sessão do dia se não houver e marca presença. Exercício fora do plano do dia vira troca forçada: a semana repõe a parte que saiu. Escreve.",
+    inputSchema: obj({
+      date: S.date, exercicioId: { type: "string", pattern: EX_RE },
+      series: { type: "array", minItems: 1, maxItems: 12, items: { type: "object", required: ["reps"], additionalProperties: false, properties: { kg: { type: "number", minimum: 0, maximum: 600 }, reps: { type: "integer", minimum: 0, maximum: 100 }, rir: { type: "integer", minimum: 0, maximum: 6 } } } },
+    }, ["exercicioId", "series"]),
+    run: treinoRegistrar,
+  },
+  {
+    name: "ciclo_treino_trocar", readOnly: true,
+    description: "Alternativas para trocar um exercício na academia do dia (a mesma folha Trocar do app): mesmaParte (preserva a subparte; o que a pessoa já faz primeiro, depois eficiência) e outraParte (a semana repõe a parte que sair). Não salva.",
+    inputSchema: obj({ exercicioId: { type: "string", pattern: EX_RE }, date: S.date, gymId: { type: "string", maxLength: 40 }, limite: { type: "integer", minimum: 1, maximum: 10 } }, ["exercicioId"]),
+    run: treinoTrocar,
+  },
+  {
+    name: "ciclo_treino_atual_salvar",
+    description: "Salva o \"Meu treino atual\" (o que a pessoa já faz): divisões (até 7) com nome, grupos e exercícios (ID do catálogo com sets/reps/kg opcionais, ou {nome, grupo} livre). Os exercícios que ela já faz passam a ter prioridade nas trocas e na geração. Valida tudo; erro recusa. Escreve.",
+    inputSchema: obj({ treinoAtual: { type: "object", description: "{ divisoes: [{ nome, grupos: [peito|costas|ombro|biceps|triceps|pernas|abdomen], exercicios: [{ id, sets?, reps?, kg? } | { nome, grupo }] }] }" } }, ["treinoAtual"]),
+    run: async (a, env, uid) => {
+      const v = validarTreinoAtual(a.treinoAtual);
+      if (!v.ok) throw new HttpError(400, `treinoAtual inválido: ${v.errors.slice(0, 3).join("; ")}`);
+      await saveProfile(env, uid, { treinoAtual: v.value }, "merge", { meta: { filledBy: "claude", confirmed: false } });
+      return { salvo: true, divisoes: v.value.divisoes.map((d) => `${d.nome}: ${d.exercicios.length} exercício(s)`), aviso: "o app mostra 'preenchido pelo Chat, confira'" };
+    },
+  },
+  {
+    name: "ciclo_preferencias",
+    description: "Lê (sem argumentos) ou muda preferências: fixar {músculo: ID} (sempre esse exercício), desfixar [músculo], evitar [ID], desevitar [ID], preferir {músculo: livre|maquina|cabo|tanto_faz} e comida_aprovacao (sempre = prévia antes de subir comida, padrão; so_duvidas = sobe direto o que tem alta confiança; nunca = sobe direto). Escreve quando muda.",
+    inputSchema: obj({
+      fixar: { type: "object", description: "{ músculo: ID do catálogo }" }, desfixar: { type: "array", maxItems: 20, items: { type: "string", enum: MUSCLE_IDS } },
+      evitar: { type: "array", maxItems: 20, items: { type: "string", pattern: EX_RE } }, desevitar: { type: "array", maxItems: 20, items: { type: "string", pattern: EX_RE } },
+      preferir: { type: "object", description: "{ músculo: livre|maquina|cabo|tanto_faz }" }, comida_aprovacao: { type: "string", enum: ["sempre", "so_duvidas", "nunca"] },
+    }),
+    run: preferencias,
+  },
+  {
+    name: "ciclo_historico", readOnly: true,
+    description: "Histórico paginado por período (padrão: últimas 4 semanas; até 92 dias): series (cada série: data, ID, kg, reps, RIR), cargas (por dia e exercício: kg e reps máximos), medidas (braço, cintura, ombro e peso) ou comida (totais por dia). Filtro exercicioId em series/cargas. Use `proximo` como cursor.",
+    inputSchema: obj({ tipo: { type: "string", enum: TIPOS_HIST }, de: S.date, ate: S.date, exercicioId: { type: "string", pattern: EX_RE }, limite: { type: "integer", minimum: 1, maximum: 50 }, cursor: { type: "string", maxLength: 6 } }, ["tipo"]),
+    run: historico,
+  },
+];

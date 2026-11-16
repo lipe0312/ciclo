@@ -4,14 +4,16 @@
 import { useEffect, useState } from "preact/hooks";
 import { ErroApi, api, confirmarFaceId, entrarComPasskey, erroTexto, temPasskey } from "./passkey.ts";
 
-interface Info { destino: string; verificado: boolean; conta: { nome: string | null } | null }
+interface Info { destino: string; verificado: boolean; conta: { nome: string | null } | null; escopos?: string[] }
 type Fase = "carregando" | "pronto" | "voltando" | "vencido";
 
-const PODE = [
-  "Ver seu perfil, treinos, check-ins e o histórico do Ciclo",
-  "Responder perguntas e os pedidos da aba Chat",
-  "Gerar e ajustar o seu treino (o app valida tudo antes de salvar)",
+// #81 escopos: ler sempre; escrever só quando o app pediu (o servidor manda os escopos do pedido)
+const PODE_LER = ["Ler: seu perfil, treinos, comida, check-ins e o histórico do Ciclo"];
+const PODE_ESCREVER = [
+  "Escrever: registrar comida e séries, responder os pedidos da aba Chat",
+  "Escrever: gerar e ajustar o seu treino e as preferências (o app valida tudo antes de salvar)",
 ];
+const podeDe = (i: Info) => [...PODE_LER, ...((i.escopos ?? ["ler", "escrever"]).includes("escrever") ? PODE_ESCREVER : [])];
 
 export function Autorizar({ req }: { req: string }) {
   const [info, setInfo] = useState<Info | null>(null);
@@ -58,7 +60,8 @@ export function Autorizar({ req }: { req: string }) {
           ? <span class="badge ok">destino verificado</span>
           : <span class="badge warn" role="alert">app não verificado: só permita se foi você que abriu isto no seu computador</span>}
       </div>
-      <ul class="aut-lista">{PODE.map((t) => <li key={t}>{t}</li>)}</ul>
+      <ul class="aut-lista">{podeDe(info).map((t) => <li key={t}>{t}</li>)}</ul>
+      {!(info.escopos ?? ["escrever"]).includes("escrever") && <p class="tiny sub aut-p">Só leitura: esta conexão não vai registrar nem mudar nada.</p>}
       <p class="tiny sub aut-p">Nada é apagado pela conexão: apagar dados é só no app. Você desliga quando quiser em Conta → Conectar meu Chat.</p>
       {info.conta && <p class="small aut-p">Conta: <b>{info.conta.nome ?? "sua conta"}</b></p>}
       {!temPasskey() && <p class="small aut-erro" role="alert">Este navegador não tem passkey. Use o Safari do iPhone ou um navegador atualizado.</p>}

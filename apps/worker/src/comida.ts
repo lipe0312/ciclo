@@ -17,9 +17,10 @@ const addDays = (iso: string, n: number) => new Date(Date.parse(iso + "T12:00:00
 const diffDays = (a: string, b: string) => Math.round((Date.parse(b + "T12:00:00Z") - Date.parse(a + "T12:00:00Z")) / 864e5);
 const mealOrNull = (v: unknown): Meal | null => (v == null || v === "" ? null : oneOf(v, "meal", MEALS));
 
-interface FoodRow { id: string; date: string; raw_text: string; meal: Meal | null; kcal: number | null; protein: number | null; kcal_est: number | null; protein_est: number | null; manual: 0 | 1; source: "local" | "claude"; confidence: string | null; created_at: number }
-export const foodOut = (r: FoodRow) => ({ id: r.id, date: r.date, text: r.raw_text, meal: r.meal, kcal: r.kcal, prot: r.protein, kcalEst: r.kcal_est, protEst: r.protein_est, manual: !!r.manual, source: r.source, confidence: r.confidence, createdAt: r.created_at });
-export const FOOD_COLS = "id, date, raw_text, meal, kcal, protein, kcal_est, protein_est, manual, source, confidence, created_at";
+interface FoodRow { id: string; date: string; raw_text: string; meal: Meal | null; kcal: number | null; protein: number | null; kcal_est: number | null; protein_est: number | null; manual: 0 | 1; source: "local" | "claude"; confidence: string | null; created_at: number; via?: "mcp" | null }
+// #81 via = "mcp": entrou pela IA conectada (selo "via Chat, 12:40 · ≈ estimativa" no app)
+export const foodOut = (r: FoodRow) => ({ id: r.id, date: r.date, text: r.raw_text, meal: r.meal, kcal: r.kcal, prot: r.protein, kcalEst: r.kcal_est, protEst: r.protein_est, manual: !!r.manual, source: r.source, confidence: r.confidence, createdAt: r.created_at, via: r.via ?? null });
+export const FOOD_COLS = "id, date, raw_text, meal, kcal, protein, kcal_est, protein_est, manual, source, confidence, created_at, via";
 
 // ---- base de alimentos pessoal (#43) ----
 interface ItemRow { key: string; name: string; kcal: number; protein: number; carb: number; fat: number; units: string; source: Alimento["fonte"]; uses: number }
@@ -188,16 +189,18 @@ export function registerComida(on: (method: string, path: string, h: Handler) =>
   // ---- metas e calorias adaptativas ----
   on("GET", "/api/diet", async (req, env, _p, u) => {
     const today = date(new URL(req.url).searchParams.get("date"), "date");
-    const [tpl, hist, w] = await Promise.all([
+    const [tpl, hist, w, pref] = await Promise.all([
       env.DB.prepare("SELECT id, name, meal, text, kcal, protein FROM meal_template WHERE user_id = ?1 ORDER BY created_at LIMIT 20").bind(u.id).all<{ id: string; name: string; meal: Meal | null; text: string; kcal: number | null; protein: number | null }>(),
       env.DB.prepare("SELECT date, kcal_before, kcal_after, adjust, tdee, trend_kg_week, code, reason FROM diet_target_history WHERE user_id = ?1 ORDER BY date DESC, created_at DESC LIMIT 8").bind(u.id)
         .all<{ date: string; kcal_before: number; kcal_after: number; adjust: number; tdee: number | null; trend_kg_week: number | null; code: string; reason: string }>(),
       env.DB.prepare("SELECT date, weight_kg FROM checkin WHERE user_id = ?1 AND weight_kg IS NOT NULL AND date BETWEEN ?2 AND ?3 ORDER BY date").bind(u.id, addDays(today, -60), today).all<{ date: string; weight_kg: number }>(),
+      env.DB.prepare("SELECT comida_aprovacao AS v FROM ui_pref WHERE user_id = ?1").bind(u.id).first<{ v: string | null }>(),
     ]);
     return json({
       templates: tpl.results.map((t) => ({ id: t.id, name: t.name, meal: t.meal, text: t.text, kcal: t.kcal, prot: t.protein })),
       history: hist.results.map((h) => ({ date: h.date, before: h.kcal_before, after: h.kcal_after, adjust: h.adjust, tdee: h.tdee, trendKgWeek: h.trend_kg_week, code: h.code, reason: h.reason })),
       weights: w.results.map((x) => ({ date: x.date, kg: x.weight_kg })),
+      aprovacao: pref?.v ?? "sempre", // #81 Comida → Ajustes
     });
   });
 

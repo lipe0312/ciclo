@@ -7,7 +7,7 @@ import { Card, Icon, toast } from "../../lib/ui/index.tsx";
 import { abrirComoConectar } from "./conectar.tsx";
 
 export interface Fato { id: string; fato: string; fonte: string; criadoEm: number; expiraEm: number | null }
-export interface ClaudeInfo { status: { modo: C.ModoClaude; texto: string; checklist: { connector: boolean; rotina: boolean; vigia: boolean } }; pendentes: number; memoria: Fato[]; limite: number; openai?: boolean }
+export interface ClaudeInfo { status: { modo: C.ModoClaude; texto: string; checklist: { connector: boolean; rotina: boolean; vigia: boolean } }; pendentes: number; memoria: Fato[]; limite: number; openai?: boolean; /** #81 última passada da rotina (ms) */ rotinaEm?: number | null }
 
 const DEMO: ClaudeInfo = {
   status: C.statusClaude({ agora: Date.now(), rotinaEm: Date.now() - 150 * 60e3, connectorEm: Date.now() - 3600e3, pendentes: 1 }),

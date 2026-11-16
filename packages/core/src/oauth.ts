@@ -4,7 +4,8 @@
 // O Worker guarda os dados (só hashes) e chama daqui. A chave manual da #55 continua como plano B.
 
 export const OAUTH = {
-  escopo: "ciclo",
+  /** #81: o padrão (sem `scope` no pedido) e o legado "ciclo" valem ler + escrever; tokens antigos também */
+  escopo: "ler escrever",
   /** código de autorização: uso único, 5 min */
   codigoMs: 5 * 60_000,
   /** pedido aguardando a tela de consentimento: 10 min */
@@ -23,6 +24,26 @@ export const OAUTH = {
 
 const semBarra = (o: string) => o.replace(/\/+$/, "");
 
+/** #81 Escopos do MCP: `ler` (ferramentas de leitura) e `escrever` (toda ferramenta que grava). "ciclo" = os dois (legado). */
+export const ESCOPOS = ["ler", "escrever"] as const;
+export type Escopo = (typeof ESCOPOS)[number];
+export const ESCOPO_NM: Record<Escopo, string> = { ler: "Ler seu treino, comida, diário e perfil", escrever: "Registrar e alterar treino, comida, perfil e preferências (apagar continua só no app)" };
+/** Normaliza o `scope` pedido: ausente ou "ciclo" → ler + escrever; escrever sempre leva ler junto; offline_access é ignorado.
+ *  null = escopo desconhecido. Devolve sempre na ordem "ler escrever". */
+export function normalizarEscopo(scope: unknown): string | null {
+  if (scope == null || scope === "") return OAUTH.escopo;
+  if (typeof scope !== "string" || scope.length > 200) return null;
+  const ps = scope.split(" ").filter(Boolean);
+  if (!ps.every((s) => s === "ciclo" || s === "offline_access" || (ESCOPOS as readonly string[]).includes(s))) return null;
+  const quer = new Set<string>(ps.includes("ciclo") ? ESCOPOS : ps.filter((s) => s !== "offline_access"));
+  if (!quer.size) return OAUTH.escopo;
+  if (quer.has("escrever")) quer.add("ler");
+  return ESCOPOS.filter((e) => quer.has(e)).join(" ");
+}
+/** Escopos de um token gravado (NULL/vazio = token anterior à #81: ler + escrever, para não quebrar quem já conectou). */
+export const escoposDe = (v: unknown): Escopo[] => (normalizarEscopo(v) ?? "ler").split(" ") as Escopo[];
+export const podeEscrever = (v: unknown) => escoposDe(v).includes("escrever");
+
 export function urlsOauth(origin: string) {
   const o = semBarra(origin);
   return {
@@ -39,7 +60,7 @@ export function urlsOauth(origin: string) {
 /** RFC 9728: o /mcp diz quem autoriza. */
 export function metadataRecurso(origin: string) {
   const u = urlsOauth(origin);
-  return { resource: u.recurso, authorization_servers: [u.issuer], scopes_supported: [OAUTH.escopo], bearer_methods_supported: ["header"], resource_name: "Ciclo" };
+  return { resource: u.recurso, authorization_servers: [u.issuer], scopes_supported: [...ESCOPOS], bearer_methods_supported: ["header"], resource_name: "Ciclo" };
 }
 
 export const METODOS_AUTH = ["none", "client_secret_post", "client_secret_basic"] as const;
@@ -59,7 +80,7 @@ export function metadataServidor(origin: string) {
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: [...METODOS_AUTH],
     revocation_endpoint_auth_methods_supported: [...METODOS_AUTH],
-    scopes_supported: [OAUTH.escopo],
+    scopes_supported: [...ESCOPOS],
     authorization_response_iss_parameter_supported: true,
   };
 }
@@ -161,12 +182,10 @@ export function validarPedidoAutorizacao(q: Record<string, unknown>, cliente: { 
   if (q.response_type !== "code") return falha("unsupported_response_type", "só response_type=code");
   if (q.code_challenge_method !== "S256") return falha("invalid_request", "PKCE obrigatório com code_challenge_method=S256");
   if (!verifierValido(q.code_challenge)) return falha("invalid_request", "code_challenge inválido");
-  if (q.scope != null) {
-    const pedidos = typeof q.scope === "string" ? q.scope.split(" ").filter(Boolean) : null;
-    if (!pedidos || !pedidos.every((s) => s === OAUTH.escopo || s === "offline_access")) return falha("invalid_scope", `escopo aceito: ${OAUTH.escopo}`);
-  }
+  const escopo = normalizarEscopo(q.scope);
+  if (!escopo) return falha("invalid_scope", `escopos aceitos: ${ESCOPOS.join(", ")}`);
   if (!recursoValido(q.resource, origin)) return falha("invalid_target", "resource não é este servidor");
-  return { ok: true, value: { clientId: String(q.client_id ?? ""), redirectUri, challenge: q.code_challenge as string, state: st, escopo: OAUTH.escopo, resource: typeof q.resource === "string" ? q.resource : null } };
+  return { ok: true, value: { clientId: String(q.client_id ?? ""), redirectUri, challenge: q.code_challenge as string, state: st, escopo, resource: typeof q.resource === "string" ? q.resource : null } };
 }
 
 /** redirect_uri + parâmetros (mantém a query que já existir; ignora vazios). */

@@ -2,6 +2,7 @@
 // conector personalizado e entrar com o Face ID (OAuth). Ilustrações genéricas em SVG, sem marca. A chave manual (Conta)
 // fica como plano B; a rotina na nuvem (opcional) responde os pedidos da aba Chat com o celular e o computador desligados.
 import type { ComponentChildren } from "preact";
+import { useState } from "preact/hooks";
 import "./conectar.css";
 import { C } from "../../lib/store/index.ts";
 import { SERVER } from "../../lib/api/index.ts";
@@ -52,11 +53,32 @@ function Passo({ n, titulo, children, mock }: { n: number; titulo: string; child
   </li>;
 }
 
+type Cliente = "claude" | "chatgpt" | "gemini" | "editor";
+const CLIENTES: [Cliente, string][] = [["claude", "Claude"], ["chatgpt", "ChatGPT"], ["gemini", "Gemini CLI"], ["editor", "Cursor / VS Code"]];
+/** #81 o que cada cliente faz: ler e escrever em todos (OAuth); rotina automática da caixa só no Claude. */
+const FUNCIONA: Record<Cliente, { rotina: boolean; passos: string[] }> = {
+  claude: { rotina: true, passos: [] },
+  chatgpt: { rotina: false, passos: ["Configurações → Conectores (ative o modo desenvolvedor, se pedir).", "Criar conector: nome Ciclo, cole a URL abaixo, autenticação OAuth.", "Entre com o Face ID na tela do Ciclo e toque em Permitir."] },
+  gemini: { rotina: false, passos: ["No arquivo de configurações do Gemini CLI, adicione um servidor MCP \"ciclo\" com a URL abaixo (httpUrl).", "Rode /mcp auth ciclo: abre a tela do Ciclo no navegador.", "Entre com o Face ID e toque em Permitir."] },
+  editor: { rotina: false, passos: ["Nas configurações de MCP do editor, adicione um servidor HTTP com a URL abaixo.", "Ao conectar, o navegador abre a tela do Ciclo.", "Entre com o Face ID e toque em Permitir."] },
+};
+/** 5 frases de comida e a prévia esperada (a IA sempre mostra o resumo e pergunta antes de subir). */
+const FRASES_COMIDA: [string, string][] = [
+  ["Tomei café: 2 ovos, pão francês e café com leite", "Café ~08:00: 2 ovos ≈ 100 g, 1 pão ≈ 50 g, 1 copo de leite ≈ 200 ml · ~430 kcal, ~27 g de proteína. “Posso subir?”"],
+  ["Almocei arroz, feijão e 150 g de frango grelhado", "Almoço: arroz ≈ 150 g (90–240), feijão ≈ 100 g, frango 150 g (135–180) · ~510 kcal, ~56 g."],
+  ["Hoje comi 2 ovos de manhã, almocei arroz e carne, lanchei uma banana e jantei salada com atum", "Separa em café, almoço, lanche e jantar, com o total do dia."],
+  ["Ontem à noite comi 2 ovos", "Jantar com a data de ontem escrita na prévia."],
+  ["Café: 1 banana (com o café já registrado)", "Pergunta: complementar (soma) ou substituir (o que você editou à mão fica)."],
+];
+
 function ComoConectar() {
   const url = urlConector();
+  const [cli, setCli] = useState<Cliente>("claude");
+  const f = FUNCIONA[cli];
   return <>
-    <SheetHead kicker="Sem computador · leva 1 minuto" title="Como conectar o seu Claude" />
-    <ol class="cx-passos">
+    <SheetHead kicker="Sem computador · leva 1 minuto" title="Como conectar" />
+    <div class="tabs cx-abas" role="group" aria-label="Qual IA você usa">{CLIENTES.map(([k, nm]) => <button key={k} type="button" class="chip" aria-pressed={cli === k} onClick={() => setCli(k)}>{nm}</button>)}</div>
+    {cli === "claude" ? <ol class="cx-passos">
       <Passo n={1} titulo="Abra os conectores" mock={1}>
         <p class="small sub">No claude.ai ou no app Claude: Configurações → Conectores.</p>
       </Passo>
@@ -74,13 +96,32 @@ function ComoConectar() {
         <code class="cx-url">{PEDIDO_TESTE}</code>
         <button type="button" class="btn sm full cx-copiar" onClick={() => copiar(PEDIDO_TESTE, "Pedido copiado")}><Icon id="chat" />Copiar o pedido</button>
       </Passo>
-    </ol>
+    </ol> : <div class="cx-outro">
+      <ol class="small cx-lista">{f.passos.map((p) => <li key={p}>{p}</li>)}</ol>
+      <code class="cx-url">{url}</code>
+      <button type="button" class="btn sm full cx-copiar" onClick={() => copiar(url, "URL copiada")}><Icon id="plus" />Copiar a URL</button>
+      {!SERVER && <p class="tiny sub">Na demonstração a URL é de exemplo e não conecta.</p>}
+    </div>}
+    <div class="cx-funciona" role="note">
+      <h3>O que funciona aqui</h3>
+      <ul class="small cx-lista">
+        <li><Icon id="check" cls="cx-ok" />Ler: treino, comida, diário e histórico</li>
+        <li><Icon id="check" cls="cx-ok" />Escrever: registrar comida e séries, ajustar o treino (sempre com o resumo antes)</li>
+        <li><Icon id={f.rotina ? "check" : "x"} cls={f.rotina ? "cx-ok" : "cx-nao"} />Rotina automática da aba Chat: {f.rotina ? "sim (opcional, abaixo)" : "não; aqui é só conversa"}</li>
+      </ul>
+      <p class="tiny sub">Consumo: usa o limite da sua assinatura{cli === "claude" ? " do Claude. No plano grátis dá para conectar e conversar, com limites menores; a rotina agendada exige plano pago" : " dessa IA"}. Os planos mudam: confira na página do fornecedor.</p>
+    </div>
     <details class="cx-mais">
+      <summary>Comida pela conversa: 5 frases para testar</summary>
+      <ul class="cx-frases">{FRASES_COMIDA.map(([q, r]) => <li key={q}><b class="small">“{q}”</b><span class="tiny sub">{r}</span></li>)}</ul>
+      <p class="tiny sub">Nada sobe sem o seu “sim” (mude em Comida → Ajustes). O que entra aparece com “via Chat · ≈ estimativa”.</p>
+    </details>
+    {cli === "claude" && <details class="cx-mais">
       <summary>Respostas automáticas na aba Chat (opcional)</summary>
       <p class="small sub">Crie uma rotina na nuvem em claude.ai/code (agendar, a cada 3 horas) com o pedido abaixo. Ela responde a caixa com o celular e o computador desligados, na sua assinatura.</p>
       <code class="cx-url">{PEDIDO_ROTINA}</code>
       <button type="button" class="btn sm full cx-copiar" onClick={() => copiar(PEDIDO_ROTINA, "Pedido da rotina copiado")}><Icon id="clock" />Copiar o pedido da rotina</button>
-    </details>
+    </details>}
     <p class="tiny sub cx-rodape">Não abriu a tela do Face ID? Use a chave manual em Conta como plano B. Você desliga a conexão quando quiser em Conta.</p>
   </>;
 }

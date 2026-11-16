@@ -60,9 +60,13 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   await ok(mcp(env, tok.token, "ciclo_memoria_salvar", { fato: `${tag} joelho dói no agachamento` }));
   await ok(c("PUT", "/api/checkin/2026-09-10", { sleepH: 7, energy: 2, soreness: 1, stress: 2, food: 0, note: `${tag} joelho estalou` }));
   await ok(mcp(env, tok.token, "ciclo_chat_pendentes", { origem: "vigia" }));
+  // #81 comida por conversa: um lote confirmado (para o desfazer) e uma prévia aberta (token que a outra conta tenta usar)
+  const pv1 = JSON.parse((await ok(mcp(env, tok.token, "ciclo_comida_registrar", { texto: `almocei 2 ovos ${tag}`, simular: true }))).data.result.content[0].text);
+  await ok(mcp(env, tok.token, "ciclo_comida_registrar", { confirmar: pv1.token }));
+  const previa = JSON.parse((await ok(mcp(env, tok.token, "ciclo_comida_registrar", { texto: `jantei 150 g de frango ${tag}`, simular: true }))).data.result.content[0].text).token as string;
   const exp = (await c("GET", "/api/account/export")).data;
   const dev = (await c("GET", "/api/account/devices")).data; // #54: sessão e passkey (só existem nas contas criadas por convite)
-  return { sessao: dev.sessions[0]?.id ?? "x1", passkey: dev.passkeys[0]?.id ?? "x1", mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id };
+  return { sessao: dev.sessions[0]?.id ?? "x1", passkey: dev.passkeys[0]?.id ?? "x1", mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id, previa };
 }
 const snap = async (env: any, user: string) => {
   const e = (await call(env, "GET", "/api/account/export", { user })).data;
@@ -181,14 +185,19 @@ async function matriz(env: any, ana: string, bia: string) {
     ["ciclo_responder_pedido", { id: B.inbox, resposta: "oi" }, true], ["ciclo_marcar_presenca", { date: D, status: "nao_fui" }],
     ["ciclo_registrar_dor", { region: "ombro_e", intensity: 1 }], ["ciclo_registrar_comida", { texto: "pão", date: D }],
     ["ciclo_comida_dia", { date: D }], ["ciclo_comida_corrigir", { id: B.food, kcal: 1, proteina: 1, confianca: "alta" }, true],
-    ["ciclo_salvar_perfil", { perfil: { minutes: 45 } }], ["ciclo_revisar_edicoes", {}], ["ciclo_concluir_revisao", { id: B.edit, review: "ok" }, true],
+    ["ciclo_perfil_atualizar", { perfil: { minutes: 45 } }], ["ciclo_revisar_edicoes", {}], ["ciclo_concluir_revisao", { id: B.edit, review: "ok" }, true],
     ["ciclo_diario", { from: "2026-11-01", to: D }], ["ciclo_registrar_resumo_dias", { dias: [{ date: D, alcohol: 3, sleptWell: false }] }],
     ["ciclo_chat_pendentes", { origem: "rotina" }], ["ciclo_buscar", { query: "joelho", de: "2026-01-01", ate: D }],
     ["ciclo_memoria_salvar", { fato: "A fato" }], ["ciclo_memoria_listar", {}],
+    // #81: o token da prévia da B não serve para a A (busca filtrada por user_id); corrigir/desfazer não alcançam a B
+    ["ciclo_comida_registrar", { confirmar: B.previa }, true], ["ciclo_comida_corrigir", { id: B.food, fator: 0.5 }, true], ["ciclo_comida_desfazer", {}], ["ciclo_comida_pendentes", {}],
+    ["ciclo_semana_ver", { date: D }], ["ciclo_semana_gerar", { date: D, simular: true }], ["ciclo_treino_registrar", { exercicioId: B.ex, series: [{ kg: 1, reps: 1 }] }],
+    ["ciclo_treino_trocar", { exercicioId: B.ex, date: D }], ["ciclo_treino_atual_salvar", { treinoAtual: { divisoes: [{ nome: "A", grupos: ["biceps"], exercicios: [{ nome: "Rosca livre", grupo: "biceps" }] }] } }],
+    ["ciclo_preferencias", { comida_aprovacao: "so_duvidas" }], ["ciclo_historico", { tipo: "series", de: "2026-11-01", ate: D }],
     ["ciclo_exame_pendente", {}], ["ciclo_exame_concluir", { id: B.exam, resumo: { marcadores: [{ nome: "TSH", valor: 1, status: "dentro" }] } }, true],
   ];
   assert.deepEqual([...new Set(cases.map((c) => c[0].replace(/ \(.*\)$/, "")))].concat("DELETE /api/account", "POST /api/account/logout-all").sort(), routeSignatures().sort(), "toda rota precisa de caso de isolamento");
-  assert.deepEqual(tools.map((t) => t[0]).sort(), [...toolNames].sort(), "toda ferramenta MCP precisa de caso");
+  assert.deepEqual([...new Set(tools.map((t) => t[0]))].sort(), [...toolNames].sort(), "toda ferramenta MCP precisa de caso");
 
   for (const [sig, run, status] of cases) {
     const r = await run();

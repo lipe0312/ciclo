@@ -59,7 +59,10 @@ test("ciclo_salvar_perfil: respeita o usuário do token (não lê nem grava na c
   const bBefore = JSON.stringify(profileOf(env, "bia")), bN = historyN(env, "bia");
   const bUid = env.DB.raw.prepare("SELECT id FROM user WHERE email = 'bia@dev.localhost'").get().id;
   // ana é conta nova: o patch dela NÃO pode herdar nada da bia (sem filtro por user_id, herdaria)
-  const r = await mcp(env, ta, "ciclo_salvar_perfil", { perfil: { minutes: 45 }, userId: bUid, user_id: bUid });
+  // #81 o schema recusa campo desconhecido: mandar o user_id da B nem chega ao handler (e nada muda)
+  const intruso = await mcp(env, ta, "ciclo_salvar_perfil", { perfil: { minutes: 45 }, userId: bUid, user_id: bUid });
+  assert.equal(intruso.data.result.isError, true); assert.match(intruso.text, /user_id: campo desconhecido/);
+  const r = await mcp(env, ta, "ciclo_salvar_perfil", { perfil: { minutes: 45 } });
   assert.ok(!r.data.result.isError, r.text);
   const a = profileOf(env, "ana");
   // #71: conta nova guarda só o que foi dito (nada de padrão por baixo, nem da outra conta)

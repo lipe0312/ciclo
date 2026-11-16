@@ -5,7 +5,11 @@ import { SERVER, send } from "../../lib/api/index.ts";
 import { Card, Chip, Icon, Seg, toast } from "../../lib/ui/index.tsx";
 import { Mic } from "../../lib/voz/index.tsx";
 import { clone, fmt, uid } from "../../lib/util.ts";
-import { loadClaude } from "./memoria.tsx";
+import { loadClaude, useClaude } from "./memoria.tsx";
+
+const hhmm = (ms: number) => new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+/** #81 status do pedido: na fila → o Chat leu → respondido. */
+const statusPedido = (m: { read_at?: number | null }) => (m.read_at ? `o Chat leu às ${hhmm(m.read_at)}; a resposta chega aqui` : "na fila: o Chat responde quando processar a caixa");
 
 export const CATS = ["Hoje", "Treino", "Corpo", "Comida", "Plano"];
 type Tier = keyof typeof C.TIER_INFO;
@@ -97,7 +101,7 @@ export function InboxItem({ m }: { m: any }) {
       {!!diff?.length && <div class="diff">{diff.map((d, i) => <div key={i}>{d.minus && <div class="minus">− {d.minus}</div>}{d.plus && <div class="plus">+ {d.plus}</div>}</div>)}</div>}
       {m.status === "respondido" && m.change && <div class="row" style="margin-top:8px;gap:6px"><button type="button" class="btn pri sm" onClick={() => applyInbox(m)}><Icon id="check" />Aplicar</button><button type="button" class="btn sm" onClick={() => dropInbox(m)}>Descartar</button></div>}
       {m.status === "aplicado" && <p class="tiny sub" style="margin-top:6px"><Icon id="check" style="width:12px;height:12px" /> aplicado</p>}
-    </div> : <div class="row between wrapx" style="margin-top:4px;row-gap:4px"><p class="tiny sub"><Icon id="clock" style="width:12px;height:12px;vertical-align:-2px" /> {SERVER ? "na fila — o Chat responde quando processar a caixa" : "pensando…"}</p>
+    </div> : <div class="row between wrapx" style="margin-top:4px;row-gap:4px"><p class="tiny sub"><Icon id="clock" style="width:12px;height:12px;vertical-align:-2px" /> {SERVER ? statusPedido(m) : "pensando…"}</p>
       <Continuar m={m} /></div>}</div>;
 }
 
@@ -108,6 +112,7 @@ export function CaixaClaude({ limit = 6 }: { limit?: number }) {
   const cls = draft ? C.classify(draft) : null;
   const tier = (S.ui.tierOverride ?? cls?.tier ?? S.profile.tiers[S.ui.promptCat]) as Tier;
   const setDraft = (v: string) => { S.ui.inboxDraft = v; commit(); };
+  const info = useClaude();
   return <Card><div class="row between wrapx"><h2>Pedir ao Chat</h2><span class="badge">connector · sua assinatura</span></div>
     <p class="small sub" style="margin:4px 0 10px">Toque num pedido pronto ou escreva/fale. A resposta volta aqui com a mudança para aplicar.</p>
     <div class="tabs">{CATS.map((c) => <Chip key={c} on={S.ui.promptCat === c} onClick={() => { S.ui.promptCat = c; commit(); }}>{c}</Chip>)}</div>
@@ -119,5 +124,6 @@ export function CaixaClaude({ limit = 6 }: { limit?: number }) {
       <Seg opts={(["haiku", "sonnet", "opus"] as Tier[]).map((t) => [t, C.TIER_INFO[t].nm] as [Tier, string])} value={tier} onPick={(t) => { S.ui.tierOverride = t; commit(); }} label="Modelo" /></div>
       <button type="button" class="btn pri sm" onClick={() => sendInbox(S.ui.inboxDraft)}><Icon id="send" />Enviar</button></div>
     <p class="tiny sub" style="margin-top:6px">{C.TIER_INFO[tier].why}{cls ? ` · detectado: ${cls.action.replace(/_/g, " ")}` : ""}</p>
-    <hr /><div class="thread">{S.inbox.slice(0, limit).map((m) => <InboxItem key={m.id} m={m} />)}{!S.inbox.length && <p class="small sub">Nenhum pedido ainda.</p>}</div></Card>;
+    <hr />{SERVER && <p class="tiny sub" role="status" style="margin-bottom:8px"><Icon id="clock" style="width:12px;height:12px;vertical-align:-2px" /> {info?.rotinaEm ? `Última passada da rotina: ${new Date(info.rotinaEm).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} às ${hhmm(info.rotinaEm)}` : "A rotina ainda não passou. Sem ela, peça no Chat: “processa minha caixa do Ciclo”."}</p>}
+    <div class="thread">{S.inbox.slice(0, limit).map((m) => <InboxItem key={m.id} m={m} />)}{!S.inbox.length && <p class="small sub">Nenhum pedido ainda.</p>}</div></Card>;
 }

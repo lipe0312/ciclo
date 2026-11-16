@@ -106,9 +106,11 @@ on("POST", "/api/account/tokens", async (req, env, _p, u) => {
   // #66: o teto de 5 é das chaves manuais; as conexões OAuth têm teto próprio (core/oauth.ts)
   const { results } = await env.DB.prepare("SELECT created_at AS createdAt, last_used_at AS lastUsedAt, revoked_at AS revokedAt FROM mcp_token WHERE user_id = ?1 AND kind = 'manual' AND revoked_at IS NULL").bind(u.id).all<TokenRow>();
   if (tokensAtivos(results, now) >= MAX_MCP_TOKENS) throw new HttpError(409, `máximo de ${MAX_MCP_TOKENS} chaves ativas; revogue uma`, "max_tokens");
+  // #81 escopo da chave: "ler" (só leitura) ou o padrão "ler escrever"
+  const escopo = b.escopo == null ? "ler escrever" : oneOf(b.escopo, "escopo", ["ler", "ler escrever"] as const);
   const t = await newMcpToken();
-  await env.DB.prepare("INSERT INTO mcp_token (id, user_id, hash, label, created_at) VALUES (?1, ?2, ?3, ?4, ?5)").bind(t.id, u.id, t.hash, label, now).run();
-  return json({ id: t.id, label, createdAt: now, token: t.token, aviso: "copie agora: o token não aparece de novo" }, 201);
+  await env.DB.prepare("INSERT INTO mcp_token (id, user_id, hash, label, created_at, escopo) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(t.id, u.id, t.hash, label, now, escopo).run();
+  return json({ id: t.id, label, createdAt: now, escopo, token: t.token, aviso: "copie agora: o token não aparece de novo" }, 201);
 });
 
 on("DELETE", "/api/account/tokens/:id", async (_req, env, p, u) => {

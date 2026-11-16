@@ -173,7 +173,7 @@ export async function closeStaleSessions(env: Env, uid: string | null = null, no
     .bind(MAX_SESSION_MS, now - MAX_SESSION_MS, uid).run();
 }
 
-export interface InboxRow { id: string; created_at: number; text: string; action: string; tier: string; status: string; response: string | null; change: unknown; cerebro?: string | null }
+export interface InboxRow { id: string; created_at: number; text: string; action: string; tier: string; status: string; response: string | null; change: unknown; cerebro?: string | null; read_at?: number | null }
 
 export async function weekState(env: Env, uid: string, anyDate: string) {
   const monday = mondayOf(anyDate);
@@ -185,7 +185,7 @@ export async function weekState(env: Env, uid: string, anyDate: string) {
     env.DB.prepare("SELECT id, date, gym_id, started_at, finished_at, closed_by, json_extract(plan, '$.name') AS name, json_extract(plan, '$.groups') AS groups FROM session WHERE user_id = ?3 AND date BETWEEN ?1 AND ?2 ORDER BY started_at").bind(from, to, uid),
     env.DB.prepare("SELECT l.muscle, COUNT(*) AS sets, COUNT(DISTINCT l.session_id) AS freq FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id WHERE l.user_id = ?3 AND s.date BETWEEN ?1 AND ?2 GROUP BY l.muscle").bind(from, to, uid),
     env.DB.prepare("SELECT id, region, intensity, kind, context, created_at FROM pain WHERE user_id = ?1 AND resolved_at IS NULL ORDER BY created_at DESC").bind(uid),
-    env.DB.prepare("SELECT id, created_at, text, action, tier, status, response, change, cerebro FROM inbox WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 20").bind(uid),
+    env.DB.prepare("SELECT id, created_at, text, action, tier, status, response, change, cerebro, read_at FROM inbox WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 20").bind(uid),
     env.DB.prepare("SELECT id, date, type, minutes, intensity, distance_km FROM cardio_log WHERE user_id = ?3 AND date BETWEEN ?1 AND ?2 ORDER BY date, created_at").bind(from, to, uid),
   ]);
   const done: Partial<Record<MuscleId, number>> = {}, freq: Partial<Record<MuscleId, number>> = {};
@@ -337,12 +337,12 @@ export async function takeGeocodeSlot(env: Env, now = Date.now()): Promise<numbe
 
 // ---- direitos da conta (LGPD) ----
 /** Tabelas de dado pessoal (todas têm user_id). Ordem de apagar: filhas antes das mães. */
-export const USER_TABLES = ["oauth_code", "set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym_weekday", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat", "busca", "auth_challenge", "recovery_codes", "sessions", "passkeys", "invites", "consent", "ui_pref"] as const;
+export const USER_TABLES = ["oauth_code", "set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym_weekday", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat", "busca", "auth_challenge", "recovery_codes", "sessions", "passkeys", "invites", "consent", "ui_pref", "mcp_previa"] as const;
 
 /** Tudo da conta em JSON (mídia: só metadados; tokens: sem hash). */
 export async function exportAccount(env: Env, uid: string) {
   const q = (sql: string) => env.DB.prepare(sql).bind(uid);
-  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "gym_weekday", "mcp_token", "week_plan", "day_override", "cardio_log", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat", "passkeys", "sessions", "recovery_codes", "invites", "consent", "ui_pref"] as const;
+  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "gym_weekday", "mcp_token", "week_plan", "day_override", "cardio_log", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat", "passkeys", "sessions", "recovery_codes", "invites", "consent", "ui_pref", "mcp_previa"] as const;
   const res = await env.DB.batch([
     q("SELECT id, email, name, sobrenome, sexo, nascimento, altura_cm, peso_kg, role, created_at, last_seen_at, onboarding_done_at FROM user WHERE id = ?1"),
     q("SELECT data, updated_at FROM profile WHERE user_id = ?1"),
@@ -355,13 +355,13 @@ export async function exportAccount(env: Env, uid: string) {
     q("SELECT date, status, reason, source, updated_at FROM attendance WHERE user_id = ?1 ORDER BY date"),
     q("SELECT date, sleep_h, energy, soreness, stress, food, weight_kg, note, updated_at FROM checkin WHERE user_id = ?1 ORDER BY date"),
     q("SELECT id, region, intensity, kind, context, created_at, resolved_at FROM pain WHERE user_id = ?1 ORDER BY created_at"),
-    q("SELECT id, created_at, text, action, tier, status, response, change, answered_at, cerebro FROM inbox WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT id, created_at, text, action, tier, status, response, change, answered_at, cerebro, read_at FROM inbox WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT id, date, edit, issues, review, review_note, created_at FROM plan_edit WHERE user_id = ?1 ORDER BY created_at"),
-    q("SELECT id, date, raw_text, meal, items, kcal, protein, kcal_est, protein_est, manual, source, confidence, created_at FROM food_log WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT id, date, raw_text, meal, items, kcal, protein, kcal_est, protein_est, manual, source, confidence, created_at, lote, via FROM food_log WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT date, arm_cm, waist_cm, shoulder_cm, updated_at FROM measurement WHERE user_id = ?1 ORDER BY date"),
     q("SELECT id, kind, mime, bytes, equipment_id, exercise_id, gym_id, note, setup, created_at, deleted_at FROM media WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT gym_id, weekday FROM gym_weekday WHERE user_id = ?1 ORDER BY weekday"),
-    q("SELECT id, label, kind, created_at, last_used_at, revoked_at FROM mcp_token WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT id, label, kind, escopo, created_at, last_used_at, revoked_at FROM mcp_token WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT week_start, version, plan_json, source, created_at FROM week_plan WHERE user_id = ?1 ORDER BY week_start, version"),
     q("SELECT date, kind, opts, updated_at FROM day_override WHERE user_id = ?1 ORDER BY date"),
     q("SELECT id, date, type, minutes, intensity, distance_km, created_at FROM cardio_log WHERE user_id = ?1 ORDER BY date, created_at"),
@@ -382,7 +382,9 @@ export async function exportAccount(env: Env, uid: string) {
     // #62: aceites dos termos e da privacidade (versão e data; o HMAC do IP não sai)
     q("SELECT doc, versao, aceito_em FROM consent WHERE user_id = ?1 ORDER BY aceito_em"),
     // #73 preferências de interface (datas de "dispensar" e "lembrar depois")
-    q("SELECT boas_vindas_dispensado_em, perfil_adiado_em, updated_at FROM ui_pref WHERE user_id = ?1"),
+    q("SELECT boas_vindas_dispensado_em, perfil_adiado_em, comida_aprovacao, updated_at FROM ui_pref WHERE user_id = ?1"),
+    // #81 prévias do MCP (o token só existe como hash e não sai)
+    q("SELECT kind, payload, created_at, expires_at, used_at FROM mcp_previa WHERE user_id = ?1 ORDER BY created_at"),
   ]);
   const out: Record<string, unknown> = { formato: "ciclo-export-1", exportadoEm: new Date().toISOString() };
   names.forEach((n, i) => { out[n] = n === "user" || n === "profile" ? res[i].results[0] ?? null : res[i].results; });

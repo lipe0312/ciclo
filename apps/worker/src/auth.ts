@@ -5,7 +5,7 @@
 //   #66: a chave manual (#55) ou o token de acesso OAuth (1 h, expires_at; oauth.ts), no mesmo formato.
 // - Local: DEV_NO_AUTH=1 só em localhost/127.0.0.1; usuário de dev pelo cabeçalho x-dev-user ou cookie ciclo_dev_user.
 //   O MCP_TOKEN global vale só aí, como bootstrap do usuário de dev "dev".
-import { CONSENT_DOCS, CONSENT_VERSAO, maxUsers, tokenValido } from "@ciclo/core";
+import { CONSENT_DOCS, CONSENT_VERSAO, escoposDe, maxUsers, tokenValido } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { authenticateSession } from "./auth-conta.ts";
 
@@ -100,9 +100,9 @@ export async function authenticateMcp(req: Request, env: Env, now = Date.now()):
   const gotHash = await sha256Hex(got);
   const m = TOKEN_RE.exec(got);
   if (m) {
-    const row = await env.DB.prepare(`SELECT t.id AS token_id, t.hash, t.created_at AS token_created_at, t.last_used_at, u.id, u.email, u.name, u.role, u.created_at, u.onboarding_done_at, u.last_seen_at, u.deleted_at
+    const row = await env.DB.prepare(`SELECT t.id AS token_id, t.hash, t.created_at AS token_created_at, t.last_used_at, t.escopo AS token_escopo, u.id, u.email, u.name, u.role, u.created_at, u.onboarding_done_at, u.last_seen_at, u.deleted_at
       FROM mcp_token t JOIN user u ON u.id = t.user_id WHERE t.id = ?1 AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > ?2)`).bind(m[1], now)
-      .first<UserRow & { token_id: string; hash: string; token_created_at: number; last_used_at: number | null }>();
+      .first<UserRow & { token_id: string; hash: string; token_created_at: number; last_used_at: number | null; token_escopo: string | null }>();
     const ok = timingSafeEqualHex(gotHash, row?.hash ?? DUMMY_HASH);
     if (!row || !ok || row.deleted_at != null) return null;
     // #55: token sem uso há 90 dias expira (regra no core); revogado já ficou fora do SELECT
@@ -112,10 +112,12 @@ export async function authenticateMcp(req: Request, env: Env, now = Date.now()):
     }
     await touchUser(env, row, now);
     // #62: termos/privacidade em versão nova → o Claude também espera o aceite no app (como no /api, o dev local não tem aceite)
-    if (isLocalDev(req, env)) return { ...userRowToAuth(row), via: "mcp" };
+    // #81 escopos do token (NULL = anterior à #81: ler + escrever)
+    const escopo = escoposDe(row.token_escopo).join(" ");
+    if (isLocalDev(req, env)) return { ...userRowToAuth(row), via: "mcp", escopo };
     const ac = await env.DB.prepare("SELECT COUNT(*) AS n FROM consent WHERE user_id = ?1 AND ((doc = 'termos' AND versao = ?2) OR (doc = 'privacidade' AND versao = ?3))")
       .bind(row.id, CONSENT_VERSAO.termos, CONSENT_VERSAO.privacidade).first<{ n: number }>();
-    return { ...userRowToAuth(row), via: "mcp", aceitePendente: (ac?.n ?? 0) < CONSENT_DOCS.length };
+    return { ...userRowToAuth(row), via: "mcp", escopo, aceitePendente: (ac?.n ?? 0) < CONSENT_DOCS.length };
   }
   // Bootstrap local: MCP_TOKEN global → usuário de dev padrão. Nunca fora de localhost com DEV_NO_AUTH=1.
   if (isLocalDev(req, env) && env.MCP_TOKEN && env.MCP_TOKEN.length >= 32) {

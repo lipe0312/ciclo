@@ -12,7 +12,9 @@ import { SheetHead, closeSheet, openSheet } from "../../lib/folha/index.tsx";
 import { addDays, fmt, longDate } from "../../lib/util.ts";
 
 const CONF: Record<string, string> = { alta: "alta", media: "média", baixa: "baixa" };
-const origem = (f: FoodRow) => (f.source === "claude" ? `Chat conferiu${f.confidence ? ` (confiança ${CONF[f.confidence] ?? f.confidence})` : ""}` : "estimativa do aparelho");
+const hhmm = (ms: number) => new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+// #81 entrada vinda da IA conectada: "via Chat, 12:40 · ≈ estimativa" (editar no app vence sempre)
+const origem = (f: FoodRow) => (f.via === "mcp" ? `via Chat${f.createdAt ? `, ${hhmm(f.createdAt)}` : ""} · ≈ estimativa` : f.source === "claude" ? `Chat conferiu${f.confidence ? ` (confiança ${CONF[f.confidence] ?? f.confidence})` : ""}` : "estimativa do aparelho");
 const MEAL_OPTS: [Meal | null, string][] = [[null, "Automático"], ...MEALS.map((m): [Meal, string] => [m, MEAL_NM[m]])];
 const num = (s: string) => { const n = Number(s.replace(",", ".")); return s.trim() !== "" && Number.isFinite(n) && n >= 0 ? n : null; };
 
