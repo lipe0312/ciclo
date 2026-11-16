@@ -7,6 +7,8 @@ import type { Env } from "./env.ts";
 import { HttpError, date, id, num, oneOf, str } from "./http.ts";
 import { basePessoal } from "./comida.ts";
 import { confirmar, criarPrevia } from "./mcp-previa.ts";
+import { interpretarComIA } from "./porcao-ia.ts";
+import { temConferir } from "@ciclo/core/porcoes";
 import { AVISO_DADO, S, addDays, dado, hhmm, horaSP, obj, today } from "./mcp-tipos.ts";
 import type { Args, Tool } from "./mcp-tipos.ts";
 
@@ -98,12 +100,14 @@ async function registrar(a: Args, env: Env, uid: string) {
   const hoje = today(), d = a.data ? date(a.data, "data") : null;
   if (d && (d > hoje || d < addDays(hoje, -30))) throw new HttpError(400, "data: de até 30 dias atrás até hoje");
   const [pref, base] = await Promise.all([aprovacaoDe(env, uid), basePessoal(env, uid)]);
-  const interp = interpretarComida({ texto, hoje, hora: horaSP(), refeicao: a.refeicao ? oneOf(a.refeicao, "refeicao", MEALS) : null, data: d, base });
+  // #80 regra + porção pessoal + IA leve (validada) por trás da mesma forma da #81
+  const interp = await interpretarComIA(env, uid, { texto, hoje, hora: horaSP(), refeicao: a.refeicao ? oneOf(a.refeicao, "refeicao", MEALS) : null, data: d, base });
   if (interp.data < addDays(hoje, -30)) throw new HttpError(400, "data: de até 30 dias atrás até hoje");
   const modo = modoDe(a.modo) ?? "auto";
   const dia = await doDia(env, uid, interp.data);
   const plano = planejarRegistro(interp, existentes(dia), modo);
-  if (a.simular === true || precisaAprovacao(pref, interp, plano.precisaEscolha)) {
+  // #80 teto de sanidade: item ou refeição fora do plausível ("⚠ conferir") nunca grava sem confirmação, qualquer que seja a preferência
+  if (a.simular === true || precisaAprovacao(pref, interp, plano.precisaEscolha) || temConferir(interp)) {
     const token = await criarPrevia(env, uid, "comida_registrar", { interp, modo } satisfies PayloadRegistro);
     return { ...previaRegistro(interp, plano.refeicoes, dia, token), aviso: AVISO_DADO };
   }

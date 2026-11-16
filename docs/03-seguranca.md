@@ -40,6 +40,7 @@ O repositório é **público** e os dados são **pessoais** (peso, dor, comida e
 | Força bruta no login | — (WAF e rate limit do painel exigem domínio próprio; não há em `workers.dev`) | 5/min por IP, bloqueio de 15 min após 10 falhas, limite global de recuperação e setup, Turnstile |
 | Robô criando conta | Turnstile (grátis), se o dono ligar | Validação do token no servidor; convite exige o token |
 | Spam de escrita e do Claude | — | 120 escritas/min por pessoa (API e MCP) |
+| Custo e dado na IA de porções (#80) | Workers AI tem cota grátis diária | Só o trecho de comida vai ao provedor, entre « » como dado; saída só JSON validado. 40 chamadas/conta/dia, cache por hash do texto, trava global, teto mensal em US$ para Haiku/OpenAI (só com chave). Open Food Facts recebe só o nome do alimento (ADR-0014). Nada do texto em log |
 
 ## O que o Claude pode e não pode
 - Pode: ler o resumo, planejar, salvar o treino do dia **validado**, responder pedidos, registrar dor, comida e presença, e revisar edições.

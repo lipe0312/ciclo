@@ -14,6 +14,9 @@ MCP_TOKEN=troque-por-um-token-de-64-caracteres-hex-gerado-com-openssl-rand
 # VAPID_PUBLIC_KEY=
 # VAPID_PRIVATE_KEY=
 # VAPID_SUBJECT=mailto:voce@exemplo.com
+# #80 porções faladas (opcional): sem nada, só Workers AI (binding AI) e a regra. O Haiku liga só com a chave E o teto mensal.
+# ANTHROPIC_API_KEY=
+# ANTHROPIC_MAX_USD=1
 # Produção: só por `npx wrangler secret put <NOME> --cwd apps/worker` (nunca em vars nem no git).
 # DEV_NO_AUTH e MCP_TOKEN NUNCA vão para produção (o token do Claude de produção é criado no app, em Conta).
 # OWNER_SETUP_CODE=…   (#54: 1ª conta/owner) e OWNER_EMAIL=…   (#62: e-mail do dono; nunca no git)

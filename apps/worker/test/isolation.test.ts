@@ -39,6 +39,8 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   const tpl = (await ok(c("POST", "/api/meal-templates", { name: `${tag} marmita`, text: `${tag} arroz` }))).data.id;
   // #43: base de alimentos pessoal (o ovo ajustado com a marca no nome)
   await ok(c("PUT", "/api/food-items/ovo", { nome: `${tag} ovo`, kcal: 150, prot: 13, carb: 1, gord: 10, unidades: [{ nome: "ovo", g: 55 }] }));
+  // #80 porção pessoal (só B tem a concha de feijão)
+  await ok(c("PUT", "/api/porcao-pessoal", tag === "MARCA_B" ? { alimento: "feijao", medida: "concha", gramas: 140 } : { alimento: "arroz", medida: "prato", gramas: 210 }));
   const media = (await ok(call(env, "POST", `/api/media?note=${tag}`, { user, raw: PNG, ct: "image/png" }))).data.id;
   // #26: lugar só desta conta (nome, endereço e ponto no mapa com a marca) e mídia de aparelho dentro dele
   const lug = `lug_${tag.slice(-1).toLowerCase()}`;
@@ -157,6 +159,9 @@ async function matriz(env: any, ana: string, bia: string) {
     ["PUT /api/food/:id", () => a("PUT", `/api/food/${B.food}`, { text: "hackeado", kcal: 1 }), 404],
     ["DELETE /api/food/:id", () => a("DELETE", `/api/food/${B.food}`), 404],
     ["GET /api/food-items", () => a("GET", "/api/food-items")],
+    ["GET /api/porcao-pessoal", () => a("GET", "/api/porcao-pessoal")],
+    ["PUT /api/porcao-pessoal", () => a("PUT", "/api/porcao-pessoal", { alimento: "feijao", medida: "prato", gramas: 300 })],
+    ["DELETE /api/porcao-pessoal/:alimento/:medida", () => a("DELETE", "/api/porcao-pessoal/feijao/concha"), 404],
     ["PUT /api/food-items/:key", () => a("PUT", "/api/food-items/ovo", { nome: "A ovo", kcal: 140, prot: 12, carb: 1, gord: 9, unidades: [{ nome: "ovo", g: 50 }] })],
     ["DELETE /api/food-items/:key", () => a("DELETE", "/api/food-items/ovo")],
     ["DELETE /api/food-items/:key (já apagado)", () => a("DELETE", "/api/food-items/ovo"), 404],
