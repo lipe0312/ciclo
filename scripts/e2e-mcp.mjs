@@ -191,6 +191,20 @@ async function main() {
       const r = await tool(ta["ler escrever"], "ciclo_salvar_treino_do_dia", { gymId: "acad1", itens: [{ id: "Leg_Press", sets: 3 }], motivo: "e2e" });
       ok(/não tem o aparelho.*ciclo_treino_trocar/.test(r.erro ?? ""), `leg press na academia sem leg press: ${JSON.stringify(r)}`);
     });
+    await passo("#98 salvar o dia pelo Chat → a semana já traz o dia novo, com o resumo dos itens salvos", async () => {
+      const seg = new Date(Date.parse(hoje() + "T12:00:00Z") + (8 - (new Date(hoje() + "T12:00:00Z").getUTCDay() || 7)) * 864e5).toISOString().slice(0, 10); // próxima segunda (semana ainda sem treino feito)
+      const antes = await tool(ta["ler escrever"], "ciclo_semana_ver", { date: seg });
+      const dia = antes.dias.find((d) => d.tipo === "treino" && d.itens?.length >= 4);
+      ok(dia, "próxima semana sem dia de treino");
+      const ids = dia.itens.slice(0, 4).map((i) => i.split(" ")[0]);
+      const r = await tool(ta["ler escrever"], "ciclo_salvar_treino_do_dia", { date: dia.date, nome: "Treino do Chat", motivo: "e2e", itens: ids.map((id) => ({ id, sets: 3 })) });
+      ok(r.salvo === true && r.naSemana === true, JSON.stringify(r));
+      const depois = (await tool(ta["ler escrever"], "ciclo_semana_ver", { date: seg })).dias.find((d) => d.date === dia.date);
+      ok(depois.nome === "Treino do Chat" && depois.min === 36, `semana sem o dia novo: ${JSON.stringify(depois)}`);
+      const w = (await api(A, "GET", `/api/week?date=${seg}`)).data.week.days.find((d) => d.date === dia.date).plan;
+      const soma = Object.values(w.perMuscle).reduce((a, b) => a + b, 0);
+      ok(w.setsTotal === 12 && soma === 12, `resumo fora dos itens: ${JSON.stringify(w.perMuscle)} / ${w.setsTotal}`);
+    });
   } finally {
     await api(A, "DELETE", "/api/account", { confirm: "APAGAR" }).catch(() => null);
     await api(B, "DELETE", "/api/account", { confirm: "APAGAR" }).catch(() => null);

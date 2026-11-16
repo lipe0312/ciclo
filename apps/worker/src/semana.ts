@@ -1,7 +1,7 @@
 // Semana completa planejada (#24): monta a entrada do core a partir do D1, guarda versões (desfazer) e as escolhas
 // por dia. Todo SQL com bind e filtrado por user_id; o uid vem da autenticação.
 import {
-  EQUIPMENT_BY_ID, MUSCLE_IDS, applyDayAction, diffWeeks, entradaTreinoAtual, mondayOf, planWeek, trocasDoDia, weekDates, weekProgression, weekView, weeklyTargets,
+  EQUIPMENT_BY_ID, MUSCLE_IDS, applyDayAction, diffWeeks, entradaTreinoAtual, mondayOf, planWeek, resumirDia, trocasDoDia, weekDates, weekProgression, weekView, weeklyTargets,
 } from "@ciclo/core";
 import type { CardioEntry, DayAction, DayOpts, DayOverride, DayPlan, Intensity, MuscleId, Progression, Sets, WeekInput, WeekPlan, WeekProfile } from "@ciclo/core";
 import type { Env } from "./env.ts";
@@ -167,7 +167,9 @@ export async function getWeek(env: Env, uid: string, today: string) {
   } else {
     const st = c.latest.stored;
     const extra = Object.keys(c.sets).filter((d) => !st.basis?.includes(d) && st.plan.days.find((x) => x.date === d)?.kind === "folga");
-    if (extra.length) await persist(env, c, await generate(env, c, c.overrides, false), "extra", false);
+    // #98 treino salvo pelo Chat/à mão que a semana guardada ainda não tem (ou com resumo antigo): reaplica sozinho
+    const velho = Object.entries(c.fixed).some(([d, f]) => { const sd = st.plan.days.find((x) => x.date === d)?.plan; return !!sd && JSON.stringify(sd) !== JSON.stringify(resumirDia(f.plan)); });
+    if (extra.length || velho) await persist(env, c, await generate(env, c, c.overrides, false), extra.length ? "extra" : "ajuste", false);
     // #74 troca forçada nova (ex.: desenvolvimento no lugar do crucifixo inverso): repõe a subparte nos próximos dias
     else if (trocasSig(c, st.plan) !== (st.trocas ?? "")) await persist(env, c, await generate(env, c, c.overrides, false), "ajuste", false);
     else return { week: view(c, st, c.latest.version) };
@@ -194,6 +196,15 @@ export async function regenerate(env: Env, uid: string, b: Record<string, unknow
   await persist(env, c, s, "regenerar", !!b.reset);
   const c2 = (await loadCtx(env, uid, c.today)) as Ctx;
   return { diff, week: view(c2, c2.latest!.stored!, c2.latest!.version) };
+}
+
+/** #98 Treino salvo pelo MCP/IA (dia ou "treino atual"): a semana já nasce com ele, sem passo manual. Dia já treinado e escolha manual
+ *  ficam como estão (o core fecha o dia). Sem perfil/academia não há semana: não faz nada. */
+export async function aplicarNaSemana(env: Env, uid: string, today: string): Promise<boolean> {
+  const c = await loadCtx(env, uid, today);
+  if ("empty" in c) return false;
+  await persist(env, c, await generate(env, c, c.overrides, !c.latest?.stored?.progression), c.latest ? "ajuste" : "auto", false);
+  return true;
 }
 
 /** Desfazer: volta para uma versão anterior (vira uma versão nova "desfazer"; nada se perde). */
