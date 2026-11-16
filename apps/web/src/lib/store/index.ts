@@ -25,7 +25,7 @@ export const DEFAULT_GYMS: Gym[] = [
 ];
 
 const DEMO_PERSONALIZADO: C.ExercicioPersonalizado = { id: "cus_demo0000000a", nome: "Elevação Y no banco inclinado", musculo: "ombro", aparelho: "halteres",
-  descricao: "De bruços no banco a 30°, braços estendidos. Sobe os halteres em Y até a linha da orelha, segura 1 s e desce devagar.", videoUrl: null, criadoPor: "ia" };
+  descricao: "De bruços no banco a 30°, braços estendidos. Sobe os halteres em Y até a linha da orelha, segura 1 s e desce devagar.", videoUrl: "https://www.youtube.com/watch?v=aaaaaaaaaaa", criadoPor: "ia" }; // vídeo fictício
 
 export const S = {
   // #71 servidor: começa vazio (offline no 1º acesso não mostra o padrão do dono); demo: os dados fictícios de sempre

@@ -9,6 +9,9 @@ type Row = { id: string; nome: string; musculo: string; aparelho: string | null;
 const COLS = "id, nome, musculo, aparelho, descricao, video_url, criado_por";
 const out = (r: Row): ExercicioPersonalizado => ({ id: r.id, nome: r.nome, musculo: r.musculo as MuscleId, aparelho: r.aparelho, descricao: r.descricao, videoUrl: r.video_url, criadoPor: r.criado_por });
 
+const mesmoNome = (env: Env, uid: string, musculo: string, nome: string) =>
+  env.DB.prepare(`SELECT ${COLS} FROM exercicio_personalizado WHERE user_id = ?1 AND musculo = ?2 AND nome = ?3 COLLATE NOCASE`).bind(uid, musculo, nome).first<Row>();
+
 export async function listarPersonalizados(env: Env, uid: string): Promise<ExercicioPersonalizado[]> {
   const { results } = await env.DB.prepare(`SELECT ${COLS} FROM exercicio_personalizado WHERE user_id = ?1 ORDER BY nome LIMIT ?2`).bind(uid, LIMITE_PERSONALIZADOS).all<Row>();
   return results.map(out);
@@ -34,13 +37,17 @@ export async function criarPersonalizado(env: Env, uid: string, raw: unknown, po
   const v = validarExercicioPersonalizado(raw);
   if (!v.ok) throw new HttpError(400, v.errors.join("; "));
   const x = v.value;
-  const igual = await env.DB.prepare(`SELECT ${COLS} FROM exercicio_personalizado WHERE user_id = ?1 AND musculo = ?2 AND lower(nome) = lower(?3)`).bind(uid, x.musculo, x.nome).first<Row>();
-  if (igual) return { exercicio: out(igual), criado: false };
   const id = novoIdPersonalizado(), now = Date.now();
   const r = await env.DB.prepare(`INSERT INTO exercicio_personalizado (user_id, id, nome, musculo, aparelho, descricao, video_url, criado_por, created_at, updated_at)
-    SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9 WHERE (SELECT COUNT(*) FROM exercicio_personalizado WHERE user_id = ?1) < ?10`)
+    SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9 WHERE (SELECT COUNT(*) FROM exercicio_personalizado WHERE user_id = ?1) < ?10
+    ON CONFLICT DO NOTHING`)
     .bind(uid, id, x.nome, x.musculo, x.aparelho, x.descricao, x.videoUrl, por, now, LIMITE_PERSONALIZADOS).run();
-  if (!r.meta.changes) throw new HttpError(409, `limite de ${LIMITE_PERSONALIZADOS} exercícios personalizados nesta conta: apague algum no app antes de criar outro`, "limite");
+  if (!r.meta.changes) {
+    // conflito no índice único (mesmo nome no músculo, inclusive em corrida): devolve o que já existe
+    const igual = await mesmoNome(env, uid, x.musculo, x.nome);
+    if (igual) return { exercicio: out(igual), criado: false };
+    throw new HttpError(409, `limite de ${LIMITE_PERSONALIZADOS} exercícios personalizados nesta conta: apague algum no app antes de criar outro`, "limite");
+  }
   return { exercicio: { id, ...x, criadoPor: por }, criado: true };
 }
 
@@ -50,6 +57,8 @@ export async function editarPersonalizado(env: Env, uid: string, id: string, raw
   const v = validarExercicioPersonalizado(raw, true);
   if (!v.ok) throw new HttpError(400, v.errors.join("; "));
   const x = { ...atual, ...v.value };
+  const outro = await mesmoNome(env, uid, x.musculo, x.nome);
+  if (outro && outro.id !== id) throw new HttpError(409, "já existe um exercício personalizado com esse nome nesse músculo", "duplicado");
   await env.DB.prepare("UPDATE exercicio_personalizado SET nome = ?3, musculo = ?4, aparelho = ?5, descricao = ?6, video_url = ?7, updated_at = ?8 WHERE user_id = ?1 AND id = ?2")
     .bind(uid, id, x.nome, x.musculo, x.aparelho, x.descricao, x.videoUrl, Date.now()).run();
   return x;

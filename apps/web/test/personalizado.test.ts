@@ -68,3 +68,26 @@ test("vídeo: só link externo do YouTube com noopener noreferrer; outro domíni
     assert.ok(!x.todos().some((e) => e.localName === "a" && texto(e) === "Ver demonstração"), ruim);
   }
 });
+
+test("apagar fica separado do Salvar e pede um 2º toque dentro do app (sem confirm do navegador)", async () => {
+  let nativo = 0;
+  (globalThis as any).confirm = () => { nativo++; return true; };
+  const chamadas: string[] = [];
+  (globalThis as any).fetch = async (path: string, init: RequestInit = {}) => { chamadas.push(`${init.method ?? "GET"} ${path}`); return Response.json({ ok: true }); };
+  M.S.personalizados = { [ID]: { id: ID, nome: "Elevação fictícia", musculo: "ombro", aparelho: null, descricao: "Sobe devagar.", videoUrl: null, criadoPor: "ia" } };
+  const r = montar(M.DetalhePersonalizado, { id: ID });
+  const tick = () => new Promise((ok) => setTimeout(ok, 5));
+  const botao = (t: string) => r.todos().find((e) => e.localName === "button" && texto(e) === t);
+  const apagar = botao("Apagar exercício")!;
+  assert.ok(apagar && apagar.className.split(" ").includes("danger"));
+  assert.ok(!r.porClasse("pers-perigo")[0].todos().some((e) => texto(e) === "Salvar"), "Salvar fora da área de perigo");
+  apagar.click(); await tick();
+  assert.equal(chamadas.length, 0, "1º toque não apaga"); assert.ok(M.S.personalizados[ID]);
+  assert.ok(botao("Confirmar apagar") && botao("Cancelar"));
+  botao("Cancelar")!.click(); await tick();
+  assert.ok(botao("Apagar exercício") && !botao("Confirmar apagar"));
+  botao("Apagar exercício")!.click(); await tick();
+  botao("Confirmar apagar")!.click(); await tick();
+  assert.equal(nativo, 0, "nunca confirm() do navegador");
+  assert.ok(!M.S.personalizados[ID], "apagado no 2º toque");
+});

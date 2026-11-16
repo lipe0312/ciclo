@@ -79,6 +79,26 @@ test("o dono edita e apaga no app; nome com <script> volta como texto (a tela es
   assert.equal((await a.c("GET", "/api/exercicios-personalizados")).data.exercicios.length, 0);
 });
 
+// NOCASE do SQLite só dobra A–Z (acento fica como está): o teste muda só letras ASCII
+const ASCII_MAIUSC = (t: string) => t.replace(/[a-z]/g, (c) => c.toUpperCase());
+test("nome único por músculo (sem diferenciar maiúsculas): o banco recusa, criar devolve o existente e renomear para nome usado dá 409", async () => {
+  const env = makeEnv();
+  const a = await conta(env, "ana");
+  const um = (await tool(env, a.token, "ciclo_exercicio_criar", NOVO)).exercicio.id;
+  const uid = env.DB.raw.prepare("SELECT user_id FROM exercicio_personalizado").get().user_id;
+  assert.throws(() => env.DB.raw.prepare("INSERT INTO exercicio_personalizado (user_id, id, nome, musculo, descricao, criado_por, created_at, updated_at) VALUES (?, 'cus_dupl00000001', ?, 'ombro', 'x', 'ia', 1, 1)").run(uid, ASCII_MAIUSC(NOVO.nome)), /UNIQUE/);
+  assert.throws(() => env.DB.raw.prepare("INSERT INTO exercicio_personalizado (user_id, id, nome, musculo, descricao, criado_por, created_at, updated_at) VALUES (?, 'cus_musc00000001', 'Outro', 'pescoco', 'x', 'ia', 1, 1)").run(uid), /CHECK/);
+  const de1 = await tool(env, a.token, "ciclo_exercicio_criar", { ...NOVO, nome: ASCII_MAIUSC(NOVO.nome) });
+  assert.equal(de1.criado, false); assert.equal(de1.exercicio.id, um);
+  const dois = (await tool(env, a.token, "ciclo_exercicio_criar", { ...NOVO, nome: "Crucifixo fictício" })).exercicio.id;
+  const r = await a.c("PATCH", `/api/exercicios-personalizados/${dois}`, { nome: NOVO.nome.toLowerCase() });
+  assert.equal(r.status, 409, r.text);
+  assert.equal((await a.c("PATCH", `/api/exercicios-personalizados/${dois}`, { nome: NOVO.nome, musculo: "costas" })).status, 200, "outro músculo pode");
+  // escrita comum: nem só leitura nem destrutiva
+  const l = await call(env, "POST", "/mcp", { bearer: a.token, body: { jsonrpc: "2.0", id: 1, method: "tools/list" } });
+  assert.deepEqual(l.data.result.tools.find((t: any) => t.name === "ciclo_exercicio_criar").annotations, { readOnlyHint: false, destructiveHint: false });
+});
+
 test(`limite de ${LIMITE_PERSONALIZADOS} personalizados por conta`, async () => {
   const env = makeEnv();
   const a = await conta(env, "ana");

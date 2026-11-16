@@ -32,6 +32,7 @@ export function DetalhePersonalizado({ id }: { id: string }) {
   const [f, setF] = useState(() => ({ nome: p?.nome ?? "", descricao: p?.descricao ?? "", videoUrl: p?.videoUrl ?? "" }));
   const [erro, setErro] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmando, setConfirmando] = useState(false); // apagar pede um 2º toque (nunca confirm() do navegador)
   if (!p) return <Estado tipo="vazio" titulo="Exercício não encontrado" acao={{ label: "Ver exercícios", href: "#treino/exercicios" }} />;
   const ap = p.aparelho ? C.EQUIPMENT_BY_ID[p.aparelho]?.nm ?? p.aparelho : "peso do corpo";
   const salvar = async (e: Event) => {
@@ -45,7 +46,7 @@ export function DetalhePersonalizado({ id }: { id: string }) {
     } catch (x) { setErro(x instanceof Error ? x.message : "Não deu para salvar"); } finally { setBusy(false); }
   };
   const apagar = async () => {
-    if (!confirm(`Apagar "${p.nome}"? O que você já registrou dele continua no histórico.`)) return;
+    if (!confirmando) return setConfirmando(true);
     setBusy(true);
     try {
       if (SERVER) await api("DELETE", `/api/exercicios-personalizados/${encodeURIComponent(id)}`);
@@ -69,8 +70,12 @@ export function DetalhePersonalizado({ id }: { id: string }) {
           <div><label class="f" for="pers-video">Vídeo do YouTube (opcional)</label>
             <input id="pers-video" class="input" type="url" inputMode="url" placeholder="https://youtu.be/…" value={f.videoUrl} onInput={(e) => setF({ ...f, videoUrl: e.currentTarget.value })} /></div>
           {erro && <p class="small" role="alert" style="color:var(--bad)">{erro}</p>}
-          <div class="row wrapx" style="gap:8px"><button type="submit" class="btn pri" disabled={busy}>Salvar</button>
-            <button type="button" class="btn danger" disabled={busy} onClick={apagar}>Apagar exercício</button></div>
-        </form></Card>
+          <div><button type="submit" class="btn pri" disabled={busy}>Salvar</button></div>
+        </form>
+        <div class="pers-perigo">
+          {confirmando && <p class="small" role="alert" style="margin-bottom:8px">Apagar de vez? O que você já registrou dele continua no histórico.</p>}
+          <div class="row wrapx" style="gap:8px"><button type="button" class="btn danger" disabled={busy} onClick={apagar}>{confirmando ? "Confirmar apagar" : "Apagar exercício"}</button>
+            {confirmando && <button type="button" class="btn ghost" disabled={busy} onClick={() => setConfirmando(false)}>Cancelar</button>}</div>
+        </div></Card>
     </div></div></>;
 }
