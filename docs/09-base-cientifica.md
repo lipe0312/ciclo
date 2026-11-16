@@ -193,3 +193,5 @@ Nada de diagnóstico. Os avisos só levam a um profissional (`saude` no perfil d
 | Polichinelo (`Star_Jump`, novo; imagem do *star jump* do free-exercise-db) | tempo ou reps | tempo |
 
 Os outros itens da lista da issue não estão no catálogo de força: hollow hold, cadeirinha na parede, dead hang, L-sit, superman isométrico, ponte de glúteo isométrica, mountain climber, skipping, farmer walk, burpee, abdominal bicicleta e agachamento sem carga. Pular corda é cardio (registrado em minutos). A ponte de glúteo do catálogo é dinâmica e continua em reps. Para incluir um deles: o item no catálogo com `medida`, as 2 imagens, o texto e uma linha nesta tabela. Os novos ficam fora da montagem automática (`planOff`).
+
+Imagens dos novos (`apps/web/public/img/ex/Side_Bridge.webp`, `Side_Bridge-1.webp`, `Star_Jump.webp`, `Star_Jump-1.webp`): free-exercise-db (github.com/yuhonas/free-exercise-db), licença Unlicense (domínio público), mesma origem das outras do catálogo. Foram geradas por `scripts/catalogo-imagens.mjs`.

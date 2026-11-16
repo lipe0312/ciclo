@@ -58,7 +58,13 @@ function Refs({ exId }: { exId: string }) {
 /** Séries do exercício atual. #106: medida "ambos" ganha o seletor Tempo | Reps; série por tempo tem um campo só (mm:ss). */
 export function SetRows({ idx, it }: { idx: number; it: C.PlanItem }) {
   const logs = ensureLogs(it), lastSets = pastOf(it.exerciseId)[0]; // a mesma série da sessão anterior, ao lado de cada linha
-  const prev = (k: number) => { const x = lastSets?.[k]; return !x ? "—" : C.ehSerieTempo(x) || !(x.kg > 0) ? C.fmtSerie(x) : kgReps(x.kg, x.reps); };
+  const prevTxt = (x: C.SetLog) => C.ehSerieTempo(x) || !(x.kg > 0) ? C.fmtSerie(x) : kgReps(x.kg, x.reps);
+  /** #106 a última vez em outra unidade (ex.: reps com o campo em tempo) vem esmaecida e com a unidade na frente. */
+  const prev = (k: number) => {
+    const x = lastSets?.[k]; if (!x) return <span class="prev tiny sub">—</span>;
+    const era: C.ModoSerie = C.ehSerieTempo(x) ? "tempo" : "reps", agora: C.ModoSerie = logs[k].modo === "tempo" ? "tempo" : "reps";
+    return era === agora ? <span class="prev tiny sub">{prevTxt(x)}</span> : <span class="prev tiny sub outra">{era === "tempo" ? "tempo " : x.kg > 0 ? "reps: " : ""}{prevTxt(x)}</span>;
+  };
   const modo = modoDe(it.exerciseId), tempo = (k: number) => logs[k].modo === "tempo";
   const algumTempo = logs.some((l) => l.modo === "tempo"), algumReps = logs.some((l) => l.modo !== "tempo");
   return <div class="tl-sets">
@@ -66,11 +72,12 @@ export function SetRows({ idx, it }: { idx: number; it: C.PlanItem }) {
     {algumReps && <div class="tl-set head tiny sub" aria-hidden="true"><span>#</span><span>última</span><span>kg</span><span>reps</span><span /></div>}
     {algumTempo && !algumReps && <div class="tl-set tempo head tiny sub" aria-hidden="true"><span>#</span><span>última</span><span>tempo (mm:ss)</span><span /></div>}
     {logs.map((l, k) => <div key={k} class={`tl-set num ${tempo(k) ? "tempo" : ""} ${l.done ? "done" : ""}`}>
-      <span class="sub">{k + 1}</span><span class="prev tiny sub">{prev(k)}</span>
+      <span class="sub">{k + 1}</span>{prev(k)}
       {tempo(k) ? <input class="input" inputMode="numeric" aria-label={`tempo série ${k + 1} (mm:ss)`} placeholder="0:30" value={l.seg} onInput={(e) => { l.seg = e.currentTarget.value; }} onBlur={() => editedSet(idx, k)} />
         : <><input class="input" inputMode="decimal" aria-label={`kg série ${k + 1}`} value={l.kg} onInput={(e) => { l.kg = e.currentTarget.value; }} onBlur={() => editedSet(idx, k)} />
       <input class="input" inputMode="numeric" aria-label={`reps série ${k + 1}`} value={l.reps} onInput={(e) => { l.reps = e.currentTarget.value; }} onBlur={() => editedSet(idx, k)} /></>}
       <button type="button" class="ck" aria-pressed={l.done} onClick={() => toggleSet(idx, k)} aria-label={l.done ? `Desfazer série ${k + 1}` : `Concluir série ${k + 1}`}><Icon id="check" /></button></div>)}
+    {algumTempo && <p class="tiny sub tl-dica">Tempo em mm:ss ou só os segundos (ex.: 45 ou 90).</p>}
     <div class="row wrapx" style="gap:8px"><button type="button" class="btn" onClick={() => addSet(idx)}><Icon id="plus" />série</button>
       {logs.length > 1 && !logs[logs.length - 1].done && <button type="button" class="btn ghost" onClick={() => dropSet(idx)}>− série</button>}</div></div>;
 }

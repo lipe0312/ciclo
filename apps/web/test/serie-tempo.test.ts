@@ -89,7 +89,12 @@ test("polichinelo (ambos): seletor começa em Tempo; trocar para Reps mostra kg 
   M.toggleSet(2, 0); await tick();
   assert.equal(enviados.filter((x) => x.path.endsWith("/sets")).at(-1)!.body.segundos, 60);
   br.click(); await tick();
+  M.S.past = { Star_Jump: [[{ kg: 0, reps: 0, segundos: 50 }, { kg: 0, reps: 0, segundos: 45 }]] };
   n = montar(2);
+  const outra = n.porClasse("outra");
+  assert.equal(outra.length, 1, "só a linha em reps com a última em tempo fica esmaecida");
+  assert.equal(texto(outra[0]), "tempo 0:45");
+  assert.match(texto(n), /mm:ss ou só os segundos/);
   assert.deepEqual(rotulos(n), ["tempo série 1 (mm:ss)", "kg série 2", "reps série 2"], "a série feita fica em tempo; a pendente vira reps");
   M.S.session.logs.Star_Jump[1].reps = "30";
   M.toggleSet(2, 1); await tick();

@@ -67,6 +67,15 @@ test("isolamento: outra conta não grava série por tempo na sessão alheia nem 
   assert.equal((await call(env, "GET", `/api/sessions/${U1}`, { user: "bia" })).status, 404);
   assert.deepEqual((await call(env, "GET", "/api/history/last?ids=Plank", { user: "bia" })).data.history.Plank, []);
   assert.deepEqual((await call(env, "GET", `/api/sessions/${U1}`, { user: "ana" })).data.sets.map((s: any) => s.segundos), [45]);
+  // mesmo id de sessão nas duas contas (a chave é user_id + id): cada uma lê e grava só a sua
+  await sessao(env, "bia", U1);
+  assert.equal((await serie(env, "bia", U1, { exerciseId: "Plank", setNo: 1, segundos: 30 })).data.saved, true);
+  assert.deepEqual((await call(env, "GET", `/api/sessions/${U1}`, { user: "ana" })).data.sets.map((s: any) => s.segundos), [45]);
+  assert.deepEqual((await call(env, "GET", `/api/sessions/${U1}`, { user: "bia" })).data.sets.map((s: any) => s.segundos), [30]);
+  assert.deepEqual((await call(env, "GET", "/api/history/last?ids=Plank", { user: "bia" })).data.history.Plank, [[{ kg: 0, reps: 0, segundos: 30 }]]);
+  // desfazer da B não apaga a série da A
+  await call(env, "DELETE", `/api/sessions/${U1}/sets/Plank/1`, { user: "bia" });
+  assert.deepEqual((await call(env, "GET", `/api/sessions/${U1}`, { user: "ana" })).data.sets.map((s: any) => s.segundos), [45]);
 });
 
 test("MCP: ciclo_treino_registrar aceita segundos; histórico e contexto informam a medida", async () => {
@@ -100,4 +109,10 @@ test("MCP: ciclo_treino_registrar aceita segundos; histórico e contexto informa
   const tb = (await call(env, "POST", "/api/account/tokens", { user: "bia", body: { label: "t" } })).data.token as string;
   const hb = JSON.parse((await mcp(env, tb, "ciclo_historico", { tipo: "series" })).data.result.content[0].text);
   assert.equal(hb.itens.length, 0);
+  // B registra pelo MCP: entra só na conta dela; A continua com as suas séries e B não vê as da A
+  JSON.parse((await mcp(env, tb, "ciclo_treino_registrar", { exercicioId: "Plank", series: [{ segundos: 20 }] })).data.result.content[0].text);
+  const hb2 = JSON.parse((await mcp(env, tb, "ciclo_historico", { tipo: "series", exercicioId: "Plank" })).data.result.content[0].text);
+  assert.deepEqual(hb2.itens.map((i: any) => i.seg), [20]);
+  const ha = await tool("ciclo_historico", { tipo: "series", exercicioId: "Plank" });
+  assert.deepEqual(ha.itens.map((i: any) => i.seg), [45, 40]);
 });
