@@ -12,7 +12,9 @@ import { contaPorConvite, dono, envConta } from "./conta-helpers.ts";
 const D = "2026-11-05", ALL = EQUIPMENT.map((e) => e.id), PNG = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
 // uma sessão por conta; a B guarda cargas marcadas (77.5 kg) que NUNCA podem aparecer em respostas da A
 const SID_A = "0b7c6a2e-1d2f-4a3b-8c9d-0e1f2a3b4c5d", SID_B = "9f1e2d3c-4b5a-4c6d-8e7f-0a1b2c3d4e5f", MARK_KG = 77.5;
-const profile = (tag: string) => ({ data: { level: 1, priorities: ["ombro"], minutes: 60, daysTarget: 4, prefs: {}, pinned: {}, avoid: [], goal: { statement: `${tag} objetivo` } } });
+const profile = (tag: string) => ({ data: { level: 1, priorities: ["ombro"], minutes: 60, daysTarget: 4, prefs: {}, pinned: {}, avoid: [], goal: { statement: `${tag} objetivo` },
+  // #95: "Meu treino atual" com a marca no nome da divisão e no exercício livre (o MCP lê; nunca o da outra conta)
+  treinoAtual: { divisoes: [{ nome: `${tag} div`, grupos: ["biceps"], exercicios: [{ nome: `${tag} rosca`, grupo: "biceps" }] }] } } });
 
 async function seed(env: any, user: string, tag: string, SID: string, kg: number) {
   const c = (m: string, p: string, body?: unknown) => call(env, m, p, { user, body });
@@ -200,6 +202,8 @@ async function matriz(env: any, ana: string, bia: string) {
     ["ciclo_comida_editar", { edicoes: [{ id: B.food, itens: [{ nome: "hackeado", kcal: 1, proteina: 1, fonte: "estimativa" }] }], simular: true }, true], ["ciclo_comida_vagos", { de: "2026-11-01", ate: D }],
     ["ciclo_semana_ver", { date: D }], ["ciclo_semana_gerar", { date: D, simular: true }], ["ciclo_treino_registrar", { exercicioId: B.ex, series: [{ kg: 1, reps: 1 }] }],
     ["ciclo_treino_trocar", { exercicioId: B.ex, date: D }], ["ciclo_treino_atual_salvar", { treinoAtual: { divisoes: [{ nome: "A", grupos: ["biceps"], exercicios: [{ nome: "Rosca livre", grupo: "biceps" }] }] } }],
+    // #95: o treino atual e as academias lidos pelo MCP são só da A; academia da B no gymId = não encontrada
+    ["ciclo_treino_atual", {}], ["ciclo_planejar_dia", { date: D, daysLeft: 2, gymId: B.lug }, true], ["ciclo_salvar_treino_do_dia", { date: D, gymId: B.lug, itens: [{ id: B.ex, sets: 2 }], motivo: "t" }, true],
     ["ciclo_preferencias", { comida_aprovacao: "so_duvidas" }], ["ciclo_historico", { tipo: "series", de: "2026-11-01", ate: D }],
     ["ciclo_exame_pendente", {}], ["ciclo_exame_concluir", { id: B.exam, resumo: { marcadores: [{ nome: "TSH", valor: 1, status: "dentro" }] } }, true],
   ];
@@ -213,7 +217,7 @@ async function matriz(env: any, ana: string, bia: string) {
   }
   for (const [name, args, isErr] of tools) {
     const r = await mcp(env, A.token, name, args);
-    assert.equal(r.status, 200); assert.equal(!!r.data.result.isError, !!isErr, `${name}: ${r.text}`);
+    assert.equal(r.status, 200, `${name}: ${r.text}`); assert.equal(!!r.data.result.isError, !!isErr, `${name}: ${r.text}`);
     noLeak(name, r.text);
   }
   // #30: resumo geral e resource ciclo://contexto da A não trazem nada da B (memória, nota, dor, objetivo)

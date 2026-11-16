@@ -128,13 +128,16 @@ export function redirectPermitido(uri: unknown, permitidos: readonly string[]): 
 type Erro<E extends string> = { ok: false; erro: E; descricao: string };
 const strArr = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
 
-/** RFC 7591: valida o registro dinâmico. Cliente público por padrão (PKCE); secreto se pedir client_secret_*. */
+/** RFC 7591: valida o registro dinâmico. Cliente público por padrão (PKCE); secreto se pedir client_secret_*.
+ *  #95 Cliente que manda várias redirect_uris (ex.: Cursor desktop: cursor://, https do Cursor web e loopback) é aceito
+ *  guardando SÓ as permitidas (≥ 1); as outras são descartadas e nunca valem no authorize (que exige registrada E permitida). */
 export function validarRegistro(b: unknown, permitidos: readonly string[]):
   { ok: true; value: { nome: string; redirectUris: string[]; metodo: MetodoAuth } } | Erro<"invalid_redirect_uri" | "invalid_client_metadata"> {
   const o = (b && typeof b === "object" ? b : {}) as Record<string, unknown>;
-  const uris = o.redirect_uris;
-  if (!strArr(uris) || !uris.length || uris.length > OAUTH.maxRedirects) return { ok: false, erro: "invalid_redirect_uri", descricao: `redirect_uris: de 1 a ${OAUTH.maxRedirects} URIs` };
-  if (!uris.every((x) => redirectPermitido(x, permitidos))) return { ok: false, erro: "invalid_redirect_uri", descricao: "redirect_uri fora da lista permitida (OAUTH_REDIRECT_HOSTS) ou não é http no localhost" };
+  const pedidas = o.redirect_uris;
+  if (!strArr(pedidas) || !pedidas.length || pedidas.length > OAUTH.maxRedirects) return { ok: false, erro: "invalid_redirect_uri", descricao: `redirect_uris: de 1 a ${OAUTH.maxRedirects} URIs` };
+  const uris = pedidas.filter((x) => redirectPermitido(x, permitidos));
+  if (!uris.length) return { ok: false, erro: "invalid_redirect_uri", descricao: "nenhuma redirect_uri na lista permitida (OAUTH_REDIRECT_HOSTS) ou http no localhost" };
   if (o.grant_types != null && (!strArr(o.grant_types) || !o.grant_types.every((g) => g === "authorization_code" || g === "refresh_token")))
     return { ok: false, erro: "invalid_client_metadata", descricao: "grant_types: authorization_code e refresh_token" };
   if (o.response_types != null && (!strArr(o.response_types) || !o.response_types.every((r) => r === "code")))
