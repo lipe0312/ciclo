@@ -11,11 +11,13 @@ import { ExImgs } from "./biblioteca.tsx";
 import { MediaBox } from "./midia.tsx";
 import { useTexto } from "../../lib/texto/index.ts";
 import { Estado } from "../../lib/estado/index.tsx";
+import { DetalhePersonalizado } from "./personalizado.tsx";
 
 const List = ({ title, items, empty }: { title: string; items?: string[]; empty: string }) =>
   <Card><h2>{title}</h2>{items?.length ? <ol class="steps">{items.map((t, i) => <li key={i}>{t}</li>)}</ol> : <p class="small sub" style="margin-top:6px">{empty}</p>}</Card>;
 
 export function Detalhe({ id }: { id: string }) {
+  if (C.ehIdPersonalizado(id)) return <DetalhePersonalizado id={id} />; // #107
   const it = C.CATALOG_BY_ID[id], tx = useTexto(id);
   if (!it) return <Estado tipo="vazio" titulo="Exercício não encontrado" acao={{ label: "Ver exercícios", href: "#treino/exercicios" }} />;
   const src = C.imageSrc(it);

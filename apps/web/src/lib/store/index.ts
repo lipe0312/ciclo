@@ -24,6 +24,9 @@ export const DEFAULT_GYMS: Gym[] = [
   { id: "casa", name: "Casa", kind: "casa", equipment: ["halteres", "elastico", "barrafixa"], busyHours: [] },
 ];
 
+const DEMO_PERSONALIZADO: C.ExercicioPersonalizado = { id: "cus_demo0000000a", nome: "Elevação Y no banco inclinado", musculo: "ombro", aparelho: "halteres",
+  descricao: "De bruços no banco a 30°, braços estendidos. Sobe os halteres em Y até a linha da orelha, segura 1 s e desce devagar.", videoUrl: null, criadoPor: "ia" };
+
 export const S = {
   // #71 servidor: começa vazio (offline no 1º acesso não mostra o padrão do dono); demo: os dados fictícios de sempre
   profile: (SERVER ? C.perfilVazio() : clone(DEFAULT_PROFILE)) as Profile, gyms: clone(DEFAULT_GYMS),
@@ -32,6 +35,8 @@ export const S = {
   pains: [] as any[], inbox: [] as any[], food: [] as any[], media: {} as Record<string, any>, gymMedia: [] as GymMedia[], history: {} as Record<string, C.SetLog[]>,
   /** últimas sessões de cada exercício (mais recente primeiro): médias, "última vez" e melhor marca do modo treino */
   past: {} as Record<string, C.SetLog[][]>, measures: [] as any[], edits: [] as any[],
+  /** #107 exercícios personalizados da conta (id cus_ → exercício). Demo: um fictício para ver a tela. */
+  personalizados: (SERVER ? {} : { [DEMO_PERSONALIZADO.id]: DEMO_PERSONALIZADO }) as Record<string, C.ExercicioPersonalizado>,
   features: { ai: false, media: false } as Record<string, boolean>,
   /** campos de outras frentes (contas multiusuário); opcionais */
   account: null as any, onboarding: null as any,
@@ -119,6 +124,7 @@ export async function loadServer() {
   S.media = Object.fromEntries((st.media ?? []).filter((m: any) => m.exercise_id && !m.gym_id).map((m: any) => [m.exercise_id, { kind: m.kind, note: m.note, url: `/api/media/${m.id}` }]));
   S.gymMedia = (st.media ?? []).filter((m: any) => m.gym_id && m.equipment_id).map((m: any) => ({ id: m.id, kind: m.kind, equipmentId: m.equipment_id, gymId: m.gym_id, note: m.note, url: `/api/media/${m.id}` }));
   S.measures = st.measures ?? [];
+  S.personalizados = Object.fromEntries(((st.personalizados ?? []) as C.ExercicioPersonalizado[]).map((p) => [p.id, p]));
   if (st.dayPlan && !S.ui.locked) { S.plan = st.dayPlan.plan; S.ui.locked = st.dayPlan.source !== "core"; S.ui.planSource = st.dayPlan.source; S.ui.planFp = st.dayPlan.profileFp ?? null; }
   const open = S.week.sessions.find((s: any) => s.date === today && !s.finished_at);
   if (open) await restoreSession(open.id);
