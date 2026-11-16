@@ -26,7 +26,7 @@ export const BoasVindas = () => <Saida sair={dispensarBoasVindas}>{(fechar) =>
     <div style="min-width:0"><p class="kicker">Perfil de treino respondido</p><h2 style="margin-top:4px">Sua semana está pronta</h2></div>
     <button type="button" class="btn ghost hm-x" aria-label="Dispensar o cartão de boas-vindas" onClick={fechar}><Icon id="x" /></button></div>
     <p class="small sub" style="margin-top:6px">Os gráficos da sua evolução aparecem aqui depois do 1º treino.</p>
-    <a class="btn pri full" style="margin-top:12px" href="#treino">Ver o treino de hoje<Icon id="arrow" /></a></Card>}</Saida>;
+    <a class="btn full" style="margin-top:12px" href="#treino">Ver o treino de hoje<Icon id="arrow" /></a></Card>}</Saida>;
 
 /** Sem treino hoje: uma linha com o próximo dia de treino (a regra é do core). */
 export function Descanso() {
@@ -55,13 +55,14 @@ export function Caminho({ marcos }: { marcos: C.Marco[] }) {
         const corpo = <><span class="hm-ponto" aria-hidden="true">{m.feito ? <Icon id="check" /> : null}</span>
           <span class="hm-marco-t">{m.texto}</span>
           <span class="tiny sub num">{m.feito ? ddmm(m.data!) : m.progresso ?? (m.proximo ? "próximo" : "a fazer")}</span>
-          {!m.feito && <span class="tiny hm-marco-cta">{m.cta}</span>}</>;
+          {!m.feito && !m.proximo && <span class="tiny hm-marco-cta">{m.cta}</span>}</>;
         return <li key={m.id} class={`${m.feito ? "feito" : ""}${m.proximo ? " prox" : ""}`}>
           {m.feito ? <div class="hm-marco"><span class="sr">Feito: </span>{corpo}</div>
-            : <a class="hm-marco" href={m.href}>{m.proximo && <span class="sr">Próximo marco: </span>}{corpo}</a>}</li>;
+            : m.proximo ? <div class="hm-marco"><span class="sr">Próximo marco: </span>{corpo}</div>
+            : <a class="hm-marco" href={m.href}>{corpo}</a>}</li>;
       })}
     </ol>
-    {prox ? <a class="btn pri full" style="margin-top:12px" href={prox.href}>{prox.cta}<Icon id="arrow" /></a>
+    {prox ? <a class="btn full" style="margin-top:12px" href={prox.href}>{prox.cta}<Icon id="arrow" /></a>
       : <p class="small sub" style="margin-top:10px">Todos os marcos feitos. Agora é manter o ritmo.</p>}
   </Card>;
 }
@@ -106,6 +107,10 @@ function Media({ m }: { m: C.MediaCard }) {
 /** Proteína, água e sono: média de 7 dias com barras animadas (scroll com snap no celular, 3 lado a lado no largo). */
 export function Medias({ medias }: { medias: C.MediaCard[] }) {
   const [ref, vis] = useVisivel<HTMLDivElement>();
+  if (medias.every((m) => m.media == null)) return <section class="hm-medias-s" aria-labelledby="hm-medias-t">
+    <Card cls="hm-medias-vazia"><h2 id="hm-medias-t">Médias da semana</h2>
+      <p class="small sub" style="margin-top:4px">Registre comida, água e sono para ver suas médias.</p>
+      <div class="hm-medias-links">{medias.map((m) => <a key={m.id} class="btn" href={m.vazio.href}>{m.vazio.cta}</a>)}</div></Card></section>;
   return <section class="hm-medias-s" aria-labelledby="hm-medias-t">
     <div class="row between wrapx" style="gap:8px;margin-bottom:8px"><h2 id="hm-medias-t">Médias da semana</h2><span class="small sub">últimos 7 dias</span></div>
     <div ref={ref} class={`hm-medias${vis ? " vis" : ""}`} tabIndex={0} role="group" aria-label="Proteína, água e sono">

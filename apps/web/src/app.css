@@ -537,3 +537,8 @@ html{overscroll-behavior-y:none}
 .cenario-btn{position:fixed;z-index:30;top:calc(env(safe-area-inset-top) + 8px);left:50%;transform:translateX(-50%);min-height:var(--alvo);padding:0 var(--sp-3);border-radius:var(--r-chip);border:1px dashed var(--borda-ctrl);background:var(--sup);color:var(--sub);font-weight:600;font-size:12px;font-family:inherit;cursor:pointer;opacity:.8;transition:opacity var(--dur-1) var(--ease)}
 .cenario-btn:hover,.cenario-btn:focus-visible{opacity:1;color:var(--txt)}
 .cenario-btn:disabled{opacity:.5;cursor:progress}
+/* #77 no celular o chip entra no fluxo, numa faixa própria acima do cabeçalho: não cobre o pill nem o conteúdo */
+@media (max-width:959px){.cenario-btn{position:static;transform:none;display:flex;align-items:center;justify-content:center;width:100%;min-height:var(--alvo);margin:0 0 8px}}
+/* #77 abas do Treino: as 5 cabem em 390 px; se rolar, fade na borda direita (some no fim) */
+@media (max-width:480px){.abas-treino{gap:4px}.abas-treino a.chip{padding:0 9px;font-size:13px;flex:none}}
+.abas-treino.rola:not(.no-fim){-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent)}

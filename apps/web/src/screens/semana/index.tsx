@@ -16,6 +16,7 @@ import { abrirMover, abrirRegenerar, abrirTrocar, abrirVersoes, aberto, diaCurto
 import { abrirGerarOutro } from "../treino/gerar.tsx";
 import "./semana.css";
 import { Estado } from "../../lib/estado/index.tsx";
+import { AbasTreino } from "../../lib/abas-treino/index.tsx";
 
 export const STATUS: Record<C.DayStatus, string> = {
   feito: "feito", extra: "extra", faltou: "faltou", folga: "folga", pendente: "sem resposta", hoje: "hoje", livre: "livre", planejado: "planejado",
@@ -140,8 +141,10 @@ function Exercicio({ it }: { it: C.PlanItem }) {
 export default function Tela({ route }: { route: Route }) {
   useEffect(() => { garantirSemana(true); }, []);
   const s = getSemana();
-  if (!s) return <><p class="kicker">Semana</p><h1 style="margin-bottom:14px">Semana</h1>
+  // #77 a mesma barra de abas do Treino, com Semana marcada (o detalhe do dia é um nível abaixo, sem abas)
+  const abas = <AbasTreino atual="semana" />;
+  if (!s) return <>{abas}<p class="kicker">Semana</p><h1 style="margin-bottom:14px">Semana</h1>
     <Card><p class="small">{getVazio() ?? "Carregando a semana…"}</p>{getVazio() && <a class="btn pri" style="margin-top:10px" href="#primeiros-passos">Perfil de treino</a>}</Card></>;
   if (route.parts[0] === "dia" && route.parts[1]) return <Detalhe date={route.parts[1]} />;
-  return <Lista s={s} />;
+  return <>{abas}<Lista s={s} /></>;
 }

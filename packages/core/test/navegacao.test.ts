@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { TELAS, TELAS_ABA, TELAS_MAIS, caminhoAteHoje, voltarDe } from "../src/index.ts";
+import { TELAS, TELAS_ABA, TELAS_MAIS, caminhoAteHoje, nomeDaTela, voltarDe } from "../src/index.ts";
 
 // Uma amostra de cada forma de rota que o app abre (#tela/parte/parte). Dados fictícios.
 const ROTAS: [string, string[]][] = [
@@ -35,7 +35,8 @@ test("a Home não tem voltar; as outras sempre têm destino com nome", () => {
 
 test("destinos previsíveis: sobe um nível, não volta no histórico", () => {
   assert.deepEqual(voltarDe("semana", ["dia", "2026-11-12"]), { screen: "semana", parts: [], nm: "Semana" });
-  assert.deepEqual(voltarDe("semana", []), { screen: "hoje", parts: [], nm: "Hoje" });
+  // #77 Semana é uma aba do Treino: sem origem conhecida, o voltar leva ao Treino (o app usa history.back quando veio de dentro).
+  assert.deepEqual(voltarDe("semana", []), { screen: "treino", parts: [], nm: "Treino" });
   assert.deepEqual(voltarDe("treino", ["exercicio", "Face_Pull"]), { screen: "treino", parts: ["exercicios"], nm: "Exercícios" });
   assert.deepEqual(voltarDe("treino", ["ativo", "0"]), { screen: "treino", parts: [], nm: "Treino" });
   assert.deepEqual(voltarDe("academias", ["lugar-1", "aparelho", "supino"]), { screen: "academias", parts: ["lugar-1"], nm: "Lugar" });
@@ -60,4 +61,12 @@ test("#71 checkup pendente: tudo cai nos Primeiros passos, menos Conta e o menu 
   assert.equal(telaComCheckupPendente("mais", true), "mais", "o ⋯ abre");
   assert.equal(telaComCheckupPendente("conta", true), "conta");
   assert.equal(telaComCheckupPendente("perfil", false), "perfil");
+});
+
+test("#77 nome de cada tela para o rótulo do voltar (apelido claude = Chat; desconhecida = Voltar)", () => {
+  assert.equal(nomeDaTela("treino"), "Treino");
+  assert.equal(nomeDaTela("hoje"), "Hoje");
+  assert.equal(nomeDaTela("semana"), "Semana");
+  assert.equal(nomeDaTela("claude"), "Chat");
+  assert.equal(nomeDaTela("x-qualquer"), "Voltar");
 });

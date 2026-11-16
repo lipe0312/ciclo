@@ -8,9 +8,9 @@ import { CENARIOS, urlAbertura } from "./cenarios/index.mjs";
 import { abrirChrome, sleep } from "./cenarios/cdp.mjs";
 
 const PORTA = Number(process.env.CENARIO_PORTA) || 8793;
-const ROTEIROS = { "primeiro-acesso": primeiroAcesso, pular, "treino-atual": treinoAtual };
+const ROTEIROS = { "primeiro-acesso": primeiroAcesso, pular, "treino-atual": treinoAtual, navegacao };
 /** Cenário de cada roteiro (padrão: vazio). #74: o "Meu treino atual" roda na conta em uso (semi). */
-const CENARIO_DO = { "treino-atual": "semi" };
+const CENARIO_DO = { "treino-atual": "semi", navegacao: "semi" };
 const CENARIO = CENARIO_DO[process.argv[2]] ?? "vazio";
 const nome = process.argv[2];
 if (!ROTEIROS[nome]) { console.error(`✖ roteiro: ${Object.keys(ROTEIROS).join(" | ")}`); process.exit(2); }
@@ -58,8 +58,8 @@ async function escrever(c, seletor, valor) {
     const set = Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set; set.call(el, ${JSON.stringify(valor)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
   return r;
 }
-const abrirNoCenario = async (c, tela) => { // 1 nova tentativa: a primeira navegação do Chrome recém-aberto às vezes perde o redirecionamento
-  for (let t = 0; t < 2; t++) {
+const abrirNoCenario = async (c, tela) => { // #77 até 3 tentativas: a primeira navegação do Chrome recém-aberto às vezes perde o redirecionamento
+  for (let t = 0; t < 3; t++) {
     await c.abrir(urlAbertura(CENARIO, tela, new URL(BASE).port));
     if (await c.esperar(`location.hash === '#${tela}' && document.querySelector('.pp, .view.on')`)) return;
   }
@@ -339,6 +339,48 @@ async function treinoAtual(c) {
     igual(st.profile?.treinoAtual?.divisoes?.map((d) => [d.nome, d.exercicios.length]), [["A", 1], ["Treino B", 3]], "treinos no servidor");
     await c.abrir(urlAbertura(CENARIO, "perfil/treino-atual", new URL(BASE).port));
     ok(await c.esperar("document.querySelectorAll('.ta-tabs [role=tab]').length === 2", 15000), "recarregar perdeu um treino");
+  }, c);
+}
+
+// #77 Treino ↔ Semana: as abas só trocam de tela (nunca abrem folha), a atual fica marcada e o voltar da Semana respeita a origem.
+const abaMarcada = (c) => c.ev("[...document.querySelectorAll('nav.subnav a[aria-current=\"page\"]')].map((a) => a.textContent.trim())");
+const temFolha = (c) => c.ev("!!document.querySelector('.sheet.open, dialog[open]')");
+async function naTela(c, hash, aba) {
+  ok(await c.esperar(`location.hash === ${JSON.stringify(hash)} && !!document.querySelector('nav.subnav')`, 10000), `URL: veio ${await c.hash()}, esperado ${hash}`);
+  igual(await abaMarcada(c), [aba], `aba marcada em ${hash}`);
+  ok(!(await temFolha(c)), `abriu uma folha em ${hash}`);
+}
+async function navegacao(c) {
+  await passo("abre o Treino: aba Hoje marcada, sem voltar no topo", async () => {
+    await abrirNoCenario(c, "treino");
+    await naTela(c, "#treino", "Hoje");
+    ok(!(await c.ev("!!document.querySelector('.top .voltar')")), "o Treino (raiz) não tem voltar");
+  }, c);
+  await passo("toca na aba Semana: abre #semana com a mesma barra e Semana marcada", async () => {
+    await c.clicar("Semana", "nav.subnav"); await naTela(c, "#semana", "Semana");
+    igual(await c.ev("document.querySelector('.top .voltar')?.getAttribute('aria-label')"), "Voltar para Treino", "voltar da Semana");
+  }, c);
+  await passo("da Semana, toca na aba Exercícios: #treino/exercicios com Exercícios marcada", async () => {
+    await c.clicar("Exercícios", "nav.subnav"); await naTela(c, "#treino/exercicios", "Exercícios");
+  }, c);
+  await passo("voltar (topo) de Exercícios: Treino com a aba Hoje marcada", async () => {
+    await c.clicar("Voltar para Treino", ".top"); await naTela(c, "#treino", "Hoje");
+  }, c);
+  await passo("Treino → Semana → voltar: volta para o Treino (não para a Hoje da barra inferior)", async () => {
+    await c.clicar("Semana", "nav.subnav"); await naTela(c, "#semana", "Semana");
+    await c.clicar("Voltar para Treino", ".top"); await naTela(c, "#treino", "Hoje");
+  }, c);
+  await passo("caminho direto (Hoje → Ver semana inteira) abre a mesma Semana e o voltar leva de volta ao Hoje", async () => {
+    await c.abrir(`${BASE}/#hoje`); ok(await c.esperar("location.hash === '#hoje' && (document.querySelector('#app')?.innerText ?? '').includes('Ver semana inteira')", 10000), "o Hoje não carregou");
+    await c.clicar("Ver semana inteira"); await naTela(c, "#semana", "Semana");
+    await c.clicar("Voltar para Hoje", ".top");
+    ok(await c.esperar("location.hash === '#hoje'"), `voltou para ${await c.hash()}`);
+  }, c);
+  await passo("Semana aberta direto (sem origem no app): o voltar leva ao Treino", async () => {
+    await c.abrir(urlAbertura(CENARIO, "semana", new URL(BASE).port));
+    await naTela(c, "#semana", "Semana");
+    await c.ev("sessionStorage.clear()"); await c.recarregar(); await naTela(c, "#semana", "Semana");
+    await c.clicar("Voltar para Treino", ".top"); await naTela(c, "#treino", "Hoje");
   }, c);
 }
 

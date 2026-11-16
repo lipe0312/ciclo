@@ -19,6 +19,7 @@ import { Cardio, cardioName } from "./cardio.tsx";
 import { abrirGerarOutro, anterior, desfazerGeracao } from "./gerar.tsx";
 import { diaDe, garantirSemana } from "../semana/estado.ts";
 import { Relogio, Timeline, useTick } from "./timeline.tsx";
+import { AbasTreino } from "../../lib/abas-treino/index.tsx";
 
 export { MediaBox } from "./midia.tsx";
 
@@ -139,12 +140,7 @@ export default function Treino({ route }: { route: Route }) {
   const tab = sub === "exercicios" || sub === "exercicio" ? "ex" : sub === "historico" ? "hist" : sub === "cardio" ? "cardio" : "hoje";
   if (sub === "ativo") return <Timeline idx={route.parts[1] != null && /^\d+$/.test(route.parts[1]) ? Number(route.parts[1]) : null} />;
   return <>
-    {sub !== "exercicio" && <nav class="tabs subnav" aria-label="Treino">
-      <a class="chip" href="#treino" aria-current={tab === "hoje" ? "page" : undefined}>Hoje</a>
-      <a class="chip" href="#semana">Semana</a>
-      <a class="chip" href="#treino/exercicios" aria-current={tab === "ex" ? "page" : undefined}>Exercícios</a>
-      <a class="chip" href="#treino/historico" aria-current={tab === "hist" ? "page" : undefined}>Histórico</a>
-      <a class="chip" href="#treino/cardio" aria-current={tab === "cardio" ? "page" : undefined}>Cardio</a></nav>}
+    {sub !== "exercicio" && <AbasTreino atual={tab} />}
     {sub === "exercicio" ? <Detalhe id={route.parts[1] ?? ""} /> : tab === "ex" ? <Biblioteca query={route.query} /> : tab === "hist" ? <Historico /> : tab === "cardio" ? <Cardio /> : <Hoje />}
   </>;
 }

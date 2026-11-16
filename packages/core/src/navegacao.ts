@@ -14,6 +14,8 @@ const NOME: Record<string, string> = {
 };
 const para = (screen: string, parts: string[] = [], nm = NOME[screen] ?? "Voltar"): Destino => ({ screen, parts, nm });
 const HOJE = () => para("hoje");
+/** #77 Nome da tela para o rótulo do "voltar" ("claude" é apelido de Chat). */
+export const nomeDaTela = (screen: string) => NOME[screen === "claude" ? "chat" : screen] ?? "Voltar";
 
 /** Para onde o "voltar" leva a partir de uma rota. A Home não tem voltar (null). */
 export function voltarDe(screen: string, parts: readonly string[]): Destino | null {
@@ -22,6 +24,7 @@ export function voltarDe(screen: string, parts: readonly string[]): Destino | nu
   if (s === "hoje") return parts.length ? HOJE() : null;
   if (s === "primeiros-passos" || s === "entrar" || s === "mais") return HOJE();
   if (!TELAS.includes(s)) return HOJE();
+  if (s === "semana" && !a) return para("treino"); // #77 Semana é aba do Treino
   if (!a) return (TELAS_MAIS as readonly string[]).includes(s) ? para("mais") : HOJE();
   if (s === "treino" && a === "exercicio") return para("treino", ["exercicios"], "Exercícios");
   if (s === "academias" && a !== "novo" && b) return para("academias", [a], "Lugar");

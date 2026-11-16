@@ -79,10 +79,13 @@ a.hm-marco:focus-visible{outline:3px solid var(--foco);outline-offset:2px}
 .hm-barras{position:relative;display:flex;align-items:flex-end;gap:4px;height:56px;margin:10px 0 6px;border-bottom:1px solid var(--borda)}
 .hm-b{flex:1;height:calc(var(--h) * 1%);background:var(--txt);border-radius:3px 3px 0 0;transform:scaleY(0);transform-origin:bottom;transition:transform 600ms var(--ease) calc(var(--i) * 40ms)}
 .hm-b.hoje{background:repeating-linear-gradient(135deg,var(--acc-bg) 0 3px,var(--hatch) 3px 6px)}
-.hm-b.nada{background:var(--sup-3)}
+.hm-b.nada{background:var(--borda-ctrl)} /* #77 dia sem dado: ≥ 3:1 contra o cartão (elemento gráfico) */
 .vis .hm-b{transform:scaleY(1)}
 .hm-meta-l{position:absolute;left:0;right:0;height:0;border-top:1px dashed var(--borda-ctrl);pointer-events:none}
 .hm-vs{margin-top:auto}
+/* #77 sem nenhuma média: um cartão de chamada com os 3 links */
+.hm-medias-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.hm-medias-links .btn{flex:1 1 140px}
 
 /* #73 atalhos 2×3 */
 .hm-atalhos{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}

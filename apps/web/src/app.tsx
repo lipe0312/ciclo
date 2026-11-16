@@ -94,7 +94,8 @@ export function App() {
   if (route.screen === "termos" || route.screen === "privacidade") return <div class="app focus entrar-app"><main class="main"><div class="wrap"><Legal route={route} /></div></main><Toast /></div>;
   const Tela = SCREENS[screen];
   const route2 = route2Of(route, screen);
-  const cur = (id: string) => (id === screen || (id === "mais" && MAIS.some((d) => d.id === screen)) ? "page" : undefined);
+  // #77 Semana é aba do Treino: a barra marca Treino
+  const cur = (id: string) => (id === screen || (id === "treino" && screen === "semana") || (id === "mais" && MAIS.some((d) => d.id === screen)) ? "page" : undefined);
   void S;
   return <div class={`app${screen === "primeiros-passos" ? " focus" : ""}`}>
     <nav class="side" aria-label="Principal">
@@ -106,6 +107,7 @@ export function App() {
     </nav>
     <main class="main">
       <div class="wrap">
+        <BotaoCenario />
         <div class="top">
           {comVoltar ? <Voltar route={route2} /> : <div class="brand"><span class="logo"><Icon id="cycle" /></span>Ciclo</div>}
           <div class="row" style="gap:8px"><span class="status-pill">{pillText()}</span>
@@ -120,7 +122,6 @@ export function App() {
     <MiniBarra screen={screen} />
     <nav class="bottom" aria-label="Principal">{PRINCIPAL.map((d) => <a key={d.id} href={`#${d.id}`} aria-current={cur(d.id)}><Icon id={d.icon} />{d.nm}</a>)}</nav>
     <Folha tick={tick} />
-    <BotaoCenario />
     <Toast />
   </div>;
 }
