@@ -9,9 +9,10 @@ import { readiness } from "./checkin.ts";
 import type { Checkin } from "./checkin.ts";
 import { stalled } from "./loads.ts";
 
+/** Piso e teto de séries semanais por músculo. docs/09-base-cientifica.md#volume-semanal */
 export const VOLUME_MIN = 4;
 export const VOLUME_MAX = 20;
-/** Semanas de carga por bloco; a seguinte é deload. */
+/** Semanas de carga por bloco; a seguinte é deload (com ~60% do volume). docs/09-base-cientifica.md#deload */
 export const BLOCK_LOAD_WEEKS = 4;
 export const DELOAD_FACTOR = 0.6;
 
