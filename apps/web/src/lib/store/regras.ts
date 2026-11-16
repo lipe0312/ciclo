@@ -1,6 +1,6 @@
 // Ponte entre o estado e o core: o que o app pergunta ao core (plano do dia, sugestão de carga) e
 // gravações compartilhadas entre telas (perfil, academia, dor, comida).
-import { C, S, calc, commit, today } from "./index.ts";
+import { C, S, calc, commit, perfilSync, today } from "./index.ts";
 import { SERVER, api, flush, send } from "../api/index.ts";
 import { DOW, TZ, addDays, dowIdx, lsGet, lsSet, uid } from "../util.ts";
 
@@ -52,7 +52,10 @@ export function profileChanged(sync = true) {
     if (act === "freeze") { S.ui.locked = true; S.ui.planSource = "perfil"; }
     else if (act === "unfreeze") { S.ui.locked = false; S.ui.planSource = undefined; }
   }
-  if (sync) { clearTimeout(profileTimer); profileTimer = setTimeout(() => send("PUT", "/api/profile", { data: S.profile }), 600); }
+  if (sync) {
+    clearTimeout(profileTimer); perfilSync.pendente = true;
+    profileTimer = setTimeout(() => { perfilSync.pendente = false; send("PUT", "/api/profile", { data: S.profile }); }, 600);
+  }
 }
 /** Garante a base de comparação ANTES de qualquer mudança no perfil (demo, 1º acesso direto ao Perfil, recarregar). */
 export function ensureBaseline() { if (!S.plan || !S.ui.planFp) { if (!(S.session && !S.session.finishedAt)) computePlan(); } }

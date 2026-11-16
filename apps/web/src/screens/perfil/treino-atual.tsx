@@ -16,6 +16,13 @@ type G = C.GrupoTreino;
 const TOPO = 8; // exercícios por grupo antes do "Ver todos"
 const expandidos = new Set<string>();
 const salvar = () => { profileChanged(); commit(); };
+/** #93 Grava na hora, no servidor, só os treinos que passam na validação (um treino com erro não perde os outros). */
+async function salvarTreino(nome: string): Promise<boolean> {
+  const ok = C.divisoesSalvaveis(treino());
+  if (!ok.divisoes.some((x) => x.nome === nome)) { toast(`${nome}: confira os exercícios e o nome`); return false; }
+  try { await send("PATCH", "/api/profile", { data: { treinoAtual: ok } }); toast(`${nome} salvo`); return true; }
+  catch { return false; } // send() já avisou o motivo; o que está salvo no servidor continua lá
+}
 const treino = () => S.profile.treinoAtual as C.TreinoAtual | undefined;
 const nomeEx = (it: C.ItemTreinoAtual) => (C.ehLivre(it) ? it.nome : EXB[it.id]?.nm ?? it.id);
 const grupoDoItem = (it: C.ItemTreinoAtual): G | null => (C.ehLivre(it) ? it.grupo : EXB[it.id] ? C.grupoDoExercicio(EXB[it.id]) : null);
@@ -107,7 +114,7 @@ function ComoFaz({ it }: { it: C.ExercicioAtual }) {
 }
 
 function Divisao({ d, idx, onRemover }: { d: C.DivisaoAtual; idx: number; onRemover: () => void }) {
-  const [nome, setNome] = useState(d.nome);
+  const [nome, setNome] = useState(d.nome), [gravando, setGravando] = useState(false);
   useEffect(() => setNome(d.nome), [d]);
   const toggle = (g: G) => { d.grupos = d.grupos.includes(g) ? d.grupos.filter((x) => x !== g) : C.GRUPOS_TREINO.filter((x) => x === g || d.grupos.includes(x)); salvar(); };
   return <div class="ta-div" role="tabpanel" id={`ta-p-${idx}`} aria-labelledby={`ta-t-${idx}`}>
@@ -125,6 +132,8 @@ function Divisao({ d, idx, onRemover }: { d: C.DivisaoAtual; idx: number; onRemo
         {!C.ehLivre(it) && <ComoFaz it={it} />}
         <button type="button" class="btn ghost sm ta-x" aria-label={`Tirar ${nomeEx(it)}`} onClick={() => tirar(d, it)}><Icon id="x" /></button>
       </div>)}</div>}
+    <button type="button" class="btn pri full" style="margin-top:14px" disabled={gravando || !d.exercicios.length}
+      onClick={async () => { setGravando(true); try { await salvarTreino(d.nome); } finally { setGravando(false); } }}><Icon id="check" />{gravando ? "Salvando…" : `Concluir ${d.nome}`}</button>
     <button type="button" class="btn ghost sm" style="margin-top:14px" onClick={onRemover}>Remover este treino</button>
   </div>;
 }
@@ -146,7 +155,9 @@ function Cobertura({ d, abrir }: { d: C.DivisaoAtual | null; abrir: (i: number) 
 export default function TreinoAtual() {
   const [aba, setAba] = useState(0), [busy, setBusy] = useState(false);
   const t = treino(), divs = t?.divisoes ?? [];
-  const resposta = !t ? null : divs.length ? "sim" : "nao";
+  // #93 Quem já passou pelos Primeiros passos (nível) não responde de novo: usa o que foi cadastrado lá.
+  const jaRespondeu = S.profile.level != null;
+  const resposta = !t ? C.jaTreinaRespondido(S.profile) : divs.length ? "sim" : "nao";
   const i = Math.min(aba, Math.max(0, divs.length - 1)), d = divs[i] ?? null;
   const novaDivisao = () => {
     const tt = (S.profile.treinoAtual ??= { divisoes: [] });
@@ -174,11 +185,11 @@ export default function TreinoAtual() {
   const total = divs.reduce((a, x) => a + x.exercicios.length, 0);
   return <div class="ta">
     <p class="small sub">Sem cadastro, a geração funciona igual; com ele, entram primeiro os exercícios que você já faz.</p>
-    <span class="f" style="margin-top:14px">Você já treina?</span>
+    {(!jaRespondeu || (resposta === "nao" && S.profile.level !== 0)) && <><span class="f" style="margin-top:14px">Você já treina?</span>
     <div class="opts two">
       <button type="button" class="opt big" aria-pressed={resposta === "nao"} onClick={nao}><b>Não, estou começando</b><span>o app escolhe os mais eficientes e comuns</span></button>
       <button type="button" class="opt big" aria-pressed={resposta === "sim"} onClick={sim}><b>Sim</b><span>conte os treinos que você já faz</span></button>
-    </div>
+    </div></>}
     {resposta === "nao" && <div class="note" style="margin-top:12px"><Icon id="info" /><span>Sem problema: o gerador escolhe os exercícios que mais trabalham cada parte do músculo e, no empate, os mais comuns na academia.</span></div>}
     {resposta === "sim" && <>
       <Cobertura d={d} abrir={setAba} />

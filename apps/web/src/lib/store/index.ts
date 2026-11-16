@@ -92,14 +92,18 @@ export function mesclarRascunho(a: Record<string, unknown>, b: Record<string, un
   }
   return out;
 }
+/** #93 perfil editado no aparelho e ainda não enviado (debounce do PUT): o sync não pode trocar S.profile por baixo da tela. */
+export const perfilSync = { pendente: false };
+
 export async function loadServer() {
   const st = await api("GET", `/api/state?date=${today}`);
   // #62/#71: conta nova = vazia. O perfil é o rascunho salvo sobre o vazio (+ o que veio do cadastro); nada do DEFAULT_PROFILE por baixo.
   // Respostas ainda na fila offline (PATCH dos Primeiros passos) entram por cima, para recarregar sem sinal não "desfazer" o passo.
   // Por cima de tudo, o rascunho do passo em andamento (gravado no aparelho a cada toque): recarregar no meio do passo não perde nada.
-  const pendentes = queue.filter((q) => q.method === "PATCH" && q.path === "/api/profile").map((q) => (q.body as { data?: Record<string, unknown> })?.data ?? {});
+  const pendentes = queue.filter((q) => (q.method === "PATCH" || q.method === "PUT") && q.path === "/api/profile").map((q) => (q.body as { data?: Record<string, unknown> })?.data ?? {});
   pendentes.push(rascunhoPP.ler(st.account));
-  S.profile = C.montarPerfilApp(pendentes.reduce((a, d) => mesclarRascunho(a, d), (st.profile ?? {}) as Record<string, unknown>));
+  // #93 edição local ainda no debounce vence o que veio do servidor (senão a tela volta ao zero e a folha fecha)
+  if (!perfilSync.pendente) S.profile = C.montarPerfilApp(pendentes.reduce((a, d) => mesclarRascunho(a, d), (st.profile ?? {}) as Record<string, unknown>));
   S.gyms = st.gyms ?? [];
   S.features = st.features ?? S.features;
   S.account = st.account ?? null; S.onboarding = st.onboarding ?? null;
