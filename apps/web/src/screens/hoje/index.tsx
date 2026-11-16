@@ -83,7 +83,8 @@ export default function Hoje() {
   const paineis = v.vazio ? [] : [<Volume view={v} />, <ForcaPainel view={v} />, <PesoPainel view={v} />, <BracoCintura view={v} />, <PresencaPainel view={v} />, <CardioPainel view={v} />];
   const comp = <Compensa />;
   const col = (xs: ComponentChildren[]) => <div class="stack hm-col">{xs.map((x, i) => <div key={i}>{x}</div>)}</div>;
-  const A = [comp, sem, boas, cam, ...(v.vazio ? [] : [obj]), ...paineis.slice(0, 2)], B = [med, ata, lac, com, ...paineis.slice(2), cla];
+  // #77 médias na coluna larga: na estreita os 3 cartões ficavam apertados, com o texto em 5 linhas
+  const A = [comp, sem, boas, cam, med, ...(v.vazio ? [] : [obj]), ...paineis.slice(0, 2)], B = [ata, lac, com, ...paineis.slice(2), cla];
   return <>{cab}{topo}
     {larga ? <div class="grid dash">{col(A)}{col(B)}</div>
       : col([comp, sem, boas, cam, med, ata, ...(v.vazio ? [] : [obj]), lac, com, ...paineis, cla])}</>;
