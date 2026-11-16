@@ -45,6 +45,7 @@ L = lê (escopo `ler`), E = escreve (escopo `escrever`). Os schemas completos es
 | `ciclo_perfil_atualizar` (alias `ciclo_salvar_perfil`) | E | Patch do perfil (o mesmo do `PATCH /api/profile`), validado. | `perfil`, `concluirPrimeirosPassos?` | `salvo`, resumo |
 | `ciclo_treino_atual` | L | Lê o "Meu treino atual" completo (#95). Leia antes de gerar a semana, trocar exercícios ou salvar por cima. | — | `{ treinoAtual: { divisoes[{nome, grupos, exercicios[{id, nm, sets?, reps?, kg?} \| {livre, grupo}]}] }, por, aviso }`; não informado → `treinoAtual: null` |
 | `ciclo_treino_atual_salvar` | E | "Meu treino atual" (#74). | `treinoAtual{divisoes[]}` | `salvo`; inválido → erro com o campo |
+| `ciclo_exercicio_criar` | E | **Último recurso** (#107): cria um exercício personalizado da conta (`cus_…`) quando o catálogo não tem o movimento; exige `jaBusqueiNoCatalogo:true`. Vídeo só do YouTube (watch/youtu.be/shorts, normalizado). Até 200 por conta; mesmo nome+músculo devolve o existente. Depois vale em `{id, sets}`. | `jaBusqueiNoCatalogo`, `nome`, `musculo`, `aparelho?`, `descricao`, `video?` | `criado`, `exercicio{id, nome:dado, descricao:dado, video?}`, `lembrete` |
 | `ciclo_preferencias` | L/E | Sem argumentos lê. Muda `fixar`, `desfixar`, `evitar`, `desevitar`, `preferir` e `comida_aprovacao`. | ver schema | preferências atuais |
 
 ### Comida por conversa
