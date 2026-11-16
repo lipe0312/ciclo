@@ -103,7 +103,7 @@ function ComoFazer({ exId }: { exId: string }) {
   return <><SheetHead kicker={it.type === "forca" ? `${C.MUSCLES[it.m].nm} · ${it.kind}` : "Cardio"} title={it.nm} />
     <div style="margin-top:10px">{it.images.length ? <Carrossel label="Imagens do exercício" items={it.images.map((n) => <img src={img(src, n)} alt={`${it.nm} · ${n ? "fim" : "início"} do movimento`} width={360} height={240} />)} /> : <ExImgs it={it} size="big" />}</div>
     <h3 style="margin:14px 0 4px">Passo a passo</h3>
-    {tx?.howTo.length ? <ol class="steps">{tx.howTo.map((t, i) => <li key={i}>{t}</li>)}</ol> : <p class="small sub">Movimento controlado, amplitude completa e sobrar 1–2 repetições.</p>}
+    {tx?.howTo.length ? <ol class="steps">{tx.howTo.map((t, i) => <li key={i}>{t}</li>)}</ol> : tx === undefined ? null : <p class="small sub">Movimento controlado, amplitude completa e sobrar 1–2 repetições.</p>}
     {tx?.tips.length ? <><h3 style="margin:14px 0 4px">Dicas</h3><ol class="steps">{tx.tips.map((t, i) => <li key={i}>{t}</li>)}</ol></> : null}
     <h3 style="margin:14px 0 4px">Seu aparelho</h3><MediaBox exId={exId} /></>;
 }
