@@ -107,6 +107,7 @@ export function App() {
     </nav>
     <main class="main">
       <div class="wrap">
+        <BotaoCenario />
         <div class="top">
           {comVoltar ? <Voltar route={route2} /> : <div class="brand"><span class="logo"><Icon id="cycle" /></span>Ciclo</div>}
           <div class="row" style="gap:8px"><span class="status-pill">{pillText()}</span>
@@ -121,7 +122,6 @@ export function App() {
     <MiniBarra screen={screen} />
     <nav class="bottom" aria-label="Principal">{PRINCIPAL.map((d) => <a key={d.id} href={`#${d.id}`} aria-current={cur(d.id)}><Icon id={d.icon} />{d.nm}</a>)}</nav>
     <Folha tick={tick} />
-    <BotaoCenario />
     <Toast />
   </div>;
 }

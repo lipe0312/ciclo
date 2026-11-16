@@ -7,13 +7,13 @@ import { go, href } from "../roteador/index.ts";
 import type { Route } from "../roteador/index.ts";
 import { isSheetOpen } from "../folha/index.tsx";
 import { Icon } from "../ui/index.tsx";
-import { PILHA_VAZIA, acaoVoltar, registrarRota } from "./regras.ts";
+import { PILHA_VAZIA, acaoVoltar, pilhaSalva, registrarRota } from "./regras.ts";
 import type { AcaoVoltar, Pilha } from "./regras.ts";
 
 // Pilha das entradas que o app criou nesta aba. Cada entrada leva o índice no history.state; a pilha sobrevive a recarregar.
 const CHAVE = "ciclo:pilha";
 let pilha: Pilha = PILHA_VAZIA;
-try { const p = JSON.parse(sessionStorage.getItem(CHAVE) ?? "null"); if (p && Array.isArray(p.entradas) && Number.isInteger(p.idx)) pilha = p; } catch { /* sem storage */ }
+try { pilha = pilhaSalva(sessionStorage.getItem(CHAVE)) ?? PILHA_VAZIA; } catch { /* sem storage */ }
 const idxGravado = () => { const v = (history.state as { cicloIdx?: unknown } | null)?.cicloIdx; return typeof v === "number" ? v : null; };
 function anotar(modo: "nav" | "substituir") {
   pilha = registrarRota(pilha, location.hash, modo === "substituir" ? "substituir" : idxGravado());

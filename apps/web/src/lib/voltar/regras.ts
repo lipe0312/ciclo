@@ -5,6 +5,15 @@ import * as C from "@ciclo/core";
 /** Entradas do histórico criadas por este app nesta aba (cada uma marcada com o índice no history.state). */
 export interface Pilha { entradas: string[]; idx: number }
 export const PILHA_VAZIA: Pilha = { entradas: [], idx: -1 };
+/** Pilha lida do sessionStorage: só aceita o formato exato (lista de textos e índice dentro dela); senão null. */
+export function pilhaSalva(json: string | null): Pilha | null {
+  try {
+    const p = JSON.parse(json ?? "null");
+    if (!p || !Array.isArray(p.entradas) || !p.entradas.every((e: unknown) => typeof e === "string")) return null;
+    if (!Number.isInteger(p.idx) || p.idx < -1 || p.idx >= p.entradas.length) return null;
+    return { entradas: p.entradas, idx: p.idx };
+  } catch { return null; }
+}
 const norm = (h: string) => (h && h !== "#" ? h : "#hoje");
 
 /** Atualiza a pilha. `idxGravado`: o índice que a entrada já tinha (voltar/avançar) ou null (entrada nova);

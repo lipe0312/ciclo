@@ -1,7 +1,7 @@
 // #77 Voltar da Semana respeita a origem: history.back quando veio de dentro do app; senão, Treino (regra do core).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PILHA_VAZIA, acaoVoltar, registrarRota } from "../src/lib/voltar/regras.ts";
+import { PILHA_VAZIA, acaoVoltar, pilhaSalva, registrarRota } from "../src/lib/voltar/regras.ts";
 import type { Pilha } from "../src/lib/voltar/regras.ts";
 
 const r = (screen: string, ...parts: string[]) => ({ screen, parts });
@@ -46,4 +46,10 @@ test("as outras telas seguem a árvore do core (nunca history.back)", () => {
   assert.deepEqual(acaoVoltar(r("treino", "exercicios"), pilhaDe("#treino", "#semana", "#treino/exercicios")), { tipo: "ir", screen: "treino", parts: [], nm: "Treino" });
   assert.deepEqual(acaoVoltar(r("semana", "dia", "2026-11-12"), pilhaDe("#hoje", "#semana/dia/2026-11-12")), { tipo: "ir", screen: "semana", parts: [], nm: "Semana" });
   assert.equal(acaoVoltar(r("hoje"), pilhaDe("#treino", "#hoje")), null);
+});
+
+test("pilha salva no aparelho só volta se tiver o formato certo (senão descarta)", () => {
+  assert.deepEqual(pilhaSalva('{"entradas":["#treino","#semana"],"idx":1}'), { entradas: ["#treino", "#semana"], idx: 1 });
+  for (const ruim of [null, "", "x{", "null", '{"entradas":["#a",3],"idx":0}', '{"entradas":[{"x":1}],"idx":0}', '{"entradas":"#a","idx":0}', '{"entradas":["#a"],"idx":1.5}', '{"entradas":["#a"],"idx":5}'])
+    assert.equal(pilhaSalva(ruim), null, String(ruim));
 });
