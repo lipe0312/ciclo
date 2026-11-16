@@ -182,3 +182,14 @@ Nada de diagnóstico. Os avisos só levam a um profissional (`saude` no perfil d
 - **Toda resposta passa pelo validador** em `aplicarRevisaoIA`. O código hidrata os IDs pelo catálogo e define repetições, descanso e ordem; se houver qualquer violação, fica a semana determinística. Sem IA (resposta nula), tudo funciona igual.
 - **`IA_LIMITES`:** resposta com mais de 50 KB, mais de 7 dias ou mais de 30 itens num dia é recusada antes de qualquer leitura, e só valem IDs próprios do catálogo. É critério de segurança do app.
 - **`FOLGA_IA` = 20%:** a IA pode tirar até 20% das séries de um músculo em relação à determinística (por exemplo, para trocar por um exercício melhor), mas nunca passar do alvo, deixar de fazer 2× nem tirar músculo sem motivo. É critério do app.
+
+## Exercícios por tempo
+#106. A série guarda `segundos` (1–3600) ou `reps`, conforme a `medida` do exercício no catálogo (`packages/core/src/medida.ts`). A série por tempo conta como série no volume semanal e fica fora do volume kg × reps e do e1RM. O recorde dela é o maior tempo. Critério (ACSM, NSCA e uso comum): o isométrico é medido em tempo; o exercício cíclico de condicionamento pode ser medido em tempo ou em reps.
+
+| Exercício (ID) | Medida | Começa em |
+|---|---|---|
+| Prancha (`Plank`) | só tempo | tempo |
+| Prancha lateral (`Side_Bridge`, novo) | só tempo | tempo |
+| Polichinelo (`Star_Jump`, novo; imagem do *star jump* do free-exercise-db) | tempo ou reps | tempo |
+
+Os outros itens da lista da issue não estão no catálogo de força: hollow hold, cadeirinha na parede, dead hang, L-sit, superman isométrico, ponte de glúteo isométrica, mountain climber, skipping, farmer walk, burpee, abdominal bicicleta e agachamento sem carga. Pular corda é cardio (registrado em minutos). A ponte de glúteo do catálogo é dinâmica e continua em reps. Para incluir um deles: o item no catálogo com `medida`, as 2 imagens, o texto e uma linha nesta tabela. Os novos ficam fora da montagem automática (`planOff`).

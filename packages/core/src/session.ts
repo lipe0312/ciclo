@@ -71,16 +71,20 @@ export function adjustRest(r: Rest, deltaMs: number, now: number): Rest | null {
   return until <= now ? null : { until, fired: false };
 }
 
-export interface ServerSet { exerciseId: string; setNo: number; kg: number | null; reps: number | null }
-type EditableLog = { kg: string | number; reps: string | number; done: boolean };
+export interface ServerSet { exerciseId: string; setNo: number; kg: number | null; reps: number | null; segundos?: number | null }
+type EditableLog = { kg: string | number; reps: string | number; done: boolean; modo?: "reps" | "tempo"; seg?: string };
+/** #106 série por tempo volta como tempo (mm:ss), igual ao que o app grava. */
+const doServidor = (s: ServerSet, done: boolean): EditableLog => s.segundos
+  ? { kg: "", reps: "", done, modo: "tempo", seg: `${Math.floor(s.segundos / 60)}:${String(s.segundos % 60).padStart(2, "0")}` }
+  : { kg: s.kg ?? "", reps: s.reps ?? "", done };
 /** Junta as séries gravadas no servidor ao estado local (recarregar/trocar de aparelho). O local ainda não concluído vence. */
 export function mergeSessionSets(local: Record<string, EditableLog[]>, server: ServerSet[]): Record<string, EditableLog[]> {
   const out: Record<string, EditableLog[]> = Object.fromEntries(Object.entries(local).map(([k, v]) => [k, v.map((l) => ({ ...l }))]));
   for (const s of server) {
     const arr = (out[s.exerciseId] ??= []);
-    while (arr.length < s.setNo) arr.push({ kg: s.kg ?? "", reps: s.reps ?? "", done: false });
+    while (arr.length < s.setNo) arr.push(doServidor(s, false));
     const cur = arr[s.setNo - 1];
-    if (!cur.done && local[s.exerciseId]?.[s.setNo - 1] === undefined) arr[s.setNo - 1] = { kg: s.kg ?? "", reps: s.reps ?? "", done: true };
+    if (!cur.done && local[s.exerciseId]?.[s.setNo - 1] === undefined) arr[s.setNo - 1] = doServidor(s, true);
   }
   return out;
 }
