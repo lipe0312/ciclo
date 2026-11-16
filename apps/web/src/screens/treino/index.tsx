@@ -52,13 +52,13 @@ function Resumo({ s }: { s: any }) {
   const sm: C.SessionSummary | undefined = s.summary;
   const plan = activePlan();
   const out = plan.items.map((it) => ({ it, o: C.exerciseOutcome(it.sets, (s.logs[it.exerciseId] ?? []).filter((l: any) => l.done).length, !!s.skipped[it.exerciseId]) }));
-  const kind: Record<string, string> = { e1rm: "e1RM", carga: "carga", reps: "reps" };
+  const kind: Record<string, string> = { e1rm: "e1RM", carga: "carga", reps: "reps", tempo: "tempo" };
   return <>
     <div class="grid g3" style="margin-top:14px"><Card><p class="kicker">Duração</p><p class="big num">{C.fmtClock(s.finishedAt - s.startedAt)}</p></Card>
       <Card><p class="kicker">Séries feitas</p><p class="big num">{sm?.sets ?? Object.values(s.logs).flat().filter((l: any) => l.done).length}<span class="small sub">/{plan.setsTotal}</span></p></Card>
       <Card><p class="kicker">Volume</p><p class="big num">{fmt(sm?.volume ?? 0)}<span class="small sub"> kg</span></p>
         {sm?.vs.pct != null && <p class="small num" style={`margin-top:4px;color:var(--${sm.vs.pct >= 0 ? "ok" : "warn"})`}>{sm.vs.pct >= 0 ? "+" : ""}{sm.vs.pct}% vs média das últimas 4</p>}</Card></div>
-    {sm && sm.prs.length > 0 && <Card style="margin-top:12px"><h2>Recordes</h2><div class="row wrapx" style="gap:6px;margin-top:8px">{sm.prs.map((p, i) => <span class="badge ok num" key={i}>PR {kind[p.kind]} · {EXB[p.exerciseId]?.nm ?? p.exerciseId} {fmt(p.value, p.value % 1 ? 1 : 0)}{p.kind === "reps" ? " reps" : " kg"} (antes {fmt(p.prev, p.prev % 1 ? 1 : 0)})</span>)}</div></Card>}
+    {sm && sm.prs.length > 0 && <Card style="margin-top:12px"><h2>Recordes</h2><div class="row wrapx" style="gap:6px;margin-top:8px">{sm.prs.map((p, i) => <span class="badge ok num" key={i}>PR {kind[p.kind]} · {EXB[p.exerciseId]?.nm ?? p.exerciseId} {C.fmtPrValor(p.kind, p.value)} (antes {C.fmtPrValor(p.kind, p.prev)})</span>)}</div></Card>}
     {sm && sm.perExercise.length > 0 && <Card style="margin-top:12px"><h2>Médias vs última vez</h2>{sm.perExercise.map((e) => <div class="row between wrapx" key={e.exerciseId} style="padding:8px 0;border-top:1px solid var(--borda)">
       <span style="min-width:0">{EXB[e.exerciseId]?.nm ?? e.exerciseId}</span>
       <span class="num small">{fmt(e.avgKg, 1)} kg × {fmt(e.avgReps, 1)}{e.deltaReps != null ? <span class="sub"> · antes {fmt(e.lastAvgKg!, 1)} × {fmt(e.lastAvgReps!, 1)}{deltaTxt(e.deltaKg!, e.deltaReps)}</span> : <span class="sub"> · 1ª vez</span>}</span></div>)}</Card>}

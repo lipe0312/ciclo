@@ -3,12 +3,12 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { C, S, commit } from "../../lib/store/index.ts";
 import { EXB, mName, suggestFor } from "../../lib/store/regras.ts";
-import { Icon } from "../../lib/ui/index.tsx";
+import { Icon, Seg } from "../../lib/ui/index.tsx";
 import { fmt, img } from "../../lib/util.ts";
 import { ExImgs } from "./biblioteca.tsx";
 import { openEdit, openComoFazer, openFinish, openSkip, openSwap } from "./folhas.tsx";
 import { MediaBox } from "./midia.tsx";
-import { REASON_TXT, addSet, adjustRest, currentSets, curIdx, doneSets, dropSet, editedSet, ensureLogs, goEx, nextSetOf, onTick, pastAll, pastOf, progress, refsOf, restFor, running, setCur, skipRest, toggleSet } from "./sessao.ts";
+import { REASON_TXT, addSet, adjustRest, currentSets, curIdx, doneSets, dropSet, editedSet, ensureLogs, goEx, modoDe, nextSetOf, onTick, pastAll, pastOf, progress, refsOf, restFor, running, setCur, setModo, skipRest, toggleSet } from "./sessao.ts";
 
 export function useTick() { const [, set] = useState(0); useEffect(() => onTick(() => set((x) => x + 1)), []); }
 const kgReps = (kg: number, reps: number) => `${fmt(kg, kg % 1 ? 1 : 0)} kg × ${fmt(reps, reps % 1 ? 1 : 0)}`;
@@ -27,8 +27,25 @@ function Descanso() {
     <button type="button" class="btn" onClick={skipRest}>Pular</button></div>;
 }
 
+/** #106 alvo do item: "3 × 30–60 s" nos de tempo; "3 × 8–12" nos de reps. */
+export function alvoTxt(it: C.PlanItem) {
+  if (modoDe(it.exerciseId) !== "tempo") return `${it.sets} × ${it.reps[0]}–${it.reps[1]}`;
+  return C.medidaDe(it.exerciseId) === "tempo" ? `${it.sets} × ${it.reps[0]}–${it.reps[1]} s` : `${it.sets} séries por tempo`;
+}
+
+/** #106 Referências por tempo: maior tempo da última vez, melhor tempo e o melhor de hoje. */
+function RefsTempo({ exId }: { exId: string }) {
+  const r = C.refsTempo(pastOf(exId)), hoje = C.refsTempo([doneSets(exId)]);
+  if (!r) return <p class="tiny sub" style="margin-top:8px">Primeira vez por tempo neste exercício: sem referência ainda.</p>;
+  return <dl class="refs num" aria-label="Referências de tempo">
+    <div><dt>Última vez</dt><dd>{C.fmtSegundos(r.ultimo)}</dd><dd class="tiny sub">maior de {r.series} séries</dd></div>
+    <div><dt>Melhor tempo</dt><dd>{C.fmtSegundos(r.melhor)}</dd><dd class="tiny sub">de todas as sessões</dd></div>
+    <div><dt>Hoje</dt><dd>{hoje ? C.fmtSegundos(hoje.ultimo) : "—"}</dd><dd class="tiny sub">{hoje && hoje.ultimo > r.melhor ? "recorde!" : "maior série feita"}</dd></div></dl>;
+}
+
 /** Médias e referências do exercício: última vez, média das últimas 4, melhor marca e e1RM de hoje. */
 function Refs({ exId }: { exId: string }) {
+  if (modoDe(exId) === "tempo") return <RefsTempo exId={exId} />;
   const r = refsOf(exId), today = C.setStats(doneSets(exId));
   if (!r.last) return <p class="tiny sub" style="margin-top:8px">Primeira vez neste exercício: sem referência ainda. O app aprende daqui.</p>;
   return <dl class="refs num" aria-label="Médias e referências">
@@ -38,15 +55,21 @@ function Refs({ exId }: { exId: string }) {
     <div><dt>e1RM hoje</dt><dd>{today ? `${fmt(today.bestE1rm, 1)} kg` : "—"}</dd><dd class="tiny sub">{today && today.bestE1rm > r.best!.e1rm + 1e-9 ? "recorde!" : "melhor série feita"}</dd></div></dl>;
 }
 
-function SetRows({ idx, it }: { idx: number; it: C.PlanItem }) {
+/** Séries do exercício atual. #106: medida "ambos" ganha o seletor Tempo | Reps; série por tempo tem um campo só (mm:ss). */
+export function SetRows({ idx, it }: { idx: number; it: C.PlanItem }) {
   const logs = ensureLogs(it), lastSets = pastOf(it.exerciseId)[0]; // a mesma série da sessão anterior, ao lado de cada linha
-  const prev = (k: number) => { const x = lastSets?.[k]; return x ? kgReps(x.kg, x.reps) : "—"; };
+  const prev = (k: number) => { const x = lastSets?.[k]; return !x ? "—" : C.ehSerieTempo(x) || !(x.kg > 0) ? C.fmtSerie(x) : kgReps(x.kg, x.reps); };
+  const modo = modoDe(it.exerciseId), tempo = (k: number) => logs[k].modo === "tempo";
+  const algumTempo = logs.some((l) => l.modo === "tempo"), algumReps = logs.some((l) => l.modo !== "tempo");
   return <div class="tl-sets">
-    <div class="tl-set head tiny sub" aria-hidden="true"><span>#</span><span>última</span><span>kg</span><span>reps</span><span /></div>
-    {logs.map((l, k) => <div key={k} class={`tl-set num ${l.done ? "done" : ""}`}>
+    {C.temSeletorMedida(it.exerciseId) && <Seg cls="tl-medida" label="Registrar por" opts={[["tempo", "Tempo"], ["reps", "Reps"]] as [C.ModoSerie, string][]} value={modo} onPick={(v) => setModo(idx, v)} />}
+    {algumReps && <div class="tl-set head tiny sub" aria-hidden="true"><span>#</span><span>última</span><span>kg</span><span>reps</span><span /></div>}
+    {algumTempo && !algumReps && <div class="tl-set tempo head tiny sub" aria-hidden="true"><span>#</span><span>última</span><span>tempo (mm:ss)</span><span /></div>}
+    {logs.map((l, k) => <div key={k} class={`tl-set num ${tempo(k) ? "tempo" : ""} ${l.done ? "done" : ""}`}>
       <span class="sub">{k + 1}</span><span class="prev tiny sub">{prev(k)}</span>
-      <input class="input" inputMode="decimal" aria-label={`kg série ${k + 1}`} value={l.kg} onInput={(e) => { l.kg = e.currentTarget.value; }} onBlur={() => editedSet(idx, k)} />
-      <input class="input" inputMode="numeric" aria-label={`reps série ${k + 1}`} value={l.reps} onInput={(e) => { l.reps = e.currentTarget.value; }} onBlur={() => editedSet(idx, k)} />
+      {tempo(k) ? <input class="input" inputMode="numeric" aria-label={`tempo série ${k + 1} (mm:ss)`} placeholder="0:30" value={l.seg} onInput={(e) => { l.seg = e.currentTarget.value; }} onBlur={() => editedSet(idx, k)} />
+        : <><input class="input" inputMode="decimal" aria-label={`kg série ${k + 1}`} value={l.kg} onInput={(e) => { l.kg = e.currentTarget.value; }} onBlur={() => editedSet(idx, k)} />
+      <input class="input" inputMode="numeric" aria-label={`reps série ${k + 1}`} value={l.reps} onInput={(e) => { l.reps = e.currentTarget.value; }} onBlur={() => editedSet(idx, k)} /></>}
       <button type="button" class="ck" aria-pressed={l.done} onClick={() => toggleSet(idx, k)} aria-label={l.done ? `Desfazer série ${k + 1}` : `Concluir série ${k + 1}`}><Icon id="check" /></button></div>)}
     <div class="row wrapx" style="gap:8px"><button type="button" class="btn" onClick={() => addSet(idx)}><Icon id="plus" />série</button>
       {logs.length > 1 && !logs[logs.length - 1].done && <button type="button" class="btn ghost" onClick={() => dropSet(idx)}>− série</button>}</div></div>;
@@ -60,8 +83,8 @@ function Atual({ it, idx }: { it: C.PlanItem; idx: number }) {
     {cat ? <ExImgs it={cat} size="big" /> : <div class="exim big vazio"><Icon id="edit" /></div>}
     <div class="row between start" style="margin-top:10px"><h2 style="font-size:20px">{it.nm}</h2>
       <div class="row" style="gap:4px">{ex?.stretch && <span class="badge">alongado</span>}{it.manual && <span class="badge warn">seu · em revisão</span>}</div></div>
-    <p class="meta num"><b style="color:var(--txt)">{it.sets} × {it.reps[0]}–{it.reps[1]}</b> · {mName(it.muscle)} · descanso {restFor(S.session.plan, idx)}s{sg.kg ? <> · sugestão <b style="color:var(--txt)">{fmt(sg.kg, 1)} kg × {sg.reps}</b></> : null}</p>
-    {sg.note && <p class="tiny sub" style="margin-top:2px">{sg.note}</p>}
+    <p class="meta num"><b style="color:var(--txt)">{alvoTxt(it)}</b> · {mName(it.muscle)} · descanso {restFor(S.session.plan, idx)}s{sg.kg && modoDe(it.exerciseId) !== "tempo" ? <> · sugestão <b style="color:var(--txt)">{fmt(sg.kg, 1)} kg × {sg.reps}</b></> : null}</p>
+    {sg.note && modoDe(it.exerciseId) !== "tempo" && <p class="tiny sub" style="margin-top:2px">{sg.note}</p>}
     {skipped ? <p class="small" style="margin-top:8px;color:var(--warn)">Não feito · {REASON_TXT[skipped] ?? skipped} <button type="button" class="btn sm ghost" onClick={() => { delete S.session.skipped[it.exerciseId]; commit(); }}>desfazer</button></p>
       : <><Refs exId={it.exerciseId} /><SetRows idx={idx} it={it} /></>}
     <div class="acts"><button type="button" class="btn" onClick={() => openComoFazer(it.exerciseId)}><Icon id="info" />Ver como fazer</button>
@@ -74,7 +97,7 @@ function Atual({ it, idx }: { it: C.PlanItem; idx: number }) {
 
 function Mini({ it, idx, cur }: { it: C.PlanItem; idx: number; cur: number }) {
   const logs = S.session.logs[it.exerciseId] ?? [], d = logs.filter((l: { done: boolean }) => l.done).length, n = Math.max(it.sets, logs.length), skipped = S.session.skipped[it.exerciseId];
-  const state = skipped ? "não fiz" : d >= n && n > 0 ? "feito" : d > 0 ? `${d}/${n}` : `${n} × ${it.reps[0]}–${it.reps[1]}`;
+  const state = skipped ? "não fiz" : d >= n && n > 0 ? "feito" : d > 0 ? `${d}/${n}` : alvoTxt({ ...it, sets: n });
   return <button type="button" class={`tl-mini ${skipped ? "skipped" : ""} ${d >= n && n > 0 ? "feito" : ""}`} onClick={() => goEx(idx)} aria-label={`${it.nm}, ${state}. Abrir`}>
     <img class="thumb" src={img(it.exerciseId)} alt="" loading="lazy" width={56} height={56} />
     <span class="tl-mini-t"><b>{it.nm}</b><span class="tiny sub num">{mName(it.muscle)} · {state}</span></span>
@@ -92,7 +115,7 @@ function Rodape({ cur }: { cur: number }) {
   const logs = items[cur] ? ensureLogs(items[cur]) : [];
   const pend = C.nextPending(items.map((x) => ({ exerciseId: x.exerciseId, sets: ensureLogs(x).length })), s.logs, s.skipped, cur);
   let main;
-  if (k >= 0) { const l = logs[k]; main = <button type="button" class="btn pri lg full" onClick={() => toggleSet(cur, k)}><Icon id="check" />Concluir série {k + 1}{String(l.kg) ? ` · ${l.kg} kg × ${l.reps}` : ` · ${l.reps} reps`}</button>; }
+  if (k >= 0) { const l = logs[k]; main = <button type="button" class="btn pri lg full" onClick={() => toggleSet(cur, k)}><Icon id="check" />Concluir série {k + 1}{l.modo === "tempo" ? ` · ${l.seg ?? ""}` : String(l.kg) ? ` · ${l.kg} kg × ${l.reps}` : ` · ${l.reps} reps`}</button>; }
   else if (pend >= 0) main = <button type="button" class="btn pri lg full" onClick={() => goEx(pend)}>Próximo exercício <Icon id="arrow" /></button>;
   else main = <button type="button" class="btn pri lg full" onClick={openFinish}><Icon id="check" />Terminar treino ({p.setsDone} séries)</button>;
   return <footer class="modo-foot" ref={foot}><Descanso />{main}</footer>;
