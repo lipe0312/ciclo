@@ -58,6 +58,13 @@ async function rodar(f: () => Promise<{ week: Semana | null }>, ok: string) {
 export const acaoDia = (date: string, body: { action: string; opts?: C.DayOpts; to?: string; resposta?: string }, ok = "Semana reorganizada") =>
   rodar(() => (SERVER ? api("POST", `/api/week/day/${date}`, { ...body, today }) : Promise.resolve(demo.acao(date, body))), ok);
 
+/** #108 "Gerar treino" num dia sem treino: só por toque. Sai na hora (gerador validado) com "revisão da IA pendente". */
+export const gerarTreino = (date: string) =>
+  rodar(() => (SERVER ? api("POST", `/api/week/day/${date}/gerar-treino`, { today }) : Promise.resolve(demo.gerarTreino(date))), "Treino gerado · revisão da IA pendente");
+
+/** #108 O treino de um dia é sempre o salvo/planejado na semana. Dia sem treino não tem plano (nada é gerado ao abrir). */
+export const planoDoDia = (d: Dia): C.DayPlan | null => (d.kind !== "folga" || d.status === "extra" ? d.plan : null);
+
 export async function previaRegenerar(reset: boolean): Promise<C.DayDiff[] | null> {
   try { return SERVER ? (await api<{ diff: C.DayDiff[] }>("POST", "/api/week/regenerate", { date: today, reset })).diff : demo.regenerar(reset, false).diff; }
   catch (e: any) { toast(e?.status ? e.message : "Sem conexão"); return null; }
@@ -77,7 +84,7 @@ export function sincronizarHoje() {
   if (ui.semanaV === key) return;
   ui.semanaV = key;
   if ((S.session && !S.session.finishedAt) || (S.ui.locked && S.ui.planSource !== "semana")) return;
-  const plan = d.status === "hoje" ? d.plan : d.status === "livre" ? s.extraToday : null;
+  const plan = d.status === "hoje" ? d.plan : null; // #108 livre: nada é gerado só porque o app abriu
   if (!plan?.items.length) return;
   S.plan = plan; S.ui.locked = true; S.ui.planSource = "semana";
   if (d.gymId && S.gyms.some((g) => g.id === d.gymId)) S.ui.gymId = d.gymId;
@@ -86,7 +93,7 @@ export function sincronizarHoje() {
 }
 
 // ---------- demonstração: mesmo core, dados fictícios, versões no navegador ----------
-interface Stored { plan: C.WeekPlan; overrides: Record<string, C.DayOverride>; source: string; createdAt: number }
+interface Stored { plan: C.WeekPlan; overrides: Record<string, C.DayOverride>; source: string; createdAt: number; fixed?: C.WeekInput["fixed"] }
 const demo = (() => {
   const KEY = `ciclo:v1:demo:semana-versoes:${monday}`;
   const ok = { sleepH: 8, energy: 3, soreness: 0, stress: 1 } as const;
@@ -98,7 +105,7 @@ const demo = (() => {
       { exerciseId: "Cable_Seated_Lateral_Raise", muscle: "ombro", week: 1, value: 7 }, { exerciseId: "Cable_Seated_Lateral_Raise", muscle: "ombro", week: 0, value: 7.6 },
     ],
   });
-  const input = (overrides: Record<string, C.DayOverride>, prev: C.WeekPlan | null): C.WeekInput => {
+  const input = (overrides: Record<string, C.DayOverride>, prev: C.WeekPlan | null, fixed: C.WeekInput["fixed"] = load().at(-1)?.fixed): C.WeekInput => {
     const sets: Record<string, C.Sets> = {};
     for (const ses of S.week.sessions as { date: string; groups?: C.Group[] }[])
       for (const m of C.MUSCLE_IDS) if (ses.groups?.includes(C.MUSCLES[m].group) && S.week.done[m]) (sets[ses.date] ??= {})[m] = S.week.done[m];
@@ -109,12 +116,12 @@ const demo = (() => {
         gyms: S.gyms.map((g) => ({ id: g.id, equipment: g.equipment })), prefs: p.prefs, pinned: p.pinned, avoid: p.avoid,
         pains: S.pains.map((x) => ({ region: x.region, intensity: x.intensity })), goalId: S.profile.goal?.id ?? null,
         ...C.entradaTreinoAtual(S.profile) },
-      targets: prog().targets, overrides, prev, cardioLog: S.week.cardio,
+      targets: prog().targets, overrides, prev, cardioLog: S.week.cardio, fixed,
     };
   };
   const load = () => lsGet<Stored[]>(KEY, []);
-  const push = (plan: C.WeekPlan, overrides: Record<string, C.DayOverride>, source: string) => {
-    const vs = load().concat({ plan, overrides, source, createdAt: Date.now() }).slice(-20);
+  const push = (plan: C.WeekPlan, overrides: Record<string, C.DayOverride>, source: string, fixed = load().at(-1)?.fixed) => {
+    const vs = load().concat({ plan, overrides, source, createdAt: Date.now(), fixed }).slice(-20);
     lsSet(KEY, vs); return vs;
   };
   const ver = (): Semana => {
@@ -140,6 +147,16 @@ const demo = (() => {
       push(C.planWeek(input(ov, c.plan)), ov, b.action === "falta" ? "falta" : "ajuste");
       return { week: ver() };
     },
+    gerarTreino(date: string) {
+      const c = cur(), p = calc(), dow = C.DOWS[(new Date(date + "T12:00:00Z").getUTCDay() + 6) % 7];
+      const gym = S.gyms.find((g) => g.id === p.dayGym?.[dow]) ?? S.gyms[0];
+      const g = C.gerarTreinoDia({ sexo: S.profile.sex ?? null, nivel: p.level, prioridades: p.priorities, equipamentos: gym?.equipment ?? [], dias: p.daysUsual, diasMeta: p.daysTarget,
+        minutos: p.minutes, dores: S.pains.map((x) => ({ region: x.region, intensity: x.intensity })), evitar: p.avoid, prefs: p.prefs, pinned: p.pinned }, dow);
+      if (!g) throw Object.assign(new Error("Não deu para montar um treino válido"), { status: 409 });
+      const fixed = { ...(c.fixed ?? {}), [date]: { plan: C.planoDoDiaGerado(g.dia, "pendente"), source: "claude" as const } };
+      push(C.planWeek(input(c.overrides, c.plan, fixed)), c.overrides, "ajuste", fixed);
+      return { week: ver() };
+    },
     regenerar(reset: boolean, apply: boolean) {
       const c = cur();
       const ov = reset ? Object.fromEntries(Object.entries(c.overrides).filter(([d]) => d < today)) : c.overrides;
@@ -151,7 +168,7 @@ const demo = (() => {
     desfazer(version: number) {
       const vs = load(), x = vs[version - 1];
       if (!x) throw Object.assign(new Error("versão não encontrada"), { status: 404 });
-      push(x.plan, x.overrides, "desfazer");
+      push(x.plan, x.overrides, "desfazer", x.fixed);
       return { week: ver() };
     },
   };

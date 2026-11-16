@@ -7,19 +7,19 @@ import { href } from "../../lib/roteador/index.ts";
 import { Carrossel } from "../../lib/carrossel/index.tsx";
 import { Card, Icon } from "../../lib/ui/index.tsx";
 import { DOW_NM, dowIdx } from "../../lib/util.ts";
-import { garantirSemana, getSemana, getVazio } from "../semana/estado.ts";
+import { garantirSemana, gerarTreino, getSemana, getVazio, planoDoDia } from "../semana/estado.ts";
 import type { Dia } from "../semana/estado.ts";
 import { abrirTrocar, aberto } from "../semana/folhas.tsx";
-import { STATUS } from "../semana/index.tsx";
+import { STATUS, SeloOrigem } from "../semana/index.tsx";
 
 const GRUPOS: Record<string, string> = { sup: "Superior", inf: "Inferior" };
 const rodando = () => !!S.session && !S.session.finishedAt;
 
 function CardDia({ d }: { d: Dia }) {
   const ehHoje = d.date === today;
-  const p = d.kind !== "folga" || d.status === "extra" ? d.plan : null;
+  const p = planoDoDia(d); // #108 o treino salvo do dia (Chat, app ou você), nunca um extra calculado na hora
   const gym = gymById(d.gymId)?.name;
-  const extra = d.status === "livre" && !!getSemana()?.extraToday?.items.length;
+  const livre = d.status === "livre";
   const musc = p ? Object.entries(p.perMuscle).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([m, n]) => `${mName(m)} ${n}`).join(" · ") : "";
   return <div class={`hm-dia st-${d.status}${ehHoje ? " hoje" : ""}`}>
     <div class="row between start" style="gap:8px">
@@ -30,11 +30,12 @@ function CardDia({ d }: { d: Dia }) {
       <p class="small sub num">{p.groups.map((g) => GRUPOS[g]).join(" + ")} · {p.items.length} exercícios · {p.setsTotal} séries</p>
       <p class="small num"><Icon id="clock" /> ~{p.estMinutes} min{gym ? <> · <Icon id="gym" /> {gym}</> : null}</p>
       {musc && <p class="tiny sub">{musc}</p>}
-    </> : <p class="small sub">{d.status === "folga" ? "Descansar também conta." : extra ? "Treinar hoje vira extra: só o que falta, sem passar do orçamento." : "Nada planejado para este dia."}</p>}
+      {p.revisao && <p class="tiny"><SeloOrigem d={d} p={p} /></p>}
+    </> : <p class="small sub">{d.status === "folga" ? "Descansar também conta." : livre ? "Sem treino hoje. Se for treinar, gere um: só o que falta na semana." : "Nada planejado para este dia."}</p>}
     {d.cardio && <p class="tiny">Cardio {d.cardio.minutes} min · {C.INTENSITIES[d.cardio.intensity].nm.toLowerCase()}</p>}
     <div class="hm-acts">
       {ehHoje && p && d.status !== "feito" && <a class="btn pri" href="#treino">{rodando() ? "Continuar" : "Começar"} <Icon id="arrow" /></a>}
-      {extra && <a class="btn pri" href={href("semana", ["dia", d.date])}>Ver extra</a>}
+      {livre && <button type="button" class="btn pri" onClick={() => void gerarTreino(d.date)}><Icon id="bolt" />Gerar treino</button>}
       {(p || d.status === "feito") && <a class="btn" href={href("semana", ["dia", d.date])}>Ver</a>}
       {aberto(d) && d.kind !== "folga" && <button type="button" class="btn" onClick={() => abrirTrocar(d)}><Icon id="swap" />Trocar geração</button>}
     </div></div>;
