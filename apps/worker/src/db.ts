@@ -357,7 +357,7 @@ export async function exportAccount(env: Env, uid: string) {
     q("SELECT id, region, intensity, kind, context, created_at, resolved_at FROM pain WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT id, created_at, text, action, tier, status, response, change, answered_at, cerebro, read_at FROM inbox WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT id, date, edit, issues, review, review_note, created_at FROM plan_edit WHERE user_id = ?1 ORDER BY created_at"),
-    q("SELECT id, date, raw_text, meal, items, kcal, protein, kcal_est, protein_est, manual, source, confidence, created_at, lote, via FROM food_log WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT id, date, raw_text, meal, items, kcal, protein, kcal_est, protein_est, manual, source, confidence, created_at, lote, via, raw_original, corrigido_at, antes FROM food_log WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT date, arm_cm, waist_cm, shoulder_cm, updated_at FROM measurement WHERE user_id = ?1 ORDER BY date"),
     q("SELECT id, kind, mime, bytes, equipment_id, exercise_id, gym_id, note, setup, created_at, deleted_at FROM media WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT gym_id, weekday FROM gym_weekday WHERE user_id = ?1 ORDER BY weekday"),

@@ -196,6 +196,8 @@ async function matriz(env: any, ana: string, bia: string) {
     ["ciclo_memoria_salvar", { fato: "A fato" }], ["ciclo_memoria_listar", {}],
     // #81: o token da prévia da B não serve para a A (busca filtrada por user_id); corrigir/desfazer não alcançam a B
     ["ciclo_comida_registrar", { confirmar: B.previa }, true], ["ciclo_comida_corrigir", { id: B.food, fator: 0.5 }, true], ["ciclo_comida_desfazer", {}], ["ciclo_comida_pendentes", {}],
+    // #87: editar um registro da B (direto ou no meio de um lote) = não encontrado; os vagos da A não trazem os da B
+    ["ciclo_comida_editar", { edicoes: [{ id: B.food, itens: [{ nome: "hackeado", kcal: 1, proteina: 1, fonte: "estimativa" }] }], simular: true }, true], ["ciclo_comida_vagos", { de: "2026-11-01", ate: D }],
     ["ciclo_semana_ver", { date: D }], ["ciclo_semana_gerar", { date: D, simular: true }], ["ciclo_treino_registrar", { exercicioId: B.ex, series: [{ kg: 1, reps: 1 }] }],
     ["ciclo_treino_trocar", { exercicioId: B.ex, date: D }], ["ciclo_treino_atual_salvar", { treinoAtual: { divisoes: [{ nome: "A", grupos: ["biceps"], exercicios: [{ nome: "Rosca livre", grupo: "biceps" }] }] } }],
     ["ciclo_preferencias", { comida_aprovacao: "so_duvidas" }], ["ciclo_historico", { tipo: "series", de: "2026-11-01", ate: D }],
