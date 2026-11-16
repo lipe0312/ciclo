@@ -180,4 +180,5 @@ Nada de diagnóstico. Os avisos só levam a um profissional (`saude` no perfil d
 
 - **Opcional e barata.** Com o Chat conectado, um modelo pequeno (`TIER_REVISAO` = haiku) recebe `pedidoRevisaoIA` (as regras, as faixas e a semana compacta `{id, sets}`) e só pode **revisar**.
 - **Toda resposta passa pelo validador** em `aplicarRevisaoIA`. O código hidrata os IDs pelo catálogo e define repetições, descanso e ordem; se houver qualquer violação, fica a semana determinística. Sem IA (resposta nula), tudo funciona igual.
+- **`IA_LIMITES`:** resposta com mais de 50 KB, mais de 7 dias ou mais de 30 itens num dia é recusada antes de qualquer leitura, e só valem IDs próprios do catálogo. É critério de segurança do app.
 - **`FOLGA_IA` = 20%:** a IA pode tirar até 20% das séries de um músculo em relação à determinística (por exemplo, para trocar por um exercício melhor), mas nunca passar do alvo, deixar de fazer 2× nem tirar músculo sem motivo. É critério do app.

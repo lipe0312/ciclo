@@ -250,3 +250,30 @@ test("cada constante exportada do gerador aponta para uma seção que existe em 
   for (const f of ["Schoenfeld", "Roberts", "Hunter", "McNulty", "Refalo", "Mountjoy"]) assert.ok(doc.includes(f), `doc sem ${f}`);
   assert.ok(REPS_FAIXA[0] === 5 && REPS_FAIXA[1] === 30);
 });
+
+// ---------- IA: entradas hostis (revisão de segurança) ----------
+test("IA: ids de protótipo (__proto__, constructor) são recusados", () => {
+  const p = base(), det = gerarSemana(p);
+  for (const id of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    const c = compactarSemana(det); c.dias[0].itens.push({ id, sets: 2 });
+    const r = aplicarRevisaoIA(det, c, p);
+    assert.equal(r.fonte, "deterministica", id);
+    assert.ok(r.violacoes.some((v) => v.codigo === "catalogo"), id);
+    assert.deepEqual(r.semana, det);
+  }
+  const s = clone(det); s.dias[0].itens.push({ ...s.dias[0].itens[0], exerciseId: "__proto__" });
+  assert.ok(validarSemana(s, p).some((v) => v.codigo === "catalogo"));
+});
+
+test("IA: resposta grande demais é recusada (string > 50 KB, > 7 dias, > 30 itens no dia)", () => {
+  const p = base(), det = gerarSemana(p);
+  const grande = JSON.stringify(compactarSemana(det)) + " ".repeat(50 * 1024);
+  const muitosDias = { dias: Array.from({ length: 8 }, (_, k) => ({ dow: DOWS[k % 7], itens: [] })) };
+  const muitosItens = compactarSemana(det); muitosItens.dias[0].itens = Array.from({ length: 31 }, () => ({ id: "Side_Lateral_Raise", sets: 1 }));
+  for (const [nome, resp] of [["string", grande], ["dias", muitosDias], ["itens", muitosItens]] as const) {
+    const r = aplicarRevisaoIA(det, resp, p);
+    assert.equal(r.fonte, "deterministica", nome);
+    assert.ok(r.violacoes.some((v) => v.codigo === "tamanho"), nome);
+    assert.deepEqual(r.semana, det);
+  }
+});

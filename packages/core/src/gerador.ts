@@ -79,6 +79,8 @@ export const FOLGA_IA = 0.2;
 export const TIER_REVISAO = "haiku";
 
 const n = (v?: number) => v ?? 0;
+/** Só IDs próprios do catálogo ("__proto__", "constructor"… não passam). */
+const exDe = (id: unknown): Exercise | undefined => (typeof id === "string" && Object.hasOwn(EXERCISE_BY_ID, id) ? EXERCISE_BY_ID[id] : undefined);
 const dowIdx = (d: string) => DOWS.indexOf(d as Dow);
 const vizinhos = (a: string, b: string) => Math.abs(dowIdx(a) - dowIdx(b)) === 1;
 const sexoDe = (s: PerfilGerador["sexo"]): Sexo => (s === "f" || s === "feminino" ? "f" : "m");
@@ -273,7 +275,7 @@ export function validarSemana(s: Pick<SemanaGerada, "dias">, p: PerfilGerador): 
     let total = 0, isolado = false;
     const noDia = new Set<MuscleId>(), ids = new Set<string>();
     for (const it of d.itens) {
-      const ex = EXERCISE_BY_ID[it.exerciseId];
+      const ex = exDe(it.exerciseId);
       const v = (codigo: string, msg: string) => out.push({ codigo, msg, dia: d.dow, exerciseId: it.exerciseId, musculo: it.muscle });
       if (!ex || ex.planOff || ex.m !== it.muscle) { v("catalogo", `${it.exerciseId} não é do catálogo para ${it.muscle}`); continue; }
       if (!Number.isInteger(it.sets) || it.sets < 1 || it.sets > SERIES_ITEM_MAX) v("series", `${ex.nm}: ${it.sets} séries`);
@@ -298,8 +300,8 @@ export function validarSemana(s: Pick<SemanaGerada, "dias">, p: PerfilGerador): 
   // mesmo padrão em dias seguidos
   for (const a of s.dias) for (const b of s.dias) {
     if (!(vizinhos(a.dow, b.dow) && dowIdx(a.dow) < dowIdx(b.dow))) continue;
-    const pa = new Set(a.itens.map((i) => EXERCISE_BY_ID[i.exerciseId]).filter(Boolean).map((e) => padraoDe(e!)));
-    for (const i of b.itens) { const e = EXERCISE_BY_ID[i.exerciseId]; if (e && pa.has(padraoDe(e))) out.push({ codigo: "padrao", msg: `${e.nm}: mesmo padrão de ${a.dow} em ${b.dow}`, dia: b.dow, exerciseId: e.id }); }
+    const pa = new Set(a.itens.map((i) => exDe(i.exerciseId)).filter(Boolean).map((e) => padraoDe(e!)));
+    for (const i of b.itens) { const e = exDe(i.exerciseId); if (e && pa.has(padraoDe(e))) out.push({ codigo: "padrao", msg: `${e.nm}: mesmo padrão de ${a.dow} em ${b.dow}`, dia: b.dow, exerciseId: e.id }); }
   }
   // volume, 2× e quem ficou fora
   for (const m of MUSCLE_IDS) {
@@ -316,6 +318,8 @@ export function validarSemana(s: Pick<SemanaGerada, "dias">, p: PerfilGerador): 
 }
 
 // ---------- IA revisora (opcional, tier haiku) ----------
+/** Tamanho máximo aceito da resposta da IA: acima disso fica a determinística. docs/09-base-cientifica.md#ia-revisora */
+export const IA_LIMITES = { bytes: 50 * 1024, dias: 7, itensPorDia: 30 } as const;
 export interface SemanaCompacta { dias: { dow: string; itens: { id: string; sets: number }[] }[] }
 export function compactarSemana(s: Pick<SemanaGerada, "dias">): SemanaCompacta {
   return { dias: s.dias.map((d) => ({ dow: d.dow, itens: d.itens.map((i) => ({ id: i.exerciseId, sets: i.sets })) })) };
@@ -337,9 +341,13 @@ export function pedidoRevisaoIA(s: SemanaGerada, p: PerfilGerador): { tier: type
 
 function hidratar(resp: unknown, p: PerfilGerador): { semana: SemanaGerada | null; violacoes: Violacao[] } {
   let r = resp;
+  const grande = (msg: string) => ({ semana: null, violacoes: [{ codigo: "tamanho", msg }] });
+  if (typeof r === "string" && r.length > IA_LIMITES.bytes) return grande("resposta maior que 50 KB");
   if (typeof r === "string") { try { r = JSON.parse(r); } catch { return { semana: null, violacoes: [{ codigo: "formato", msg: "resposta não é JSON" }] }; } }
   const dias = (r as SemanaCompacta | null)?.dias;
   if (!Array.isArray(dias)) return { semana: null, violacoes: [{ codigo: "formato", msg: "resposta sem lista de dias" }] };
+  if (dias.length > IA_LIMITES.dias) return grande(`${dias.length} dias (máximo ${IA_LIMITES.dias})`);
+  if (dias.some((d) => Array.isArray(d?.itens) && d.itens.length > IA_LIMITES.itensPorDia)) return grande(`mais de ${IA_LIMITES.itensPorDia} itens num dia`);
   const sexo = sexoDe(p.sexo), fx = faixasSemana(p), z = normalizar(p);
   const out: DiaGerado[] = [], v: Violacao[] = [];
   for (const d of dias) {
@@ -347,7 +355,7 @@ function hidratar(resp: unknown, p: PerfilGerador): { semana: SemanaGerada | nul
     const split = fx.dias.find((x) => x.dow === dow)?.split ?? "full";
     const itens: PlanItem[] = [];
     for (const it of Array.isArray(d?.itens) ? d.itens : []) {
-      const ex = EXERCISE_BY_ID[String(it?.id ?? "")];
+      const ex = exDe(it?.id);
       if (!ex) { v.push({ codigo: "catalogo", msg: `${String(it?.id)} não existe no catálogo`, dia: dow }); continue; }
       itens.push(ajustarSexo(item(ex, Number(it?.sets), []), sexo));
     }
