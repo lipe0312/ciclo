@@ -277,8 +277,9 @@ async function treinoAtual(c) {
     ok(await c.esperar("location.hash === '#perfil/treino-atual' && !!document.querySelector('.ta')"), `tela: ${await c.hash()}`);
     igual(await marcados(c, ".ta"), [], "pré-marcado");
   }, c);
-  await passo("'Sim' cria o Treino A; o 1º nível só tem grupos grandes (nunca subparte)", async () => {
-    await c.clicar("Sim", ".ta");
+  await passo("#93 a conta já passou pelos Primeiros passos: sem 'Você já treina?'; 'Adicionar treino' cria o Treino A; só grupos grandes", async () => {
+    ok(!(await c.ev("document.querySelector('.ta')?.innerText.includes('Você já treina?')")), "perguntou de novo o que os Primeiros passos já responderam");
+    await c.clicar("Adicionar treino", ".ta");
     const grupos = await c.ev("[...document.querySelectorAll('.ta-grupos .chip')].map((b) => b.textContent.trim())");
     igual(grupos, ["Peito", "Costas", "Ombro", "Bíceps", "Tríceps", "Pernas", "Abdômen"], "grupos");
   }, c);
@@ -306,6 +307,33 @@ async function treinoAtual(c) {
   await passo("a semana gerada usa o crucifixo inverso que ela já faz", async () => {
     const depois = await diaComPosterior(c);
     ok(depois.includes(CRUCIFIXO), `não usou: ${JSON.stringify(depois)}`);
+  }, c);
+  // #93 o treino atual sobrevive a recarregar, ao sync e a outra tela gravando o perfil
+  await passo("recarrega a página: o treino atual continua (não volta ao zero)", async () => {
+    await c.abrir(urlAbertura(CENARIO, "perfil/treino-atual", new URL(BASE).port));
+    ok(await c.esperar("location.hash === '#perfil/treino-atual' && !!document.querySelector('.ta-sel')", 15000), "a tela voltou sem o treino cadastrado");
+    ok(await c.ev("document.querySelector('.ta-sel')?.innerText.includes('Crucifixo inverso apoiado no banco')"), "sumiu o crucifixo");
+  }, c);
+  await passo("outra tela grava o perfil (PUT sem treinoAtual, como o cache antigo): o servidor mantém o treino", async () => {
+    const r = await c.ev(`(async () => { const st = await fetch('/api/state?date=' + ${hojeSP}).then((r) => r.json()); const { treinoAtual, ...resto } = st.profile;
+      const put = await fetch('/api/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: resto }) });
+      const dep = await fetch('/api/state?date=' + ${hojeSP}).then((r) => r.json()); return { s: put.status, t: dep.profile?.treinoAtual }; })()`);
+    igual(r.s, 200, "PUT"); ok(r.t?.divisoes?.[0]?.exercicios?.length === 1, `treino apagado pelo PUT: ${JSON.stringify(r.t)}`);
+  }, c);
+  await passo("cadastra o Treino B com 3 exercícios, 'Concluir Treino B' grava e avisa 'Treino B salvo'; recarregar mantém A e B", async () => {
+    await c.clicar("Adicionar treino", ".ta-tabs");
+    await c.clicar("Costas", ".ta-grupos");
+    ok(await c.esperar("document.querySelectorAll('#ta-g-costas .ta-ex').length >= 3"), "sem a lista de costas");
+    await c.ev("(() => { document.querySelectorAll('#ta-g-costas .ta-ex')[0].click(); })()");
+    await c.ev("(() => { document.querySelectorAll('#ta-g-costas .ta-ex')[1].click(); })()");
+    await c.ev("(() => { document.querySelectorAll('#ta-g-costas .ta-ex')[2].click(); })()");
+    await c.clicar("Concluir Treino B");
+    ok(await c.esperar("document.body.innerText.includes('Treino B salvo')", 8000), "sem o aviso 'Treino B salvo'");
+    await sleep(2000); // além do debounce de 600 ms e do sync
+    const st = await c.ev(`fetch('/api/state?date=' + ${hojeSP}).then((r) => r.json())`);
+    igual(st.profile?.treinoAtual?.divisoes?.map((d) => [d.nome, d.exercicios.length]), [["A", 1], ["Treino B", 3]], "treinos no servidor");
+    await c.abrir(urlAbertura(CENARIO, "perfil/treino-atual", new URL(BASE).port));
+    ok(await c.esperar("document.querySelectorAll('.ta-tabs [role=tab]').length === 2", 15000), "recarregar perdeu um treino");
   }, c);
 }
 
