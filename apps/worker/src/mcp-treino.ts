@@ -5,7 +5,7 @@ import type { MuscleId, WeekDay } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { HttpError, date, int, str } from "./http.ts";
 import { EMPTY_MSG, buildDayInput, getProfile, rawProfile, saveProfile, weekState } from "./db.ts";
-import { dayAction, getWeek, regenerate } from "./semana.ts";
+import { aplicarNaSemana, dayAction, getWeek, regenerate } from "./semana.ts";
 import { confirmar, criarPrevia } from "./mcp-previa.ts";
 import { aprovacaoDe, salvarAprovacao } from "./mcp-comida.ts";
 import { S, addDays, obj, today } from "./mcp-tipos.ts";
@@ -198,7 +198,8 @@ export const TOOLS_TREINO: Tool[] = [
       const v = validarTreinoAtual(a.treinoAtual);
       if (!v.ok) throw new HttpError(400, `treinoAtual inválido: ${v.errors.slice(0, 3).join("; ")}`);
       await saveProfile(env, uid, { treinoAtual: v.value }, "merge", { meta: { filledBy: "claude", confirmed: false } });
-      return { salvo: true, divisoes: v.value.divisoes.map((d) => `${d.nome}: ${d.exercicios.length} exercício(s)`), aviso: "o app mostra 'preenchido pelo Chat, confira'" };
+      const naSemana = await aplicarNaSemana(env, uid, today()); // #98 a semana já considera o treino atual
+      return { salvo: true, naSemana, divisoes: v.value.divisoes.map((d) => `${d.nome}: ${d.exercicios.length} exercício(s)`), aviso: "o app mostra 'preenchido pelo Chat, confira'" };
     },
   },
   {

@@ -2,7 +2,7 @@
 // Usado como "connector personalizado" no claude.ai / Desktop / app do celular e, via apps/mcp-local, no Claude Code.
 // Princípio de custo: ferramentas devolvem JSON COMPACTO; o Claude manda só IDs/números e o core valida e hidrata.
 import { faltaHojeVariada } from "@ciclo/core/alimentos-variedade";
-import { EQUIPMENT, EXERCISES, MCP_CONTRATO, MUSCLES, MCP_ORCAMENTO_BYTES, MEALS, MUSCLE_IDS, PAIN_REGIONS, contextSummary, textoSugestaoBase, diaryCoverage, hydrate, lastDays, paginar, planDay, podeEscrever, readiness, tamanhoJson, validarSchema, validateItems } from "@ciclo/core";
+import { EQUIPMENT, EXERCISES, MCP_CONTRATO, MUSCLES, MCP_ORCAMENTO_BYTES, MEALS, MUSCLE_IDS, PAIN_REGIONS, contextSummary, textoSugestaoBase, diaryCoverage, hydrate, lastDays, mondayOf, resumirDia, paginar, planDay, podeEscrever, readiness, tamanhoJson, validarSchema, validateItems } from "@ciclo/core";
 import type { Schema } from "@ciclo/core";
 import type { CompactItem, Mode, MuscleId } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
@@ -12,6 +12,7 @@ import { FOOD_COLS, basePessoal, foodOut } from "./comida.ts";
 import { TOOLS_COMIDA } from "./mcp-comida.ts";
 import { TOOLS_COMIDA_EDITAR } from "./mcp-comida-editar.ts";
 import { TOOLS_TREINO } from "./mcp-treino.ts";
+import { aplicarNaSemana } from "./semana.ts";
 import { S as ST, obj, today } from "./mcp-tipos.ts";
 import type { Args, Tool } from "./mcp-tipos.ts";
 import { TACO_FONTE, tacoHints } from "./taco.ts";
@@ -240,12 +241,21 @@ export async function saveCompact(env: Env, uid: string, a: Args) {
   const { items, issues } = hydrate(a.itens as CompactItem[], input);
   const all = [...issues, ...validateItems(items, input)];
   if (all.some((i) => i.severity === "erro")) return { salvo: false, problemas: all };
-  const setsTotal = items.reduce((s, i) => s + i.sets, 0);
+  // #98 o que já foi treinado e a escolha manual da pessoa valem mais: nesses dias fica a prévia que já existe
+  const [feito, atual] = await env.DB.batch([
+    env.DB.prepare("SELECT 1 AS x FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id WHERE l.user_id = ?1 AND s.date = ?2 LIMIT 1").bind(uid, d),
+    env.DB.prepare("SELECT source FROM day_plan WHERE user_id = ?1 AND date = ?2").bind(uid, d),
+  ]);
+  if (feito.results.length) return { salvo: false, conflito: "treinado", date: d, motivo: "esse dia já tem treino feito: o plano dele não muda" };
+  if ((atual.results as { source: string }[])[0]?.source === "manual") return { salvo: false, conflito: "manual", date: d, motivo: "a pessoa montou esse dia no app: vale a escolha dela; sugira a troca e ela edita" };
   const base = planDay(input);
-  const plan = { ...base, name: str(a.nome, "nome", 80, false) ?? base.name, items, setsTotal, estMinutes: setsTotal * 3, why: [str(a.motivo, "motivo", 600)!] };
+  // #98 resumo (perMuscle, séries, minutos) vem dos itens salvos, nunca do plano gerado antes
+  const plan = resumirDia({ ...base, name: str(a.nome, "nome", 80, false) ?? base.name, items, why: [str(a.motivo, "motivo", 600)!] });
   await env.DB.prepare("INSERT INTO day_plan (user_id, date, gym_id, plan, source, created_at) VALUES (?5, ?1, ?2, ?3, 'claude', ?4) ON CONFLICT(user_id, date) DO UPDATE SET gym_id=?2, plan=?3, source='claude', created_at=?4")
     .bind(d, gymId, JSON.stringify(plan), Date.now(), uid).run();
-  return { salvo: true, date: d, avisos: all, itens: items.map((i) => `${i.nm} ${i.sets}×${i.reps.join("–")}`) };
+  // #98 a semana já nasce com o dia novo (sem "aplicar" à mão)
+  const naSemana = await aplicarNaSemana(env, uid, mondayOf(d) === mondayOf(today()) ? today() : d);
+  return { salvo: true, date: d, naSemana, avisos: all, itens: items.map((i) => `${i.nm} ${i.sets}×${i.reps.join("–")}`) };
 }
 
 // #81 Neutras de modelo: valem para qualquer IA conectada. Resumem as 8 regras de "Como treinar o usuário" e dizem que

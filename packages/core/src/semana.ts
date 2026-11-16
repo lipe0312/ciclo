@@ -9,7 +9,7 @@ import { creditoSubpartes } from "./semana-volume.ts";
 import { grupoDoExercicio, grupoDoMusculo, partePrincipal } from "./treino-atual.ts";
 import { cardioCounts, cardioDoseFor, placeCardio } from "./cardio.ts";
 import type { CardioDose, CardioEntry, CardioPlanned } from "./cardio.ts";
-import { planDay } from "./plan-day.ts";
+import { planDay, resumirDia } from "./plan-day.ts";
 import type { DayInput, DayPlan, Mode, Pain } from "./plan-day.ts";
 import { weekDates } from "./checkin.ts";
 
@@ -188,6 +188,9 @@ function decideSplits(inp: WeekInput, days: WeekDay[], open: Set<string>) {
   return { groups: out, split };
 }
 
+/** #98 Plano salvo à mão ou pelo Chat: o resumo (perMuscle, séries, minutos) sai dos itens, nunca do plano antigo. */
+const fixedPlan = (inp: WeekInput, date: string): DayPlan | null => { const p = inp.fixed?.[date]?.plan; return p ? resumirDia(p) : null; };
+
 /** Gera a semana: dias fechados mantêm o plano; os abertos são montados em ordem, cada um sabendo o que os anteriores fazem. */
 export function planWeek(inp: WeekInput): WeekPlan {
   // 1ª abertura depois da segunda: os dias que já passaram recebem o plano "de segunda de manhã" (para ver e cobrar a falta)
@@ -199,7 +202,7 @@ export function planWeek(inp: WeekInput): WeekPlan {
     const opts: DayOpts = { ...(ov?.opts ?? {}) };
     return { date, dow, kind, plan: null, gymId: gymFor(inp.profile, dow, opts.gymId), opts, source: fx ? (fx.source === "claude" ? "claude" : "voce") : ov ? "voce" : "auto", warn: [] };
   });
-  for (const d of days) if (isClosed(d.date, inp)) d.plan = inp.fixed?.[d.date]?.plan ?? inp.prev?.days.find((x) => x.date === d.date)?.plan ?? null;
+  for (const d of days) if (isClosed(d.date, inp)) d.plan = fixedPlan(inp, d.date) ?? inp.prev?.days.find((x) => x.date === d.date)?.plan ?? null;
 
   const open = new Set(days.filter((d) => !isClosed(d.date, inp) && d.kind !== "folga").map((d) => d.date));
   const { groups, split } = decideSplits(inp, days, open);
@@ -210,7 +213,7 @@ export function planWeek(inp: WeekInput): WeekPlan {
     const i = days.indexOf(d);
     const fx = inp.fixed?.[d.date];
     let plan: DayPlan;
-    if (fx) plan = fx.plan;
+    if (fx) plan = fixedPlan(inp, d.date)!;
     else if (d.kind === "extra") {
       const next = days[i + 1] && open.has(days[i + 1].date) ? groupMuscles(groups.get(days[i + 1].date) ?? []) : [];
       plan = extraSession({ ...dayInputFor(inp, d, run), blocked: [...new Set([...prevMuscles(inp, days, i), ...next])] });

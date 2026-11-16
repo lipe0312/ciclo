@@ -309,3 +309,13 @@ export function weeklyTargets(level: 0 | 1 | 2 | 3, priorities: MuscleId[], poor
   }
   return out;
 }
+
+/** #98 Resumo do dia sempre calculado dos itens que estão no plano (nunca copiado de outro plano): perMuscle, setsTotal, estMinutes.
+ *  Prehab não conta no volume (só soma tempo), como no planDay. */
+export function resumirDia<P extends Pick<DayPlan, "items" | "prehab">>(plan: P): P & Pick<DayPlan, "perMuscle" | "setsTotal" | "estMinutes"> {
+  const perMuscle: Partial<Record<MuscleId, number>> = {};
+  let setsTotal = 0;
+  for (const i of plan.items) if (!i.prehab) { perMuscle[i.muscle] = (perMuscle[i.muscle] ?? 0) + i.sets; setsTotal += i.sets; }
+  const prehabMin = (plan.prehab ?? []).reduce((s, i) => s + i.sets * 2, 0);
+  return { ...plan, perMuscle, setsTotal, estMinutes: setsTotal * MIN_PER_SET + prehabMin };
+}
