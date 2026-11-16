@@ -9,7 +9,7 @@ import { Card, Chip, Icon, toast } from "../../lib/ui/index.tsx";
 import { BarraSimples } from "../../lib/grafico/index.tsx";
 import { Mic } from "../../lib/voz/index.tsx";
 import { SheetHead, closeSheet, openSheet } from "../../lib/folha/index.tsx";
-import { addDays, fmt, longDate } from "../../lib/util.ts";
+import { fmt, longDate } from "../../lib/util.ts";
 
 const CONF: Record<string, string> = { alta: "alta", media: "média", baixa: "baixa" };
 const hhmm = (ms: number) => new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -93,6 +93,7 @@ export function Registro({ dia }: { dia: string }) {
     addFood(typical, null, undefined, dia); commit(); toast("Dia normal registrado");
   };
   return <Card>
+    {dia !== today && <p class="kicker" style="margin-bottom:4px">Registrando em {longDate(dia)}</p>}
     <h2>O que você comeu?</h2>
     <p class="small sub" style="margin:4px 0 12px">Fale como falaria: “três ovos, dois pães e um whey”.</p>
     <div class="row start" style="gap:12px">
@@ -132,13 +133,9 @@ function Falta({ dia }: { dia: string }) {
 export function DiaCard({ dia, setDia }: { dia: string; setDia: (d: string) => void }) {
   const d = calc().diet, t = foodTotals(dia), rows = foodRows().filter((f) => f.date === dia);
   const [apagar, setApagar] = useState<string | null>(null);
-  const min = addDays(today, -13);
+  // #87 o seletor de dia (seta + calendário, até 30 dias) fica no topo da coluna (dia.tsx); aqui só o título
   return <Card>
-    <div class="row between">
-      <button type="button" class="iconbtn" aria-label="Dia anterior" disabled={dia <= min} onClick={() => setDia(addDays(dia, -1))}><Icon id="back" /></button>
-      <div style="text-align:center"><h2>{dia === today ? "Hoje" : longDate(dia)}</h2>{dia !== today && <button type="button" class="btn ghost sm" onClick={() => setDia(today)}>Voltar para hoje</button>}</div>
-      <button type="button" class="iconbtn" aria-label="Próximo dia" disabled={dia >= today} onClick={() => setDia(addDays(dia, 1))}><Icon id="arrow" /></button>
-    </div>
+    <h2>{dia === today ? "Hoje" : longDate(dia)}</h2>
     <div class="vol num" style="margin-top:12px"><span>Calorias</span><BarraSimples pct={(t.kcal / d.kcal) * 100} /><span>{fmt(t.kcal)}</span></div>
     <div class="vol num"><span>Proteína</span><BarraSimples pct={(t.prot / d.protein) * 100} color="var(--acc)" /><span>{fmt(t.prot)} g</span></div>
     <Falta dia={dia} />

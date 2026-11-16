@@ -1,4 +1,4 @@
-# 12 · MCP do Ciclo: contrato (v1.1.0)
+# 12 · MCP do Ciclo: contrato (v1.2.0)
 
 O Ciclo é um servidor MCP remoto (Streamable HTTP, respostas JSON, sem estado) em `/mcp`. Qualquer cliente MCP com OAuth conecta: claude.ai, Claude Desktop/Code, ChatGPT (conectores), Gemini CLI, Cursor/VS Code. A rotina automática da caixa só existe no Claude (Claude Code agendado); as outras IAs funcionam no modo conversa.
 
@@ -47,16 +47,22 @@ L = lê (escopo `ler`), E = escreve (escopo `escrever`). Os schemas completos es
 | `ciclo_preferencias` | L/E | Sem argumentos lê. Muda `fixar`, `desfixar`, `evitar`, `desevitar`, `preferir` e `comida_aprovacao`. | ver schema | preferências atuais |
 
 ### Comida por conversa
-Três jeitos, todos pela mesma ferramenta: **uma refeição** ("tomei café: 2 ovos e pão"), **várias etapas** no dia (cada mensagem soma; texto igual não duplica; refeição já existente → perguntar *complementar* ou *substituir*) e **o dia inteiro** ("de manhã X, almocei Y, jantei Z": separa por refeição com horário aproximado).
+Quatro jeitos, todos pela mesma ferramenta: **vários dias** ("sábado comi A, domingo B", "no fim de semana…", "dia 12", ou `dias[{data, texto}]`: prévia agrupada por dia, um envio, até 30 dias atrás), **uma refeição** ("tomei café: 2 ovos e pão"), **várias etapas** no dia (cada mensagem soma; texto igual não duplica; refeição já existente → perguntar *complementar* ou *substituir*) e **o dia inteiro** ("de manhã X, almocei Y, jantei Z": separa por refeição com horário aproximado).
 
 | Ferramenta | L/E | O que faz | Entrada | Saída |
 |---|---|---|---|---|
-| `ciclo_comida_registrar` | E | `simular:true` → prévia; `confirmar:<token>` → grava. Sem os dois, segue `comida_aprovacao`. | `texto`, `data?`, `refeicao?`, `modo?` (auto/complementar/substituir), `simular?`, `confirmar?` | prévia: `refeicoes[{refeicao, hora, acao, itens[{item, g, faixa, kcal, proteina}], kcal, proteina}]`, `totalDaPrevia`, `totalDoDiaDepois`, `suposicoes`, `duvidas` (≤2), `escolha?`, `token`. Confirmado: `{ gravado, lote, refeicoes, totalDoDia, mensagem }`. Erros: 409 falta `modo`, 410 expirou, 404 de outra conta/inválida |
+| `ciclo_comida_registrar` | E | `simular:true` → prévia; `confirmar:<token>` → grava. Sem os dois, segue `comida_aprovacao`. **#87:** alimento que o app não reconheceu (ou valor do rótulo) vai em `itens` e vira item próprio; mesmo nome substitui o item estimado; total = soma dos itens. Vários dias → prévia com `dias[]`, um lote. | `texto` (ou `dias[{data, texto}]` ≤7), `data?`, `refeicao?`, `itens?[{nome, quantidade?, g?, kcal, proteina, fonte: estimativa\|rotulo, refeicao?, data?}]` (≤30; `data` obrigatória com vários dias), `modo?`, `simular?`, `confirmar?` | prévia: `refeicoes[{refeicao, hora, acao, itens[{item, g, faixa, kcal, proteina, fonte?}], kcal, proteina}]` (vários dias: `dias[{data, rotulo, refeicoes, totalDaPrevia, totalDoDiaDepois}]`), `totalDaPrevia`, `totalDoDiaDepois`, `suposicoes`, `duvidas` (≤2), `escolha?`, `token`. Confirmado: `{ gravado, lote, refeicoes, totalDoDia, mensagem }`. Erros: 409 falta `modo`, 410 expirou, 404 de outra conta/inválida |
 | `ciclo_comida_corrigir` | E | Corrige por `id` ou pela refeição do dia, com prévia: `fator` ("metade daquilo" = 0.5), `kcal/proteina` (só com id) ou `texto` (reestima). Editado à mão → recusado (`forcar` só com pedido explícito). Legado v1 sem prévia: `id + kcal + proteina + confianca`. | ver schema | prévia `mudancas[{antes, depois}]` ou `{ corrigido, recusados }` |
-| `ciclo_comida_desfazer` | E · destrutiva | Desfaz o ÚLTIMO envio (lote) feito pela conversa. O que a pessoa editou à mão fica. | `confirmar?` | prévia `{ vaiSair, fica, token }` ou `{ desfeito }` |
+| `ciclo_comida_editar` | E | **#87** Corrige registro(s) por inteiro: descrição + itens + kcal + proteína numa chamada (renomear item, mudar quantidade, trocar o alimento). Data e refeição ficam; marca `source=claude`, `via=mcp`. Total = soma dos itens. Descrição vaga ("Não lembro") é recusada. Vários registros = uma prévia, uma aprovação, um lote do D1, um desfazer. Editado à mão → recusado (`forcar` só com pedido explícito). Segue `comida_aprovacao`. | `edicoes[{id, descricao?, itens[{nome, quantidade?, g?, kcal, proteina, fonte}]}]` (≤10), `forcar?`, `simular?`, `confirmar?` | prévia `mudancas[{id, data, refeicao, antes{texto, kcal, proteina}, depois{…}, itens[{mudanca: "Néctar de uva (200 ml) → Suco de uva integral (300 ml)", mudou[nome\|quantidade\|kcal\|proteina]}]}]`, `total{antes, depois}`, `token`. Confirmado: `{ editado, lote, recusados, totalDoDia }`. Id de outra conta = "não encontrado" (sem eco do id) |
+| `ciclo_comida_vagos` | L | **#87** Registros vagos de um período ("Não lembro (estimativa)", confiança baixa, sem itens reconhecidos), com id, para corrigir todos em `ciclo_comida_editar`. | `de?`, `ate?` (padrão: 7 dias; ≤31) | `vagos[{id, data, refeicao, texto, kcal, proteina, motivo}]`, `total` |
+| `ciclo_comida_desfazer` | E · destrutiva | Desfaz o ÚLTIMO envio (lote) feito pela conversa: registro novo sai; registro corrigido pelo `ciclo_comida_editar` volta ao que era. O que a pessoa editou à mão fica. | `confirmar?` | prévia `{ vaiSair, voltaAoQueEra, fica, token }` ou `{ desfeito, sairam, voltaram }` |
 | `ciclo_comida_dia` | L | Registros do dia, totais, metas e o que falta. | `date?` | |
 | `ciclo_comida_pendentes` | L | Registros dos últimos 3 dias só com a estimativa do aparelho. **Stub**: a fila de interpretação da #80 entra aqui. | — | `pendentes[]` |
 | `ciclo_registrar_comida` | E · legado, fora da lista | v1: grava direto texto + kcal/proteína da IA. Sai na v1.2. | | |
+
+Correção (#87, `packages/core/src/comida-correcao.ts`): `aplicarItensInformados` (item informado → item próprio), `planejarEdicao` + `diffItens` (antes → depois por item; renomear casa pela palavra em comum), `ehRegistroVago`, `separarDias` (sábado/domingo/segunda-feira…, ontem/anteontem/hoje, "fim de semana" (pergunta qual dia; considera sábado), "dia 12" (mês passado se ainda não chegou)). Cada correção guarda o par **texto original → itens finais** em `food_log.raw_original` + `items` (para a #80 aprender) e a foto `antes` (para o desfazer). Migration `0018_87_comida_correcao.sql`; as colunas novas entram no export da conta.
+
+No app (Comida), seta e calendário escolhem o dia (até 30 dias atrás): registrar, editar e apagar valem para o dia escolhido e os totais do dia e da semana se recalculam.
 
 Interpretação: `interpretarComida` (`packages/core/src/comida-conversa.ts`) usa a base de alimentos da pessoa (#43, TACO) e a estimativa local. É a interface que a #80 (regra → parser → IA de porção) troca por trás, sem mudar este contrato.
 
@@ -108,10 +114,13 @@ No app, toda entrada vinda da IA mostra o selo **"via Chat, HH:MM · ≈ estimat
 5. "Ontem à noite comi 2 ovos" → prévia com a data de ontem escrita.
 6. "O almoço de hoje foi metade daquilo" → antes → depois; com "sim", corrige.
 7. "Desfaz o que você subiu agora" → mostra o que sai; com "sim", tira (o editado à mão fica).
+7b. "Sábado jantei pizza, domingo almocei lasanha" → prévia com 2 dias (datas escritas); com "sim", grava cada um no seu dia.
+7c. "Corrige os Não lembro da semana: terça foi strogonoff, quinta pizza" → `ciclo_comida_vagos` → `ciclo_comida_editar` com os 2: uma prévia antes → depois; com "sim", corrige os dois (um desfazer volta os dois).
 8. "Troca o desenvolvimento por outro" → `mesmaParte` primeiro; salvar pede itens com IDs.
 9. "Refaz minha semana" (já treinou) → prévia com as mudanças; só refaz com "sim".
 10. "Fiz 3×10 com 20 kg no supino" → séries registradas; "como evoluí no supino?" → `ciclo_historico`.
 
 ## CHANGELOG
+- **1.2.0 (#87):** `ciclo_comida_editar` (registro inteiro: descrição + itens + kcal + proteína, em lote, com antes → depois por item) e `ciclo_comida_vagos`; `ciclo_comida_registrar` aceita `itens` (item informado vira item, total = soma) e vários dias (`dias` ou "sábado A, domingo B"/"fim de semana"/"dia 12"); `ciclo_comida_desfazer` também volta correções (`voltaAoQueEra`); par texto original → itens finais guardado (`raw_original`).
 - **1.1.0 (#81):** contrato versionado; schema = validação (campo desconhecido recusado); escopos `ler`/`escrever` com 403 `insufficient_scope`; prévia de uso único (simular/confirmar); comida por conversa (`ciclo_comida_registrar`, `_corrigir` com prévia, `_desfazer`, `_pendentes` stub); `ciclo_semana_ver`, `ciclo_semana_gerar`, `ciclo_treino_registrar`, `ciclo_treino_trocar`, `ciclo_treino_atual_salvar`, `ciclo_preferencias`, `ciclo_historico`; `ciclo_catalogo` paginado (`{ itens, total, proximo }`); `ciclo_salvar_perfil` → `ciclo_perfil_atualizar` (alias por uma versão); `ciclo_registrar_comida` vira legado oculto; `instructions` neutras de modelo; caixa com status lido.
 - **1.0.0 (#30/#66):** ferramentas iniciais, OAuth 2.1 + chave manual.

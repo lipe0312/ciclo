@@ -2,7 +2,7 @@
 // (wrangler dev) num cenário próprio. Sobe `dev:cenario vazio` na CENARIO_PORTA (padrão 8801) e o derruba no fim; com CICLO_URL usa
 // um cenário já no ar (CENARIO = nome dele, padrão vazio). Contas fictícias e-2-e. Falha no primeiro passo errado e diz qual. Só localhost.
 // Cobre: lista e orçamento, comida simular → confirmar, idempotência, isolamento entre contas, token vencido/de outra conta,
-// escopo ler bloqueando escrita, corrigir/desfazer com prévia e o treino (semana, série, trocar).
+// escopo ler bloqueando escrita, corrigir/desfazer com prévia, editar os vagos (#87) e o treino (semana, série, trocar).
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { MCP_ORCAMENTO_BYTES, MCP_ORCAMENTO_INSTRUCOES, MCP_ORCAMENTO_LISTA } from "@ciclo/core";
@@ -96,7 +96,7 @@ async function main() {
     await passo("tools/list: ferramentas novas, aliases fora da lista, lista dentro do orçamento", async () => {
       const r = await rpc(ta["ler escrever"], "tools/list");
       const nomes = r.data.result.tools.map((t) => t.name);
-      for (const x of ["ciclo_comida_registrar", "ciclo_comida_corrigir", "ciclo_comida_desfazer", "ciclo_semana_gerar", "ciclo_semana_ver", "ciclo_treino_registrar", "ciclo_treino_trocar", "ciclo_perfil_atualizar", "ciclo_treino_atual_salvar", "ciclo_preferencias", "ciclo_historico"]) ok(nomes.includes(x), `falta ${x}`);
+      for (const x of ["ciclo_comida_registrar", "ciclo_comida_corrigir", "ciclo_comida_editar", "ciclo_comida_vagos", "ciclo_comida_desfazer", "ciclo_semana_gerar", "ciclo_semana_ver", "ciclo_treino_registrar", "ciclo_treino_trocar", "ciclo_perfil_atualizar", "ciclo_treino_atual_salvar", "ciclo_preferencias", "ciclo_historico"]) ok(nomes.includes(x), `falta ${x}`);
       ok(!nomes.includes("ciclo_salvar_perfil"), "alias na lista");
       ok(Buffer.byteLength(r.txt) <= MCP_ORCAMENTO_LISTA, `tools/list ${Buffer.byteLength(r.txt)} bytes`);
     });
@@ -148,6 +148,24 @@ async function main() {
       ok(d.previa && d.vaiSair.length === 1, JSON.stringify(d));
       ok((await tool(ta["ler escrever"], "ciclo_comida_desfazer", { confirmar: d.token })).desfeito === 1, "desfazer");
       ok((await comida(A)).length === 0, "sobrou registro");
+    });
+    await passo("#87 vagos → editar (Não lembro vira descrição real) com prévia → desfazer volta ao que era; a B não alcança", async () => {
+      const w = ta["ler escrever"];
+      const r = await api(A, "POST", "/api/food", { text: "Não lembro (estimativa)", date: hoje(), meal: "jantar" });
+      ok(r.status === 201, r.txt);
+      const v = await tool(w, "ciclo_comida_vagos");
+      ok(v.vagos?.some((x) => x.id === r.data.id), JSON.stringify(v).slice(0, 200));
+      const ed = { edicoes: [{ id: r.data.id, itens: [{ nome: "Pizza de calabresa", quantidade: "3 fatias", kcal: 840, proteina: 36, fonte: "estimativa" }] }] };
+      ok(/não encontrado/.test((await tool(tb["ler escrever"], "ciclo_comida_editar", ed)).erro ?? ""), "B editou registro da A");
+      const p = await tool(w, "ciclo_comida_editar", ed);
+      ok(p.previa && p.mudancas[0].depois.kcal === 840, JSON.stringify(p).slice(0, 200));
+      ok((await tool(w, "ciclo_comida_editar", { confirmar: p.token })).editado === 1, "editar");
+      ok((await comida(A)).some((x) => x.text === "Pizza de calabresa (3 fatias)"), "descrição real");
+      const d = await tool(w, "ciclo_comida_desfazer");
+      ok(d.voltaAoQueEra?.length === 1, JSON.stringify(d).slice(0, 200));
+      ok((await tool(w, "ciclo_comida_desfazer", { confirmar: d.token })).voltaram === 1, "desfazer edição");
+      ok((await comida(A)).some((x) => x.text === "Não lembro (estimativa)"), "não voltou");
+      ok((await api(A, "DELETE", `/api/food/${r.data.id}`)).status === 200, "limpar");
     });
     await passo("treino: semana, série registrada, trocar e semana treinada pede prévia", async () => {
       const s = await tool(ta["ler escrever"], "ciclo_semana_ver");

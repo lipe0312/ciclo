@@ -2,7 +2,7 @@
 // cobre o subconjunto que os schemas usam), paginação e o orçamento de tamanho das respostas. Puro, sem dependências.
 
 /** Versão do contrato (docs/12-mcp.md). Muda quando uma ferramenta muda de forma incompatível ou entra/sai. */
-export const MCP_CONTRATO = "1.1.0";
+export const MCP_CONTRATO = "1.2.0";
 /** Teto de bytes de uma resposta de ferramenta: nada de catálogo inteiro; o resto pagina. */
 export const MCP_ORCAMENTO_BYTES = 16_000;
 /** Teto do tools/list inteiro (todas as descrições e schemas) e das `instructions` do initialize. */
