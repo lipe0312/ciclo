@@ -17,6 +17,11 @@ const CACHE = `ciclo:v1:${SERVER ? "srv" : "demo"}:semana:${monday}`;
 let semana: Semana | null = lsGet<Semana | null>(CACHE, null);
 let vazio: string | null = null;
 let carregando: Promise<void> | null = null;
+/** #63 Texto do "sem semana" na interface (o servidor manda só o motivo). */
+const VAZIO: Record<string, string> = {
+  sem_perfil: "Complete o Perfil de treino: falta o básico (objetivo, dias e onde treina).",
+  sem_academia: "Complete o Perfil de treino: falta dizer onde você treina.",
+};
 export const getSemana = () => semana;
 export const getVazio = () => vazio;
 export const diaDe = (date: string) => semana?.days.find((d) => d.date === date) ?? null;
@@ -33,8 +38,8 @@ export function garantirSemana(force = false): Promise<void> {
     await Promise.resolve(); // o efeito da tela roda antes de a casca assinar o commit
     try {
       if (!SERVER) return set(demo.ver());
-      const r = await api<{ week: Semana | null; message?: string }>("GET", `/api/week?date=${today}`);
-      vazio = r.week ? null : r.message ?? "Complete os Primeiros passos.";
+      const r = await api<{ week: Semana | null; empty?: string }>("GET", `/api/week?date=${today}`);
+      vazio = r.week ? null : VAZIO[r.empty ?? ""] ?? VAZIO.sem_perfil;
       set(r.week);
     } catch (e) {
       if (!SERVER) { console.error("semana (demo)", e instanceof Error ? e.message : e); return; }

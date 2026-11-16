@@ -41,3 +41,4 @@ export * from "./catalog-eficiencia.ts";
 export * from "./mcp.ts";
 export * from "./comida-conversa.ts";
 export * from "./comida-correcao.ts";
+export * from "./comeco.ts";

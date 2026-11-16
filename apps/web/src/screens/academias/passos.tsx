@@ -10,9 +10,11 @@ import { S } from "../../lib/store/index.ts";
 import { kindNm, lugarDoDia, rascunhoDe, salvarLugar } from "../../lib/lugares/index.ts";
 import type { LugarRascunho } from "../../lib/lugares/index.ts";
 import { SeletorDeLocal } from "./mapa.tsx";
+import { classePulso, pararPulso } from "../../lib/pulso/index.ts";
 import "./academias.css";
 
-const PRESET: Record<C.PlaceKind, string[]> = { academia: [], casa: ["halteres", "elastico", "barrafixa"], hotel: [] };
+/** #63 Nenhum aparelho vem marcado de fábrica (a pessoa marca o que tem; "Academia completa" marca tudo de uma vez). */
+const PRESET: Record<C.PlaceKind, string[]> = { academia: [], casa: [], hotel: [] };
 const nomePadrao = (k: C.PlaceKind) => (k === "academia" ? `Academia ${S.gyms.filter((g) => (g.kind ?? "academia") === "academia").length + 1}` : kindNm(k));
 
 export interface PassoProps {
@@ -27,7 +29,7 @@ export function PassoAPasso({ inicial, onDone, onCancel }: PassoProps) {
   const [i, setI] = useState(0), [busy, setBusy] = useState(false), [cat, setCat] = useState("todos");
   const [d, setD] = useState<LugarRascunho>(() => { const r = rascunhoDe(inicial ?? undefined); return editar ? r : { ...r, name: nomePadrao(r.kind) }; });
   const [auto, setAuto] = useState(!editar); // nome ainda é o sugerido (muda junto com o tipo)
-  const set = (p: Partial<LugarRascunho>) => setD((x) => ({ ...x, ...p }));
+  const set = (p: Partial<LugarRascunho>) => { pararPulso(); setD((x) => ({ ...x, ...p })); };
   const id = inicial?.id ?? null;
 
   const PASSOS = [
@@ -75,7 +77,7 @@ export function PassoAPasso({ inicial, onDone, onCancel }: PassoProps) {
       {editar ? <button type="button" class="btn ghost" disabled={busy || !PASSOS[0].ok} onClick={salvar}>Salvar agora</button> : <span />}</div>
     <div class="pp-bar" role="progressbar" aria-label="Progresso do cadastro" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><i style={`width:${pct}%`} /></div>
     <h1 class="pp-q">{P.title}</h1><p class="sub pp-sub">{P.sub}</p>
-    <div class="pp-body"><Tela /></div>
+    <div class={`pp-body ${classePulso()}`}><Tela /></div>
     <div class="pp-cta">{ultimo
       ? <button type="button" class="btn pri lg full" disabled={busy || !P.ok} onClick={salvar}><Icon id="check" />{busy ? "Salvando…" : editar ? "Salvar alterações" : "Salvar lugar"}</button>
       : <button type="button" class="btn pri lg full" disabled={!P.ok} onClick={() => setI(step + 1)}>{P.id === "mapa" && d.lat == null ? "Pular" : "Continuar"}<Icon id="arrow" /></button>}

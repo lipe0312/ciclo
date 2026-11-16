@@ -141,7 +141,7 @@ export default function Tela({ route }: { route: Route }) {
   useEffect(() => { garantirSemana(true); }, []);
   const s = getSemana();
   if (!s) return <><p class="kicker">Semana</p><h1 style="margin-bottom:14px">Semana</h1>
-    <Card><p class="small">{getVazio() ?? "Carregando a semana…"}</p>{getVazio() && <a class="btn pri" style="margin-top:10px" href="#primeiros-passos">Primeiros passos</a>}</Card></>;
+    <Card><p class="small">{getVazio() ?? "Carregando a semana…"}</p>{getVazio() && <a class="btn pri" style="margin-top:10px" href="#primeiros-passos">Perfil de treino</a>}</Card></>;
   if (route.parts[0] === "dia" && route.parts[1]) return <Detalhe date={route.parts[1]} />;
   return <Lista s={s} />;
 }
