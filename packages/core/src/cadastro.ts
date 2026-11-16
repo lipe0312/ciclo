@@ -134,6 +134,8 @@ export function montarPerfilApp(salvo: Record<string, unknown> | null | undefine
     else if (Array.isArray(base[k]) !== Array.isArray(s[k])) continue;
     else base[k] = structuredClone(s[k]);
   }
+  // #93 `treinoAtual` não existe no perfil vazio (é opcional), mas é dado da pessoa: recarregar não pode descartá-lo.
+  if (s.treinoAtual != null && typeof s.treinoAtual === "object" && !Array.isArray(s.treinoAtual)) base.treinoAtual = structuredClone(s.treinoAtual);
   return base as PerfilApp;
 }
 

@@ -136,3 +136,16 @@ test("perfil antigo no banco: o app e o Claude continuam conseguindo salvar", as
   assert.ok(!r.data.result.isError, r.text);
   assert.equal(profileOf(env, "ana").minutes, 45); assert.equal(profileOf(env, "ana").chaveAntiga, undefined);
 });
+
+test("#93 PUT do perfil sem treinoAtual (outra tela, sync, cache) não apaga o treino atual salvo", async () => {
+  const env = makeEnv();
+  const TA = { divisoes: [{ nome: "A", grupos: ["peito"], exercicios: [{ id: "Incline_Dumbbell_Press" }, { id: "Butterfly" }, { nome: "Peck fictício", grupo: "peito" }] }, { nome: "B", grupos: ["costas"], exercicios: [{ id: "Wide-Grip_Lat_Pulldown" }] }] };
+  assert.equal((await call(env, "PUT", "/api/profile", { user: "ana", body: { data: { level: 1, treinoAtual: TA } } })).status, 200);
+  assert.deepEqual(profileOf(env, "ana").treinoAtual, TA);
+  assert.equal((await call(env, "PUT", "/api/profile", { user: "ana", body: { data: { level: 2, minutes: 45 } } })).status, 200);
+  const p = profileOf(env, "ana");
+  assert.equal(p.minutes, 45); assert.deepEqual(p.treinoAtual, TA, "o PUT sem o campo mantém o treino");
+  assert.equal((await call(env, "PUT", "/api/profile", { user: "ana", body: { data: { level: 2, treinoAtual: { divisoes: [] } } } })).status, 200);
+  assert.deepEqual(profileOf(env, "ana").treinoAtual, { divisoes: [] }, "mandar o campo vale (estou começando)");
+  assert.deepEqual((await call(env, "GET", "/api/state?date=" + D, { user: "bia" })).data.profile?.treinoAtual, undefined, "outra conta não vê");
+});

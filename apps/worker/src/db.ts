@@ -1,6 +1,6 @@
 // Repositório: todo SQL fica aqui (ou nas rotas), sempre com parâmetros (bind) e SEMPRE filtrado por user_id.
 // O uid vem da autenticação (auth.ts), nunca do corpo da requisição.
-import { DEFAULT_PROFILE, DOWS, MAX_SESSION_MS, entradaTreinoAtual, assignWeekdays, reassignDays, MUSCLE_IDS, PAIN_REGIONS, applyProfilePatch, completarObjetivo, mensagemPerfil, mondayOf, normalizeProfile, planFingerprint, sessionSummary, weekDates, weeklyTargets } from "@ciclo/core";
+import { DEFAULT_PROFILE, DOWS, MAX_SESSION_MS, entradaTreinoAtual, manterTreinoAtual, assignWeekdays, reassignDays, MUSCLE_IDS, PAIN_REGIONS, applyProfilePatch, completarObjetivo, mensagemPerfil, mondayOf, normalizeProfile, planFingerprint, sessionSummary, weekDates, weeklyTargets } from "@ciclo/core";
 import { HttpError, int, oneOf, str } from "./http.ts";
 import type { DayInput, Group, Mode, MuscleId, Pain, SetLog } from "@ciclo/core";
 import type { Env } from "./env.ts";
@@ -49,8 +49,11 @@ export async function rawProfile(env: Env, uid: string): Promise<Record<string, 
  * a mensagem é a da tela (`mensagemPerfil`, nunca "goal.id deve ser …"); sem, é a lista técnica (o Chat corrige com ela).
  */
 export async function saveProfile(env: Env, uid: string, input: unknown, mode: "replace" | "merge", extra: Record<string, unknown> = {}, humano = false) {
-  const base = mode === "merge" ? ((await rawProfile(env, uid)) ?? {}) : {};
-  const r = applyProfilePatch(base, input);
+  const atual = await rawProfile(env, uid);
+  const base = mode === "merge" ? (atual ?? {}) : {};
+  // #93 o app manda o perfil inteiro, mas um corpo sem `treinoAtual` (outra tela, sync, cache) não pode apagar o treino cadastrado
+  const corpo = mode === "replace" && input && typeof input === "object" && !Array.isArray(input) ? manterTreinoAtual(atual, input as Record<string, unknown>) : input;
+  const r = applyProfilePatch(base, corpo);
   if (!r.ok) throw new HttpError(400, humano ? mensagemPerfil(r.campos) : r.errors.join("; "), humano ? "perfil_invalido" : undefined);
   const data = { ...completarObjetivo(r.profile), ...extra };
   const versao = await putProfile(env, uid, data);

@@ -1,6 +1,6 @@
 // Ponte entre o estado e o core: o que o app pergunta ao core (plano do dia, sugestão de carga) e
 // gravações compartilhadas entre telas (perfil, academia, dor, comida).
-import { C, S, calc, commit, today } from "./index.ts";
+import { C, S, calc, commit, perfilSync, today } from "./index.ts";
 import { SERVER, api, flush, send } from "../api/index.ts";
 import { DOW, TZ, addDays, dowIdx, lsGet, lsSet, uid } from "../util.ts";
 
@@ -45,6 +45,7 @@ export function suggestFor(it: C.PlanItem): { kg: number | null; reps: number; n
 }
 
 let profileTimer: ReturnType<typeof setTimeout> | undefined;
+let profileSeq = 0;
 /** Mudou o perfil: o treino já gerado NÃO se refaz sozinho; congela e fica "desatualizado" até o usuário regenerar. */
 export function profileChanged(sync = true) {
   if (S.plan && !(S.session && !S.session.finishedAt)) {
@@ -52,7 +53,12 @@ export function profileChanged(sync = true) {
     if (act === "freeze") { S.ui.locked = true; S.ui.planSource = "perfil"; }
     else if (act === "unfreeze") { S.ui.locked = false; S.ui.planSource = undefined; }
   }
-  if (sync) { clearTimeout(profileTimer); profileTimer = setTimeout(() => send("PUT", "/api/profile", { data: S.profile }), 600); }
+  if (sync) {
+    clearTimeout(profileTimer); perfilSync.pendente = true;
+    const n = ++profileSeq;
+    // só libera o sync depois que o PUT terminou e se nenhuma edição nova entrou nesse meio-tempo
+    profileTimer = setTimeout(() => { send("PUT", "/api/profile", { data: S.profile }).finally(() => { if (n === profileSeq) perfilSync.pendente = false; }); }, 600);
+  }
 }
 /** Garante a base de comparação ANTES de qualquer mudança no perfil (demo, 1º acesso direto ao Perfil, recarregar). */
 export function ensureBaseline() { if (!S.plan || !S.ui.planFp) { if (!(S.session && !S.session.finishedAt)) computePlan(); } }

@@ -111,6 +111,11 @@ function MeuTreinoAtual() {
   if (t && t.divisoes.length) return <Card><p class="kicker">Meu treino atual</p>
     <p class="small" style="margin-top:4px">{t.divisoes.length} treino{t.divisoes.length > 1 ? "s" : ""} · {n} exercício{n === 1 ? "" : "s"}: o treino gerado prioriza esses.</p>
     <a class="link44 small" href="#perfil/treino-atual">Editar meu treino atual<Icon id="arrow" /></a></Card>;
+  // #93 Quem já respondeu nos Primeiros passos: sem a pergunta. "Começando" não precisa de cadastro; quem já treina só completa os treinos.
+  const r = C.jaTreinaRespondido(S.profile);
+  if (r === "nao") return null;
+  if (r === "sim") return <Card><p class="kicker">Meu treino atual</p><p class="small" style="margin-top:4px">Conte os treinos que você já faz e o treino gerado passa a priorizá-los. É opcional.</p>
+    <a class="btn" style="margin-top:10px" href="#perfil/treino-atual"><Icon id="dumb" />Registrar meu treino atual</a></Card>;
   return <Card><p class="kicker">Já treina?</p><p class="small" style="margin-top:4px">Cadastre os exercícios que você já faz e o treino gerado passa a priorizá-los. É opcional.</p>
     <a class="btn" style="margin-top:10px" href="#perfil/treino-atual"><Icon id="dumb" />Registrar meu treino atual</a></Card>;
 }
