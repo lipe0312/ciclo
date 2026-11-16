@@ -6,6 +6,7 @@ import type { Gym, GymMedia } from "../../lib/store/index.ts";
 import { Icon, toast } from "../../lib/ui/index.tsx";
 import { href } from "../../lib/roteador/index.ts";
 import { img } from "../../lib/util.ts";
+import { FotoAparelho } from "../../lib/grade-aparelhos/index.tsx";
 import { enviarMidia, midiaDoAparelho } from "../../lib/lugares/index.ts";
 import "./academias.css";
 import { Estado } from "../../lib/estado/index.tsx";
@@ -40,7 +41,7 @@ export function PaginaAparelho({ gym, eqId }: { gym: Gym; eqId: string }) {
   return <>
     <p class="kicker">{gym.name} · aparelho</p><h1 style="margin:2px 0 14px">{eq.nm}</h1>
     <div class="grid dash"><div class="stack">
-      <div class="card"><div class="exim big"><img src={img(eq.img)} alt={`${eq.nm}: imagem de referência`} width={480} height={320} /></div>
+      <div class="card"><div class="exim big ap-big"><FotoAparelho eq={eq} w={480} h={320} /></div>
         {!tem && <div class="note warn" style="margin-top:12px"><Icon id="warn" /><span>Este aparelho não está marcado em {gym.name}. Dá para guardar a mídia mesmo assim.</span></div>}</div>
       <div class="card"><h2>Sua mídia</h2>
         <p class="small sub" style="margin:4px 0 12px">Vídeo de 10 a 15 s ou fotos da regulagem (pino, banco, pegada). No treino aparece como “Sua academia · regulagem”.</p>
@@ -52,6 +53,9 @@ export function PaginaAparelho({ gym, eqId }: { gym: Gym; eqId: string }) {
           <label class={`btn ${busy ? "off" : ""}`}>Da galeria<input type="file" accept="video/*,image/*" class="sr" disabled={busy} onChange={pegar} /></label></div>
         <p class="small" role="status" aria-live="polite" style="margin-top:10px">{status}</p></div>
     </div><div class="stack">
+      {eq.cardio && C.CARDIO_BY_ID[eq.cardio] && <div class="card"><h2>Cardio</h2>
+        <p class="small sub" style="margin:4px 0 10px">Conta como “{C.CARDIO_BY_ID[eq.cardio].nm}” no registro de cardio.</p>
+        <a class="btn pri full" href="#treino/cardio"><Icon id="plus" />Registrar cardio</a></div>}
       <div class="card"><h2>Exercícios que usam</h2>
         {usa.length ? <ul class="lug-usa">{usa.slice(0, 14).map((e) => <li key={e.id}><a class="alt altlink" href={href("treino", ["exercicio", e.id])}>
           <img src={img(C.imageSrc(e))} alt="" loading="lazy" width={56} height={56} /><div><h3>{e.nm}</h3><p class="tiny sub">{C.MUSCLES[e.m].nm}</p></div><Icon id="arrow" /></a></li>)}</ul>

@@ -88,7 +88,7 @@ function Lugar({ g }: { g: Gym }) {
       <div class="card"><h2>Aparelhos <span class="badge num">{eqs.length}</span></h2>
         <p class="small sub" style="margin:4px 0 10px">Toque em um aparelho para ver os exercícios e guardar a mídia da sua regulagem.</p>
         {eqs.length ? <ul class="lug-aps">{eqs.map((e) => { const n = midiaDoAparelho(g.id, e.id).length; return <li key={e.id}>
-          <a class="lug-ap" href={href("academias", [g.id, "aparelho", e.id])}><FotoAparelho src={img(e.img)} w={64} h={48} />
+          <a class="lug-ap" href={href("academias", [g.id, "aparelho", e.id])}><FotoAparelho eq={e} w={64} h={48} />
             <span><b>{e.nm}</b>{n > 0 && <span class="tiny sub"> · {n} mídia(s)</span>}</span><Icon id="arrow" /></a></li>; })}</ul>
           : <p class="small sub">Nenhum aparelho marcado. <a class="link44" href={href("academias", [g.id, "editar"])}>Marcar aparelhos</a></p>}</div>
     </div></div></>;
