@@ -426,8 +426,13 @@ a.sec{color:inherit;text-decoration:none}
 .sec .badge{margin-left:4px;vertical-align:1px}
 .musmap .hit rect{fill:transparent;stroke:none;cursor:pointer}
 .link44{display:inline-flex;align-items:center;min-height:44px;padding:0 2px}
-.note-checkup{align-items:center;flex-wrap:wrap;margin-bottom:14px}
-.note-checkup-t{flex:1;min-width:200px}
+.note-checkup{margin-bottom:14px}
+.note-checkup-a{gap:8px;margin-top:12px}
+/* #63 chips/opções desmarcados pulsam de leve nas primeiras visitas, até o 1º toque. O @media global de reduced-motion também desliga. */
+@media (prefers-reduced-motion:no-preference){
+  .pulsa .chip[aria-pressed="false"],.pulsa .opt[aria-pressed="false"],.pulsa .eq[aria-pressed="false"]{animation:pulso 2.4s var(--ease) infinite}
+}
+@keyframes pulso{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
 
 /* voz (#28): botão grande com estado e motor escritos */
 .micwrap.lg{align-items:center;gap:6px;max-width:120px;text-align:center}

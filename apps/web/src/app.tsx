@@ -16,7 +16,7 @@ import { MAIS, PRINCIPAL } from "./nav.ts";
 import { BotaoCenario } from "./lib/cenario/index.tsx";
 import { Voltar, useGestosVoltar } from "./lib/voltar/index.tsx";
 import { preloadNoOcio, telaLenta } from "./lib/tela-lenta/index.tsx";
-import Hoje from "./screens/hoje/index.tsx";
+import Hoje, { esconderLembrete } from "./screens/hoje/index.tsx";
 import Treino from "./screens/treino/index.tsx";
 import Conta from "./screens/conta/index.tsx";
 import Mais from "./screens/mais/index.tsx";
@@ -115,7 +115,7 @@ export function App() {
             <a class="iconbtn only-mobile" href="#mais" aria-label="Mais opções" aria-current={cur("mais")}><Icon id="more" /></a></div>
         </div>
         <Faixa />
-        <LembreteDiario hidden={screen === "primeiros-passos"} />
+        <LembreteDiario hidden={esconderLembrete(screen)} />
         <section key={screen} class="view on" aria-label={screen}><Tela route={route2} /></section>
       </div>
     </main>

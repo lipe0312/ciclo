@@ -144,7 +144,7 @@ export default function Tela({ route }: { route: Route }) {
   // #77 a mesma barra de abas do Treino, com Semana marcada (o detalhe do dia é um nível abaixo, sem abas)
   const abas = <AbasTreino atual="semana" />;
   if (!s) return <>{abas}<p class="kicker">Semana</p><h1 style="margin-bottom:14px">Semana</h1>
-    <Card><p class="small">{getVazio() ?? "Carregando a semana…"}</p>{getVazio() && <a class="btn pri" style="margin-top:10px" href="#primeiros-passos">Primeiros passos</a>}</Card></>;
+    <Card><p class="small">{getVazio() ?? "Carregando a semana…"}</p>{getVazio() && <a class="btn pri" style="margin-top:10px" href="#primeiros-passos">Perfil de treino</a>}</Card></>;
   if (route.parts[0] === "dia" && route.parts[1]) return <Detalhe date={route.parts[1]} />;
   return <>{abas}<Lista s={s} /></>;
 }

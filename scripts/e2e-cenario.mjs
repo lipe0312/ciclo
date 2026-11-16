@@ -249,7 +249,12 @@ async function pular(c) {
     const st = await c.ev("fetch('/api/account').then((r) => r.json())");
     igual(st.onboarding, "concluido", "onboarding");
   }, c);
-  await passo("Hoje mostra o cartão 'Complete o Perfil de treino'", async () => ok((await c.texto()).includes("Complete o Perfil de treino"), "sem o cartão"), c);
+  await passo("#63 Hoje vazio (sem treino aleatório) com 'Montar meu primeiro treino' e 'Completar Perfil de treino'", async () => {
+    ok(await c.esperar("(document.querySelector('#app')?.innerText ?? '').includes('Montar meu primeiro treino')", 8000), "sem o começo guiado");
+    const t = await c.texto();
+    ok(t.includes("Completar Perfil de treino"), "sem o secundário");
+    ok(!(await c.ev("!!document.querySelector('.hm-dia')")), "apareceu um treino no Hoje vazio");
+  }, c);
 }
 
 // #74 "Meu treino atual" (cenário semi): sem cadastro a geração segue igual; cadastrando "A: Ombro" com o crucifixo inverso

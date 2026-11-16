@@ -38,3 +38,15 @@ test("nenhum \"Claude\" na UI fora do passo a passo de conexão", () => {
 test("o passo a passo mantém o crédito discreto", () => {
   assert.match(readFileSync(join(WEB, "src/screens/conta/conectar.tsx"), "utf8"), /Funciona com o Claude, da Anthropic/);
 });
+
+// #63 O onboarding/questionário se chama "Perfil de treino" em toda a interface (a rota #primeiros-passos continua igual).
+test("nenhum \"Primeiros passos\", \"checkup\" ou \"questionário\" na UI", () => {
+  const achados: string[] = [];
+  for (const f of [...arquivos(join(WEB, "src")), join(WEB, "index.html")]) {
+    const rel = relative(WEB, f).split("\\").join("/");
+    semComentarios(readFileSync(f, "utf8")).split("\n").forEach((l, i) => {
+      if (/Primeiros passos|[Qq]uestion[aá]rio|(^|[>"'`\s])(o|do|Fazer|Refazer|fazer|refazer) checkup\b|checkup inicial/i.test(l)) achados.push(`${rel}:${i + 1}: ${l.trim().slice(0, 120)}`);
+    });
+  }
+  assert.deepEqual(achados, [], `troque por "Perfil de treino":\n${achados.join("\n")}`);
+});
