@@ -1,6 +1,6 @@
 # 09 · Base científica do gerador
 
-De onde vêm as notas e as constantes que escolhem os exercícios. Começou na #74 (eficiência por subparte, popularidade, "Meu treino atual" e Trocar na mesma parte); a #65 (gerador por metodologia) usa o mesmo ranqueamento.
+De onde vêm as notas e as constantes que escolhem os exercícios. Começou na #74 (eficiência por subparte, popularidade, "Meu treino atual" e Trocar na mesma parte); a #65 (gerador determinístico, validador e IA revisora, seção "Gerador determinístico e validador") usa o mesmo ranqueamento.
 
 > **Ressalva obrigatória: EMG ≠ hipertrofia.** Quase toda comparação "qual exercício pega mais a parte X" mede a **ativação elétrica** (EMG de superfície), e a amplitude do EMG medida numa sessão **não é um preditor validado de crescimento muscular** ([Vigotsky et al. 2018, Front Physiol](https://pmc.ncbi.nlm.nih.gov/articles/PMC5758546/); [Vigotsky et al. 2022, Sports Med, PubMed 35006527](https://pubmed.ncbi.nlm.nih.gov/35006527/)). Um exemplo: no [Plotkin 2023 (PubMed 37877099)](https://pubmed.ncbi.nlm.nih.gov/37877099/), o hip thrust teve EMG de glúteo maior que o agachamento, mas o glúteo cresceu igual nos dois. Por isso a nota é um **ranking prático** para ordenar opções, não uma verdade. Onde há estudo de hipertrofia (espessura ou volume muscular), ele vale mais que o EMG.
 
@@ -91,3 +91,93 @@ Termos somados ao score de `candidates()` (`plan-day.ts`). Nada disso fura apare
 - **Por que priorizar o que a pessoa já faz:** exercícios escolhidos pela própria pessoa foram percebidos como mais agradáveis, com o mesmo esforço, e ela tende a escolher bem ([PubMed 40505704](https://pubmed.ncbi.nlm.nih.gov/40505704/)). Teste: com o treino atual cadastrado e a academia permitindo, ≥ 70% dos exercícios da semana vêm dele.
 - **Trocar** (`alternativas`): só lista a **mesma subparte principal**, nesta ordem: o que a pessoa já faz, eficiência naquela parte, aparelho livre (academia cheia) e ordem do catálogo. "Trocar por outra parte do músculo" mostra o resto do grupo grande com o aviso de que a semana repõe a parte que sair.
 - **Sem cadastro, nada muda:** o "Meu treino atual" é opcional e não entra em `faltaParaGerar` nem em `validarParaGerar`.
+
+## Gerador determinístico e validador (#65)
+
+O treino tem que sair **válido sem IA e sem gasto**. Em `packages/core/src/gerador.ts` há três peças separadas, todas puras e determinísticas:
+1. `faixasSemana(perfil)`: a régua. Define os dias, a divisão, o alvo e a faixa de séries de cada músculo só a partir das entradas (perfil, sexo, prioridades, aparelhos ou academia, dias, minutos e dores).
+2. `gerarSemana(perfil)`: monta a semana dentro da régua. Nunca devolve uma semana inválida: o teste de propriedade roda 600 perfis aleatórios com seed fixa e todos passam no validador.
+3. `validarSemana(semana, perfil)`: confere qualquer semana, seja do gerador, da IA ou editada, e lista as violações com código (`frequencia`, `volume_min`, `volume_max`, `tempo`, `ordem`, `padrao`, `dor`, `aparelho`, `catalogo`, `fora`, `reps`, `descanso`, `series`, `dia`, `repetido`, `evitar`).
+
+Cada constante do código tem um comentário que aponta para a seção abaixo, e um teste confere se a seção existe. **Os números são ponto de partida, não uma prescrição:** os check-ins semanais ajustam o volume (`adjustVolume`).
+
+### Volume semanal
+
+- **Alvo:** `weeklyTargets` (base do músculo + nível + 4 séries nas prioridades). Fica entre 4 e 20 séries por semana, com teto `VOLUME_TETO` de 20 para homem e 22 para mulher.
+- **Base:** há uma relação dose-resposta entre séries semanais e hipertrofia: 10 ou mais séries por músculo por semana renderam mais que menos de 5 ([Schoenfeld, Ogborn & Krieger 2017, J Sports Sci, PubMed 27433992](https://pubmed.ncbi.nlm.nih.gov/27433992/)). A meta-regressão mais recente confirma o ganho com mais volume, mas com retorno decrescente ([Pelland et al., Sports Med, PubMed 41343037](https://pubmed.ncbi.nlm.nih.gov/41343037/)). O teto de cerca de 20 é prudência: acima disso, a evidência é fraca e a recuperação pesa.
+- **Músculo fora da semana:** só sai por falta de aparelho, por dor, por falta de variedade (há um único exercício e só dias seguidos) ou por tempo. Prioridade nunca sai por tempo. Para manter o que já foi ganho basta bem menos volume: cerca de 1/3 manteve a hipertrofia em jovens ([Bickel et al. 2011, Med Sci Sports Exerc, PubMed 21131862](https://pubmed.ncbi.nlm.nih.gov/21131862/)). Por isso, com pouco tempo, quem perde volume são os músculos que não são prioridade.
+- **Faixa aceita pelo validador:** de `min` a `max`, em que `max` é o alvo e `min` é o volume da determinística menos `FOLGA_IA`, nunca abaixo de 2.
+
+### Frequência
+
+- **`FREQ_MIN` = 2** sessões por músculo por semana. Treinar 2× por semana deu mais hipertrofia que 1× ([Schoenfeld, Ogborn & Krieger 2016, Sports Med, PubMed 27102172](https://pubmed.ncbi.nlm.nih.gov/27102172/)). Com o volume igualado, a frequência importa pouco ([Schoenfeld, Grgic & Krieger 2019, J Sports Sci, PubMed 30558493](https://pubmed.ncbi.nlm.nih.gov/30558493/)), mas 2× é o jeito prático de distribuir 10 ou mais séries sem sessões longas demais.
+- **`DIAS_MIN` = 2:** com 1 dia não dá 2×, então a semana é montada com 2 dias e o app avisa.
+- **Divisão por número de dias:** é a mesma do app. Com 1 ou 2 dias, corpo inteiro. Com 3, superior, inferior e corpo inteiro. Com 4 ou mais, alterna superior e inferior, começando pelo grupo da 1ª prioridade. Variar entre dias do mesmo tipo fica para a #90.
+
+### Volume por sessão
+
+- **`SESSAO_MAX`:** até 6 séries de uma prioridade e até 4 dos demais músculos por sessão. **`SERIES_ITEM_MAX` = 6** séries do mesmo exercício.
+- **Critério do app**, com os mesmos tetos do `planDay`. O retorno decrescente do volume ([Pelland et al., PubMed 41343037](https://pubmed.ncbi.nlm.nih.gov/41343037/)) e a frequência de 2× (seção "Frequência") favorecem repartir as séries da semana em vez de acumular tudo numa sessão.
+
+### Repetições
+
+- **`REPS_FAIXA` = 5–30**, perto da falha. Cargas baixas e altas deram hipertrofia parecida quando as séries chegam perto da falha ([Schoenfeld et al. 2017, J Strength Cond Res, PubMed 28834797](https://pubmed.ncbi.nlm.nih.gov/28834797/)). A revisão do contínuo de repetições recomenda de 6 a 30 ou mais repetições para hipertrofia ([Schoenfeld et al. 2021, Sports, PubMed 33671664](https://pubmed.ncbi.nlm.nih.gov/33671664/)). O app aceita a partir de 5 para os compostos pesados.
+- **`ISOMETRICOS`** (prancha): contam segundos, não repetições. Ficam fora do gerador e da checagem de repetições.
+
+### RIR
+
+- **`RIR_PADRAO` = 1–2** repetições em reserva no treino normal. O "mais leve hoje" usa 3 (`LEVE_RIR`).
+- **Base:** a escala de RPE por repetições em reserva é válida para autorregular a carga ([Zourdos et al. 2016, J Strength Cond Res, PubMed 26049792](https://pubmed.ncbi.nlm.nih.gov/26049792/)). Ir até a falha não trouxe ganho claro de hipertrofia em relação a parar perto dela ([Refalo et al. 2023, Sports Med, PubMed 36334240](https://pubmed.ncbi.nlm.nih.gov/36334240/)). Parar com 1–2 em reserva dá quase todo o estímulo com menos fadiga.
+
+### Progressão
+
+- **Regra do app** (dupla progressão em `loads.ts` e `weekProgression`): primeiro sobem as repetições dentro da faixa; quando a pessoa chega ao topo, sobe a carga.
+- **Base:** progredir pela carga ou pelas repetições deu hipertrofia parecida ([Plotkin et al. 2022, PeerJ, PubMed 36199287](https://pubmed.ncbi.nlm.nih.gov/36199287/)).
+
+### Deload
+
+- **Regra do app** (`deloadCheck`, `BLOCK_LOAD_WEEKS` = 4 e `DELOAD_FACTOR` = 0,6 em `semana-volume.ts`): depois de um bloco de 4 semanas, ou se as cargas estagnarem, uma semana com cerca de 60% do volume.
+- **Base:** no consenso Delphi, o deload é uma redução planejada de volume ou intensidade a cada 4–8 semanas, por cerca de uma semana ([Bell et al. 2023, Sports Med Open, PubMed 37730925](https://pubmed.ncbi.nlm.nih.gov/37730925/)). Uma semana de pausa no meio de 9 semanas não mudou a hipertrofia, mas tirou um pouco de força ([Coleman et al. 2024, PeerJ, PubMed 38274324](https://pubmed.ncbi.nlm.nih.gov/38274324/)). Por isso o deload do app reduz o volume, mas não para o treino.
+
+### Descanso
+
+- **`DESCANSO_FAIXA` = 45–180 s.** O descanso de cada exercício vem do catálogo: 120–180 s nos compostos pesados e 45–75 s nos isolados.
+- **Base:** descansar 3 min deu mais hipertrofia que 1 min em homens treinados ([Schoenfeld et al. 2016, J Strength Cond Res, PubMed 26605807](https://pubmed.ncbi.nlm.nih.gov/26605807/)). Na revisão sistemática, intervalos curtos funcionaram bem em isolados e em quem tolera fadiga ([Grgic et al. 2017, Eur J Sport Sci, PubMed 28641044](https://pubmed.ncbi.nlm.nih.gov/28641044/)).
+
+### Tempo por série
+
+- **`MIN_POR_SERIE` = 3 min por série, já com o descanso**, o mesmo valor do `planDay`. O dia cabe nos minutos do perfil: séries × 3 ≤ minutos. **`MINUTOS_MIN` = 20**, o mesmo piso do perfil.
+- É critério do app, não vem de estudo: 40–60 s de execução + 1–2,5 min de descanso, arredondados para cima.
+
+### Ordem
+
+- **Compostos antes dos isolados no dia.** Composto é o exercício com padrão multiarticular (`PADROES_COMPOSTOS`: press_h, press_v, row, pull_v, squat, hinge), com fadiga 2 ou mais no catálogo, ou da lista `COMPOSTOS_EXTRA` (flexão e remada invertida). Depois disso, a ordem segue as prioridades.
+- **Base:** o exercício feito primeiro rende mais repetições e força ([Simão et al. 2012, Sports Med, PubMed 22292516](https://pubmed.ncbi.nlm.nih.gov/22292516/)). Para hipertrofia, a ordem pesou pouco ([Nunes et al. 2021, Eur J Sport Sci, PubMed 32077380](https://pubmed.ncbi.nlm.nih.gov/32077380/)). Por isso o composto, que pede mais carga, vai antes, e a prioridade vem logo depois.
+
+### Padrão em dias seguidos
+
+- **Sem repetir o mesmo padrão** (`padraoDe`: a família do catálogo ou, sem família, o próprio exercício) **em dias seguidos do calendário.** O gerador só põe 2 exercícios do mesmo músculo no dia se ele não treina no dia seguinte. Assim sempre sobra um padrão para amanhã. Família de outro músculo (como o supino fechado, que é press_h do peito) fica fora do gerador. Músculo com um único exercício possível treina em dias não seguidos ou sai da semana com o motivo "variedade".
+- **Base:** variar os exercícios dá hipertrofia igual ou maior e distribui o estresse nas articulações ([Kassiano et al. 2022, J Strength Cond Res, PubMed 35438660](https://pubmed.ncbi.nlm.nih.gov/35438660/)). A regra de dias seguidos é critério do app: evita repetir a mesma carga articular com menos de 48 h de intervalo.
+
+### Diferenças por sexo
+
+Decisão A do dono (#65): as faixas por sexo são **ponto de partida**, e os check-ins ajustam.
+- **Mulher:** `FATOR_VOLUME_F` = +15% de volume (dentro dos +10–20%), `MAIS_REPS_F` = +2 repetições nas duas pontas da faixa e `DESCANSO_ISOLADO_F` = 60–90 s nos isolados.
+- **Homem:** ponto de partida padrão. Sexo não informado usa o padrão.
+- **Hipertrofia relativa semelhante:** homens e mulheres ganharam massa muscular relativa parecida; os homens ganharam mais em valor absoluto e as mulheres mais força relativa nos membros superiores ([Roberts, Nuckols & Krieger 2020, J Strength Cond Res, PubMed 32218059](https://pubmed.ncbi.nlm.nih.gov/32218059/)).
+- **Mais resistência à fadiga e recuperação mais rápida entre séries:** em tarefas de intensidade submáxima, as mulheres costumam ser menos fatigáveis que os homens ([Hunter 2014, Acta Physiol, PubMed 24433272](https://pubmed.ncbi.nlm.nih.gov/24433272/)). Daí mais volume, mais repetições e descanso menor nos isolados. Nos compostos pesados o descanso continua o do catálogo.
+- **Ciclo menstrual:** a evidência para mudar o treino pela fase é fraca. O desempenho cai pouco e de forma inconsistente no começo da fase folicular ([McNulty et al. 2020, Sports Med, PubMed 32661839](https://pubmed.ncbi.nlm.nih.gov/32661839/)). O app ajusta **pelos sintomas** ("mais leve hoje"), não pela fase.
+- O +15% não tem estudo direto: é a tradução da decisão A em número, e os check-ins confirmam ou corrigem.
+
+### Saúde e encaminhamento
+
+Nada de diagnóstico. Os avisos só levam a um profissional (`saude` no perfil do gerador):
+- **Gestação e pós-parto:** a atividade física é recomendada, mas com orientação individual ([Mottola et al. 2018, Br J Sports Med, PubMed 30337460](https://pubmed.ncbi.nlm.nih.gov/30337460/)). O aviso cita o **assoalho pélvico**, que pede atenção com cargas altas e impacto ([Bø & Nygaard 2020, Sports Med, PubMed 31820378](https://pubmed.ncbi.nlm.nih.gov/31820378/)).
+- **RED-S (baixa energia):** cansaço persistente, menstruação que some e pouca comida para o volume de treino são sinais de alerta ([Mountjoy et al. 2023, Br J Sports Med, PubMed 37752011](https://pubmed.ncbi.nlm.nih.gov/37752011/)).
+- **Ferro:** a deficiência é comum em mulheres que treinam ([Pedlar et al. 2018, Eur J Sport Sci, PubMed 29280410](https://pubmed.ncbi.nlm.nih.gov/29280410/)). O app não dá suplemento: fadiga fora do comum vai para um profissional e exame.
+
+### IA revisora
+
+- **Opcional e barata.** Com o Chat conectado, um modelo pequeno (`TIER_REVISAO` = haiku) recebe `pedidoRevisaoIA` (as regras, as faixas e a semana compacta `{id, sets}`) e só pode **revisar**.
+- **Toda resposta passa pelo validador** em `aplicarRevisaoIA`. O código hidrata os IDs pelo catálogo e define repetições, descanso e ordem; se houver qualquer violação, fica a semana determinística. Sem IA (resposta nula), tudo funciona igual.
+- **`FOLGA_IA` = 20%:** a IA pode tirar até 20% das séries de um músculo em relação à determinística (por exemplo, para trocar por um exercício melhor), mas nunca passar do alvo, deixar de fazer 2× nem tirar músculo sem motivo. É critério do app.
