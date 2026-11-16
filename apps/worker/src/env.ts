@@ -24,6 +24,8 @@ export interface Env {
   OPENAI_API_KEY?: string;     // #66: OPCIONAL. Chave do dono (`wrangler secret put`) para o cérebro openai-api (só gerar/ajustar treino). Sem ela, desligado.
   OPENAI_MAX_USD?: string;     // #66: teto de gasto mensal em US$ (0 < teto ≤ 100), contado no D1 (cerebro_gasto). Sem ele, desligado.
   OPENAI_MODEL?: string;       // #66: opcional (padrão gpt-4.1-mini).
+  ANTHROPIC_API_KEY?: string;  // #80: OPCIONAL. Chave do dono para estimar porções com o Haiku (2º provedor, depois do Workers AI). Sem ela, desligado.
+  ANTHROPIC_MAX_USD?: string;  // #80: teto de gasto mensal em US$ (0 < teto ≤ 100), contado no D1 (cerebro_gasto). Sem ele, desligado.
   VAPID_SUBJECT?: string;      // opcional: mailto:… ou https://… exigido por alguns serviços de push (padrão: mailto:ciclo@example.com)
 }
 

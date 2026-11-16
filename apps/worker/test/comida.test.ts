@@ -287,7 +287,7 @@ test("base pessoal isolada: o ajuste da ana não muda a estimativa da bia; bia n
   assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM food_item").get().n, 0, "o item da bia foi apagado por ela antes");
 });
 
-test("ciclo_comida_dia traz as faltas e 2 sugestões da base da pessoa", async () => {
+test("ciclo_comida_dia traz as faltas e 2 sugestões com variedade", async () => {
   const env = makeEnv();
   const c = (m: string, p: string, body?: unknown) => call(env, m, p, { user: "ana", body });
   await ok(c("PUT", "/api/profile", { data: { diet: { mode: "leve", kcal: 2650, protein: 150, pace: "moderado" } } }));
@@ -297,7 +297,8 @@ test("ciclo_comida_dia traz as faltas e 2 sugestões da base da pessoa", async (
   const dia = JSON.parse((await mcp(env, tok, "ciclo_comida_dia", { date: D })).data.result.content[0].text);
   assert.deepEqual([dia.faltas.proteina, dia.faltas.kcal], [38, 600]);
   assert.equal(dia.faltas.sugestoes.length, 2);
-  assert.equal(dia.faltas.sugestoes[0], "2 ovos + 1 scoop de whey = 37 g");
+  // #80 o Chat recebe as sugestões com variedade (gira por dia), não sempre as mesmas da base
+  assert.match(dia.faltas.sugestoes[0], /^.+ \+ .+ = 3\d g$/);
   // unidade hostil gravada direto no banco (sem passar pela API): o registro seguinte não quebra nem trava,
   // e o texto da pessoa não chega ao Claude nas sugestões (só nomes da base comum)
   const uid = env.DB.raw.prepare("SELECT id FROM user WHERE email LIKE 'ana@%'").get().id;

@@ -5,6 +5,8 @@ import type { Alimento, Meal, Pace, ParteReconhecida, Unidade } from "@ciclo/cor
 import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, id, json, num, oneOf, readJson, str } from "./http.ts";
 import { getProfile, saveProfile } from "./db.ts";
+import { MEDIDAS_IDS, PRATO_BY_KEY } from "@ciclo/core/porcoes";
+import { MAX_PORCOES_PESSOAIS, porcoesPessoais, salvarPorcao } from "./porcao-ia.ts";
 
 export type Handler = (req: Request, env: Env, p: Record<string, string>, u: AuthUser) => Promise<Response>;
 export const MAX_AUDIO = 4 * 1024 * 1024;
@@ -163,6 +165,28 @@ export function registerComida(on: (method: string, path: string, h: Handler) =>
   on("DELETE", "/api/food-items/:key", async (_req, env, p, u) => {
     const r = await env.DB.prepare("DELETE FROM food_item WHERE user_id = ?1 AND key = ?2").bind(u.id, p.key).run();
     if (!r.meta.changes) throw new HttpError(404, "alimento não encontrado");
+    return json({ ok: true });
+  });
+
+  // ---- #80 porção pessoal: "meu prato de arroz é uns 200 g" muda a próxima estimativa, sem IA ----
+  const alimentoIn = (v: unknown) => {
+    const k = str(v, "alimento", 40)!;
+    if (!ALIMENTO_BY_KEY[k] && !PRATO_BY_KEY[k]) throw new HttpError(400, "alimento: use um da base");
+    return k;
+  };
+  on("GET", "/api/porcao-pessoal", async (_req, env, _p, u) => json({ porcoes: await porcoesPessoais(env, u.id) }));
+  on("PUT", "/api/porcao-pessoal", async (req, env, _p, u) => {
+    const b = await readJson<Record<string, unknown>>(req, 2 * 1024);
+    const alimento = alimentoIn(b.alimento), medida = oneOf(b.medida, "medida", MEDIDAS_IDS), gramas = num(b.gramas, "gramas", 1, 2000)!;
+    const r = await salvarPorcao(env, u.id, { alimento, medida, gramas });
+    if (!r.meta.changes) throw new HttpError(409, `até ${MAX_PORCOES_PESSOAIS} porções pessoais`);
+    return json({ ok: true });
+  });
+  on("DELETE", "/api/porcao-pessoal/:alimento/:medida", async (_req, env, p, u) => {
+    let m = "";
+    try { m = decodeURIComponent(p.medida); } catch { throw new HttpError(400, "medida inválida"); }
+    const r = await env.DB.prepare("DELETE FROM porcao_pessoal WHERE user_id = ?1 AND alimento = ?2 AND medida = ?3").bind(u.id, alimentoIn(p.alimento), oneOf(m, "medida", MEDIDAS_IDS)).run();
+    if (!r.meta.changes) throw new HttpError(404, "porção não encontrada");
     return json({ ok: true });
   });
 

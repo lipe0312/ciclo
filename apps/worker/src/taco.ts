@@ -20,6 +20,14 @@ export function searchTaco(q: string, limit = 3): TacoItem[] {
     .filter((x) => x.score > 0).sort((a, b) => b.score - a.score).slice(0, limit).map((x) => x.it);
 }
 
+/** #80 Busca com o índice (id estável "taco:N" para o validador da IA de porção). */
+export function searchTacoIdx(q: string, limit = 3): (TacoItem & { idx: number })[] {
+  const tokens = [...new Set(norm(q).split(/[^a-z]+/).filter((t) => t.length >= 3 && !STOP.has(t) && !/^(g|gr|ml|kg)$/.test(t)))].slice(0, 8);
+  if (!tokens.length) return [];
+  return ITEMS.map((it, idx) => ({ it, idx, score: tokens.reduce((s, t, k) => s + (has(NORMED[idx], t) ? (k === 0 ? 3 : 2) : 0), 0) }))
+    .filter((x) => x.score > 0).sort((a, b) => b.score - a.score).slice(0, limit).map((x) => ({ ...x.it, idx: x.idx }));
+}
+
 /** Dicas compactas para o Claude: uma linha por trecho do registro (máx. 8). */
 export function tacoHints(text: string): string[] {
   const out: string[] = [];

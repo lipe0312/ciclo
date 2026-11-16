@@ -1,14 +1,18 @@
 // Registrar o que comeu (voz ou texto), registro rápido (igual ao típico, refeições salvas) e o histórico do dia com editar/apagar.
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { MEALS, MEAL_NM, guessMeal } from "@ciclo/core";
+import { faltaHojeVariada } from "@ciclo/core/alimentos-variedade";
 import type { Meal } from "@ciclo/core";
+import { TETO, type ItemPorcao, type PorcaoPessoal } from "@ciclo/core/porcoes";
 import { S, calc, commit, today } from "../../lib/store/index.ts";
-import { DIET, addFood, deleteFood, deleteTemplate, editFood, estimarTexto, faltaDoDia, foodRows, foodTotals, hourNow, saveTemplate } from "../../lib/store/regras.ts";
+import { DIET, FOODBASE, addFood, deleteFood, deleteTemplate, editFood, estimarTexto, foodRows, foodTotals, hourNow, saveTemplate } from "../../lib/store/regras.ts";
+import { SERVER, api, send } from "../../lib/api/index.ts";
 import type { FoodRow } from "../../lib/store/regras.ts";
 import { Card, Chip, Icon, toast } from "../../lib/ui/index.tsx";
 import { BarraSimples } from "../../lib/grafico/index.tsx";
 import { Mic } from "../../lib/voz/index.tsx";
 import { SheetHead, closeSheet, openSheet } from "../../lib/folha/index.tsx";
+import { Seg } from "../../lib/ui/index.tsx";
 import { fmt, longDate } from "../../lib/util.ts";
 
 const CONF: Record<string, string> = { alta: "alta", media: "média", baixa: "baixa" };
@@ -75,17 +79,112 @@ function abrirSalvar(text: string, meal: Meal | null) {
   openSheet(view);
 }
 
+// ---------- #80 porções faladas: "≈ estimativa média", faixa, suposições e Ajustar ----------
+// O dicionário de porções carrega só quando a tela de Comida abre (fora do bundle inicial).
+type Porc = typeof import("@ciclo/core/porcoes");
+let PORC: Porc | null = null, carregando: Promise<void> | null = null;
+const PESSOAIS: PorcaoPessoal[] = [];
+function carregarPorcoes(onPronto: () => void) {
+  if (PORC) return;
+  carregando ??= Promise.all([
+    import("@ciclo/core/porcoes").then((m) => { PORC = m; }),
+    SERVER ? api<{ porcoes: PorcaoPessoal[] }>("GET", "/api/porcao-pessoal").then((r) => { PESSOAIS.splice(0, PESSOAIS.length, ...(r?.porcoes ?? [])); }).catch(() => {}) : Promise.resolve(),
+  ]).then(() => {});
+  carregando.then(onPronto).catch(() => {});
+}
+/** Ajuste da pessoa num item: fator de porção (½ · 1 · 1½ · 2) ou gramas. */
+type Ajuste = { fator?: number; g?: number };
+const chaveItem = (i: ItemPorcao, k: number) => `${k}:${i.key ?? i.nome}`;
+function aplicar(i: ItemPorcao, a?: Ajuste): ItemPorcao {
+  if (!a || !i.g) return i;
+  const g = a.g ?? Math.round(i.g * (a.fator ?? 1)), f = g / i.g;
+  const kcal = Math.round(i.kcal * f), prot = Math.round(i.prot * f * 10) / 10;
+  // o ajuste da pessoa vale, mas quantidade fora do plausível continua pedindo conferência (mesmo teto da prévia)
+  return { ...i, g, kcal, prot, conf: Math.max(i.conf, 0.9), origem: "pessoal", conferir: prot > TETO.protItem || kcal > TETO.kcalItem };
+}
+const FRACOES: [number, string][] = [[0.5, "½"], [1, "1"], [1.5, "1½"], [2, "2"]];
+const fmtFaixa = (f: [number, number] | null) => (f ? `${fmt(f[0])}–${fmt(f[1])} g` : "");
+
+/** Folha "Ajustar": porção (½ · 1 · 1½ · 2) ou gramas. Vira a porção pessoal: a próxima estimativa já vem assim. */
+function abrirAjuste(i: ItemPorcao, atual: Ajuste | undefined, salvar: (a: Ajuste | undefined) => void) {
+  const d = { fator: atual?.fator ?? (atual?.g ? null : 1) as number | null, g: atual?.g ? String(atual.g) : "" };
+  const curto = i.texto.replace(/^[\d,]+\s+/, "");
+  const aplicarAjuste = () => {
+    const g = d.g.trim() ? Number(d.g.replace(",", ".")) : null;
+    if (g != null && !(g >= 1 && g <= 2000)) return toast("Gramas: de 1 a 2.000");
+    const a: Ajuste | undefined = g != null ? { g: Math.round(g) } : d.fator && d.fator !== 1 ? { fator: d.fator } : undefined;
+    salvar(a);
+    // ensina: a porção por unidade/medida vira a porção pessoal (o texto não sai daqui, só o alimento e a medida)
+    const final = aplicar(i, a).g;
+    let msg = a ? "Ajustado · a próxima vem assim" : "Mantido";
+    if (a && i.key && i.medida !== "g" && final && i.qtd > 0) {
+      const p: PorcaoPessoal = { alimento: i.key, medida: i.medida, gramas: Math.round(final / i.qtd) };
+      const k = PESSOAIS.findIndex((x) => x.alimento === p.alimento && x.medida === p.medida);
+      if (k >= 0) PESSOAIS[k] = p; else PESSOAIS.unshift(p);
+      send("PUT", "/api/porcao-pessoal", p).catch(() => {});
+      msg = `Ajustado · na próxima, 1 ${i.medida} de ${curto} ≈ ${fmt(p.gramas)} g`;
+    }
+    closeSheet(); toast(msg);
+  };
+  const view = () => <>
+    <SheetHead kicker="≈ estimativa média" title={`Ajustar: ${curto}`} />
+    <p class="small sub num" style="margin:8px 0">Estimei ≈ {fmt(i.g ?? 0)} g{i.faixa ? `, provavelmente entre ${fmt(i.faixa[0])} e ${fmt(i.faixa[1])} g` : ""}. Ajustar deixa as próximas mais certas.</p>
+    <span class="f" style="display:block">Porção</span>
+    <Seg opts={FRACOES} value={d.fator} onPick={(v) => { d.fator = v; d.g = ""; openSheet(view); }} label="Quantas porções" />
+    <label class="f" for="aj-g" style="margin-top:12px;display:block">Ou em gramas</label>
+    <input id="aj-g" class="input num" inputMode="numeric" placeholder={String(i.g ?? "")} value={d.g} onInput={(e) => { d.g = e.currentTarget.value; if (d.g.trim()) d.fator = null; }} />
+    <div class="row wrapx" style="margin-top:14px;gap:8px">
+      <button type="button" class="btn pri" onClick={aplicarAjuste}><Icon id="check" />Aplicar</button>
+      <button type="button" class="btn" onClick={closeSheet}>Cancelar</button>
+    </div>
+  </>;
+  openSheet(view);
+}
+
+/** Itens estimados enquanto a pessoa fala: selo "≈ estimativa média", faixa, ⓘ suposições e Ajustar (destaque na baixa confiança). */
+function Porcoes({ itens, nao, aj, setAj }: { itens: ItemPorcao[]; nao: string[]; aj: Record<string, Ajuste>; setAj: (k: string, a: Ajuste | undefined) => void }) {
+  const [aberto, setAberto] = useState<string | null>(null);
+  const finais = itens.map((i, k) => aplicar(i, aj[chaveItem(i, k)]));
+  const kcal = finais.reduce((s, i) => s + i.kcal, 0), prot = Math.round(finais.reduce((s, i) => s + i.prot, 0));
+  return <div style="margin-top:8px" aria-live="polite">
+    <p class="small num" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">~{fmt(kcal)} kcal · {fmt(prot)} g de proteína <span class="badge">≈ estimativa média</span></p>
+    <ul style="list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px">{itens.map((i0, k) => {
+      const ck = chaveItem(i0, k), i = finais[k], baixa = i.conf < 0.6 || i.conferir, sup = [...i0.suposicoes, ...(aj[ck] ? ["ajustado por você"] : [])];
+      return <li key={ck} style={`border:1px solid ${baixa ? "var(--warn)" : "var(--borda)"};border-radius:var(--r-btn);padding:6px 8px 6px 12px`}>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="flex:1 1 140px;min-width:0;overflow-wrap:anywhere"><b class="small">{i0.texto}</b><br />
+            <span class="tiny sub num">≈ {fmt(i.g ?? 0)} g{i.faixa && !aj[ck] ? ` (${fmtFaixa(i.faixa)})` : ""} · ~{fmt(i.kcal)} kcal · {fmt(i.prot)} g prot</span>
+            {i.conferir && <><br /><span class="badge warn">⚠ conferir a quantidade</span></>}</span>
+          {sup.length > 0 && <button type="button" class="iconbtn" aria-label={`Suposições sobre ${i0.texto}`} aria-expanded={aberto === ck} onClick={() => setAberto(aberto === ck ? null : ck)}><Icon id="info" /></button>}
+          <button type="button" class={`btn sm${baixa ? "" : " ghost"}`} onClick={() => abrirAjuste(i0, aj[ck], (a) => setAj(ck, a))}>Ajustar</button>
+        </div>
+        {aberto === ck && <ul class="tiny sub" style="margin:4px 0 2px;padding-left:16px">{sup.map((x) => <li key={x}>{x}</li>)}</ul>}
+      </li>;
+    })}</ul>
+    {nao.length > 0 && <p class="tiny sub" style="margin-top:6px">Não reconheci: {nao.join(", ")}. O Chat estima na conferência.</p>}
+    <p class="tiny sub" style="margin-top:6px">É uma estimativa média, não uma medida. Ajustar deixa as próximas mais certas.</p>
+  </div>;
+}
+
 export function Registro({ dia }: { dia: string }) {
   const [status, setStatus] = useState("");
   const [meal, setMeal] = useState<Meal | null>(null);
   const [gerenciar, setGerenciar] = useState(false);
+  const [, pronto] = useState(0);
+  const [aj, setAjs] = useState<Record<string, Ajuste>>({});
+  useEffect(() => carregarPorcoes(() => pronto((x) => x + 1)), []);
   const draft = S.ui.foodDraft ?? "";
   const est = estimarTexto(draft), parts = est.partes;
   const kcal = est.kcal, prot = Math.round(est.prot);
   const parteTxt = (p: (typeof parts)[number]) => p.texto + (p.fonte === "pessoal" ? " (sua base)" : "");
+  const porc = PORC && draft.trim() ? PORC.estimarItens(draft, FOODBASE.itens, PESSOAIS) : null;
+  const setAj = (k: string, a: Ajuste | undefined) => setAjs((o) => { const n = { ...o }; if (a) n[k] = a; else delete n[k]; return n; });
   const registrar = () => {
     const v = draft.trim(); if (!v) return toast("Fale ou escreva o que comeu");
-    addFood(v, meal ?? guessMeal(v, hourNow()), undefined, dia); S.ui.foodDraft = ""; setMeal(null); setStatus(""); commit(); toast("Registrado · o Chat confere");
+    // com o dicionário carregado, sobe o que a tela mostrou (já com os ajustes); sem ele, a estimativa antiga
+    const fin = porc?.itens.length ? porc.itens.map((i, k) => aplicar(i, aj[chaveItem(i, k)])) : null;
+    const over = fin ? { kcal: Math.round(fin.reduce((s, i) => s + i.kcal, 0)), prot: Math.round(fin.reduce((s, i) => s + i.prot, 0) * 10) / 10 } : undefined;
+    addFood(v, meal ?? guessMeal(v, hourNow()), over, dia); S.ui.foodDraft = ""; setMeal(null); setStatus(""); setAjs({}); commit(); toast("Registrado · o Chat confere");
   };
   const typical = (S.profile.diet.typical || "").trim();
   const igualAoTipico = () => {
@@ -99,9 +198,10 @@ export function Registro({ dia }: { dia: string }) {
     <div class="row start" style="gap:12px">
       <Mic grande value={draft} onChange={(v) => { S.ui.foodDraft = v; commit(); }} label="Gravar o que comeu" onStatus={setStatus} />
       <textarea class="input" style="flex:1;min-width:0" rows={4} aria-label="O que você comeu" placeholder="café: 3 ovos e 2 pães · almoço: arroz, feijão e frango" value={draft}
-        onInput={(e) => { S.ui.foodDraft = e.currentTarget.value; }} onBlur={() => commit()} />
+        onInput={(e) => { S.ui.foodDraft = e.currentTarget.value; pronto((x) => x + 1); }} onBlur={() => commit()} />
     </div>
-    <p class="small est-line num" style="margin-top:8px" aria-live="polite">{draft.trim() ? (kcal ? <>~{fmt(kcal)} kcal · {fmt(prot)} g de proteína <span class="sub">({parts.map(parteTxt).join(" · ")})</span></> : <span class="sub">Não reconheci os alimentos; o Chat estima na conferência.</span>) : <span class="sub">A estimativa aparece aqui enquanto você fala.</span>}</p>
+    {porc && porc.itens.length ? <Porcoes itens={porc.itens} nao={porc.naoReconhecidos} aj={aj} setAj={setAj} />
+      : <p class="small est-line num" style="margin-top:8px" aria-live="polite">{draft.trim() ? (kcal ? <>~{fmt(kcal)} kcal · {fmt(prot)} g de proteína <span class="sub">({parts.map(parteTxt).join(" · ")})</span></> : <span class="sub">Não reconheci os alimentos; o Chat estima na conferência.</span>) : <span class="sub">A estimativa aparece aqui enquanto você fala.</span>}</p>}
     <span class="f" style="margin-top:10px;display:block">Refeição</span>
     <MealChips value={meal} onPick={setMeal} label="Refeição do registro" />
     <div class="row wrapx" style="margin-top:12px;gap:8px">
@@ -121,7 +221,10 @@ export function Registro({ dia }: { dia: string }) {
 
 /** "Faltam X g de proteína e ~Y kcal" e até 2 sugestões dos alimentos que a pessoa já come (core: faltaHoje). */
 function Falta({ dia }: { dia: string }) {
-  const f = faltaDoDia(dia), d = calc().diet, t = foodTotals(dia);
+  const d = calc().diet, t = foodTotals(dia);
+  // #80 variedade: a fila de fontes gira pelo dia e o que já foi comido hoje vai para o fim
+  const comidos = [...new Set(foodRows().filter((x) => x.date === dia).flatMap((x) => estimarTexto(x.text).partes.flatMap((p) => (p.key ? [p.key] : []))))];
+  const f = faltaHojeVariada({ kcal: d.kcal, protein: d.protein }, t, FOODBASE.itens, { dia, comidos });
   if (!f.sugestoes.length) return <p class="small" style="margin-top:10px"><b>Proteína batida{f.kcal ? `; faltam ~${fmt(f.kcal)} kcal para a meta` : ""}.</b> O resto é livre.</p>;
   return <div style="margin-top:10px">
     <p class="small num"><b>Faltam {fmt(f.prot)} g de proteína{f.kcal ? <> e ~{fmt(f.kcal)} kcal</> : ""}.</b> <span class="sub">({fmt(t.prot)} de {fmt(d.protein)} g · {fmt(t.kcal)} de {fmt(d.kcal)} kcal)</span></p>

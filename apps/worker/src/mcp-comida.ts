@@ -7,6 +7,10 @@ import {
 } from "@ciclo/core";
 import type { ComidaAprovacao, Existente, InterpretacaoComida, ItemInformado, Meal, ModoRegistro, Mudanca, PlanoRefeicao } from "@ciclo/core";
 import type { Env } from "./env.ts";
+import { interpretarComIA } from "./porcao-ia.ts";
+import { temConferir } from "@ciclo/core/porcoes";
+// os itens da #80 levam `conferir` (fora do plausível); o tipo da #81 não declara o campo, mas ele segue no objeto
+const conferir = (i: InterpretacaoComida) => temConferir(i as unknown as Parameters<typeof temConferir>[0]);
 import { HttpError, date, id, num, oneOf, str } from "./http.ts";
 import { basePessoal } from "./comida.ts";
 import { confirmar, criarPrevia } from "./mcp-previa.ts";
@@ -176,10 +180,11 @@ async function registrar(a: Args, env: Env, uid: string) {
   const texto = dias ? null : str(a.texto, "texto", 2000)!;
   const [pref, base] = await Promise.all([aprovacaoDe(env, uid), basePessoal(env, uid)]);
   const modo = modoDe(a.modo) ?? "auto";
-  const interpretar = (t: string, data: string | null) => interpretarComida({ texto: t, hoje, hora: horaSP(), refeicao, data, base });
+  // #80 regra + porção pessoal + IA leve (validada) por trás da mesma forma da #81
+  const interpretar = (t: string, data: string | null) => interpretarComIA(env, uid, { texto: t, hoje, hora: horaSP(), refeicao, data, base });
 
   if (!dias || dias.length === 1) {
-    let interp = dias ? interpretar(dias[0].texto, dias[0].data) : interpretar(texto!, d);
+    let interp: InterpretacaoComida = await (dias ? interpretar(dias[0].texto, dias[0].data) : interpretar(texto!, d));
     if (!dentroDoLimite(interp.data, hoje)) throw new HttpError(400, LIMITE_MSG);
     const fora = extras.find((x) => x.data && x.data !== interp.data);
     if (fora) throw new HttpError(400, `itens: "${fora.nome}" é de ${fora.data}, mas o registro é de ${interp.data}`);
@@ -187,7 +192,8 @@ async function registrar(a: Args, env: Env, uid: string) {
     if (sup.length || duv.length) interp = { ...interp, suposicoes: [...sup, ...interp.suposicoes], duvidas: [...duv, ...interp.duvidas].slice(0, MAX_DUVIDAS) };
     const dia = await doDia(env, uid, interp.data);
     const plano = planejarRegistro(interp, existentes(dia), modo);
-    if (a.simular === true || precisaAprovacao(pref, interp, plano.precisaEscolha)) {
+    // #80 teto de sanidade: "⚠ conferir" nunca grava sem confirmação, qualquer que seja a preferência
+    if (a.simular === true || precisaAprovacao(pref, interp, plano.precisaEscolha) || conferir(interp)) {
       const token = await criarPrevia(env, uid, "comida_registrar", { interp, modo } satisfies PayloadRegistro);
       return { ...previaRegistro(interp, plano.refeicoes, dia, token), aviso: AVISO_DADO };
     }
@@ -201,13 +207,13 @@ async function registrar(a: Args, env: Env, uid: string) {
   if (outro) throw new HttpError(400, `itens: "${outro.nome}" é de ${outro.data}, que não está entre os dias da mensagem`);
   const p: PayloadDias = {
     modo, rotulos: dias.map((x) => x.rotulo),
-    dias: dias.map((x) => aplicarItensInformados(interpretar(x.texto, x.data), extras.filter((y) => y.data === x.data))),
+    dias: await Promise.all(dias.map(async (x) => aplicarItensInformados(await interpretar(x.texto, x.data), extras.filter((y) => y.data === x.data)))),
   };
   const planos = await planosDosDias(env, uid, p, null);
   const duvidas = [...duv, ...p.dias.flatMap((i) => i.duvidas)].slice(0, MAX_DUVIDAS);
   const pior = p.dias.some((i) => i.confianca === "baixa") ? "baixa" as const : "media" as const;
   const escolher = planos.some((x) => x.plano.precisaEscolha);
-  if (a.simular === true || precisaAprovacao(pref, { duvidas, confianca: pior }, escolher)) {
+  if (a.simular === true || precisaAprovacao(pref, { duvidas, confianca: pior }, escolher) || p.dias.some(conferir)) {
     const token = await criarPrevia(env, uid, "comida_registrar", p);
     return {
       previa: true, token, expiraEmMin: 15, aviso: AVISO_DADO,

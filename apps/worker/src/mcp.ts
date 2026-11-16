@@ -1,7 +1,8 @@
 // Servidor MCP remoto mínimo (Streamable HTTP, respostas JSON, sem estado) — zero dependências.
 // Usado como "connector personalizado" no claude.ai / Desktop / app do celular e, via apps/mcp-local, no Claude Code.
 // Princípio de custo: ferramentas devolvem JSON COMPACTO; o Claude manda só IDs/números e o core valida e hidrata.
-import { EQUIPMENT, EXERCISES, MCP_CONTRATO, MUSCLES, MCP_ORCAMENTO_BYTES, MEALS, MUSCLE_IDS, PAIN_REGIONS, contextSummary, faltaHoje, textoSugestaoBase, diaryCoverage, hydrate, lastDays, paginar, planDay, podeEscrever, readiness, tamanhoJson, validarSchema, validateItems } from "@ciclo/core";
+import { faltaHojeVariada } from "@ciclo/core/alimentos-variedade";
+import { EQUIPMENT, EXERCISES, MCP_CONTRATO, MUSCLES, MCP_ORCAMENTO_BYTES, MEALS, MUSCLE_IDS, PAIN_REGIONS, contextSummary, textoSugestaoBase, diaryCoverage, hydrate, lastDays, paginar, planDay, podeEscrever, readiness, tamanhoJson, validarSchema, validateItems } from "@ciclo/core";
 import type { Schema } from "@ciclo/core";
 import type { CompactItem, Mode, MuscleId } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
@@ -157,7 +158,7 @@ export const TOOLS: Tool[] = [
       const diet = (profile?.diet ?? {}) as { kcal?: number; protein?: number };
       const list = rows.results.map(foodOut);
       const total = { kcal: Math.round(list.reduce((s, r) => s + (r.kcal ?? 0), 0)), proteina: Math.round(list.reduce((s, r) => s + (r.prot ?? 0), 0)) };
-      const falta = typeof diet.kcal === "number" && typeof diet.protein === "number" ? faltaHoje({ kcal: diet.kcal, protein: diet.protein }, { kcal: total.kcal, prot: total.proteina }, base) : null;
+      const falta = typeof diet.kcal === "number" && typeof diet.protein === "number" ? faltaHojeVariada({ kcal: diet.kcal, protein: diet.protein }, { kcal: total.kcal, prot: total.proteina }, base, { dia: d }) : null;
       return {
         date: d, metas: { kcal: diet.kcal ?? null, proteina: diet.protein ?? null }, total,
         faltas: falta && { proteina: falta.prot, kcal: falta.kcal, sugestoes: falta.sugestoes.map(textoSugestaoBase) },
