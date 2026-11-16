@@ -81,11 +81,11 @@ export function addPain(p: { region: string; intensity: number; kind?: string; c
 // ---------- comida (#28) ----------
 // A estimativa local é a do core (a mesma do servidor); o Claude confere com a TACO depois (fonte "claude").
 export const estimateFood = C.estimateFood;
-export interface FoodRow { id: string; date: string; text: string; kcal: number | null; prot: number | null; meal: C.Meal | null; source: "local" | "claude"; confidence: string | null }
+export interface FoodRow { id: string; date: string; text: string; kcal: number | null; prot: number | null; meal: C.Meal | null; source: "local" | "claude"; confidence: string | null; /** #81 entrou pela IA conectada */ via?: "mcp" | null; createdAt?: number }
 export interface Template { id: string; name: string; meal: C.Meal | null; text: string; kcal: number | null; prot: number | null }
 export interface DietHist { date: string; before: number; after: number; adjust: number; tdee: number | null; trendKgWeek: number | null; code: string; reason: string }
 /** Estado da tela Comida que não é do perfil: refeições salvas, histórico das metas e pesos (tendência). */
-export const DIET = { templates: [] as Template[], history: [] as DietHist[], weights: [] as C.WeightPoint[], loaded: false, /** por que a meta não mudou (sem dados, revisão recente) */ note: "" };
+export const DIET = { templates: [] as Template[], history: [] as DietHist[], weights: [] as C.WeightPoint[], loaded: false, /** por que a meta não mudou (sem dados, revisão recente) */ note: "", /** #81 Comida → Ajustes: aprovação da comida dita na conversa */ aprovacao: "sempre" as C.ComidaAprovacao };
 
 export const foodRows = (): FoodRow[] => S.food as FoodRow[];
 export const foodTotals = (d: string) => foodRows().filter((f) => f.date === d).reduce((a, f) => ({ kcal: a.kcal + (f.kcal ?? 0), prot: a.prot + (f.prot ?? 0) }), { kcal: 0, prot: 0 });
@@ -136,7 +136,7 @@ export function foodPanel() {
 }
 export const hourNow = () => Number(new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", hourCycle: "h23" }).format(new Date()));
 
-const fromServer = (e: any): FoodRow => ({ id: e.id, date: e.date, text: e.text, kcal: e.kcal, prot: e.prot, meal: e.meal, source: e.source, confidence: e.confidence });
+const fromServer = (e: any): FoodRow => ({ id: e.id, date: e.date, text: e.text, kcal: e.kcal, prot: e.prot, meal: e.meal, source: e.source, confidence: e.confidence, via: e.via ?? null, createdAt: e.createdAt });
 export async function loadFood() {
   if (!SERVER) return seedDemoComida();
   try {
@@ -149,8 +149,8 @@ let adaptTried = false;
 export async function loadDiet() {
   if (!SERVER) return demoDiet();
   try {
-    const r = await api<{ templates: any[]; history: DietHist[]; weights: C.WeightPoint[] }>("GET", `/api/diet?date=${today}`);
-    DIET.templates = r.templates; DIET.history = r.history; DIET.weights = r.weights; DIET.loaded = true;
+    const r = await api<{ templates: any[]; history: DietHist[]; weights: C.WeightPoint[]; aprovacao?: C.ComidaAprovacao }>("GET", `/api/diet?date=${today}`);
+    DIET.templates = r.templates; DIET.history = r.history; DIET.weights = r.weights; DIET.loaded = true; DIET.aprovacao = r.aprovacao ?? "sempre";
     if (!adaptTried) { // o servidor só revisa 1× a cada 7 dias; abrir a tela várias vezes não muda nada
       adaptTried = true;
       const a = await api<{ changed: boolean; kcal: number; code: string; reason: string }>("POST", "/api/diet/adapt", { date: today });

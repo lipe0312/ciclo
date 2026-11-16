@@ -7,6 +7,7 @@ import { DiaCard, Registro } from "./registro.tsx";
 import { Painel } from "./painel.tsx";
 import { Metas } from "./metas.tsx";
 import { BaseAlimentos } from "./base.tsx";
+import { Ajustes } from "./ajustes.tsx";
 
 export default function Comida() {
   const [dia, setDia] = useState(today);
@@ -14,6 +15,6 @@ export default function Comida() {
   return <><p class="kicker">Dieta flexível · modo {S.profile.diet.mode}</p><h1 style="margin-bottom:14px">Comida</h1>
     <div class="grid g2" style="align-items:start">
       <div class="grid"><Registro dia={dia} /><DiaCard dia={dia} setDia={setDia} /><BaseAlimentos /></div>
-      <div class="grid"><Painel /><Metas /></div>
+      <div class="grid"><Painel /><Metas /><Ajustes /></div>
     </div></>;
 }
