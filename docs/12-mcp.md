@@ -98,9 +98,9 @@ No app, toda entrada vinda da IA mostra o selo **"via Chat, HH:MM · ≈ estimat
 ## Conectar
 - **claude.ai / app Claude / Desktop:** Configurações → Conectores → Adicionar conector personalizado → nome Ciclo, URL `https://<seu-ciclo>/mcp` → abre a tela do Ciclo → Face ID → Permitir (escolha ler ou ler e escrever).
 - **Claude Code:** `claude mcp add --transport http ciclo https://<seu-ciclo>/mcp` (faz o OAuth no navegador).
-- **ChatGPT:** Configurações → Conectores (modo desenvolvedor) → criar com a URL `/mcp` e OAuth. O callback do ChatGPT precisa estar em `OAUTH_REDIRECT_HOSTS` (o padrão aceita só o do Claude).
+- **ChatGPT:** Configurações → Conectores (modo desenvolvedor) → criar com a URL `/mcp` e OAuth. O callback do ChatGPT (`https://chatgpt.com/connector_platform_oauth_redirect`, e o prefixo `https://chatgpt.com/connector/oauth/`) já está em `OAUTH_REDIRECT_HOSTS` (`wrangler.jsonc`).
 - **Gemini CLI:** em `~/.gemini/settings.json`, `"mcpServers": { "ciclo": { "httpUrl": "https://<seu-ciclo>/mcp" } }` e `/mcp auth ciclo` (callback loopback, aceito).
-- **Cursor / VS Code:** adicionar servidor MCP HTTP com a URL `/mcp`; o OAuth abre no navegador (callback loopback ou o do editor, que precisa estar em `OAUTH_REDIRECT_HOSTS`).
+- **Cursor / VS Code:** adicionar servidor MCP HTTP com a URL `/mcp`; o OAuth abre no navegador (callback loopback `http://localhost:8787/callback`, sempre aceito; o do Cursor web/agents `https://www.cursor.com/agents/mcp/oauth/callback` está em `OAUTH_REDIRECT_HOSTS`). O Cursor desktop também manda `cursor://…` no registro, que hoje é recusado: ver #95.
 
 ### Teste local (sem túnel)
 - `npm run mcp:local` sobe o cenário `semi` (conta fictícia) na porta 8811 e imprime `claude mcp add --transport http ciclo-local http://localhost:8811/mcp --header "Authorization: Bearer …"`.
