@@ -42,3 +42,4 @@ export * from "./mcp.ts";
 export * from "./comida-conversa.ts";
 export * from "./comida-correcao.ts";
 export * from "./gerador.ts";
+export * from "./comeco.ts";

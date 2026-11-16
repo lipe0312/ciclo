@@ -12,10 +12,11 @@ import { Mic } from "../../lib/voz/index.tsx";
 import { DOW, DOW_NM, fmt, getPath, setPath } from "../../lib/util.ts";
 import { CATS } from "../claude/caixa.tsx";
 import TreinoAtual from "./treino-atual.tsx";
+import { classePulso, pararPulso } from "../../lib/pulso/index.ts";
 
 const pr = () => S.profile;
-const pset = (k: string, v: unknown) => { setPath(S.profile, k, v); profileChanged(); commit(); };
-const ptoggle = (k: string, v: string) => { const arr: string[] = getPath(S.profile, k); const i = arr.indexOf(v); i >= 0 ? arr.splice(i, 1) : arr.push(v); profileChanged(); commit(); };
+const pset = (k: string, v: unknown) => { pararPulso(); setPath(S.profile, k, v); profileChanged(); commit(); };
+const ptoggle = (k: string, v: string) => { pararPulso(); const arr: string[] = getPath(S.profile, k); const i = arr.indexOf(v); i >= 0 ? arr.splice(i, 1) : arr.push(v); profileChanged(); commit(); };
 const bounds = (k: string): [number, number] => LIM[k] ?? (k.endsWith(".kg") ? [0, 600] : k.endsWith(".reps") ? [1, 30] : [-1e9, 1e9]);
 const step = (k: string, d: number) => {
   const [lo, hi] = bounds(k), cur = getPath(S.profile, k);
@@ -137,7 +138,7 @@ export default function Perfil({ route }: { route: Route }) {
   if (bloco && Tela) {
     const nx = cp.next && cp.next.block !== bloco.id ? BLOCOS.find((b) => b.id === cp.next!.block) : null;
     return <>{bloco.key && <div class="row" style="margin-bottom:12px;justify-content:flex-end"><Selo ok={cp.blocks[bloco.key]} /></div>}
-      <h1>{bloco.nm}</h1><p class="sub" style="margin:4px 0 14px">{bloco.why}</p><Card><Tela /></Card>
+      <h1>{bloco.nm}</h1><p class="sub" style="margin:4px 0 14px">{bloco.why}</p><Card cls={classePulso()}><Tela /></Card>
       <div class="stack" style="margin-top:14px">
         {nx && cp.next && <div class="card hl"><p class="kicker">Próximo passo recomendado</p><p style="font-weight:700;margin-top:2px">{cp.next.cta}</p><p class="small sub">{cp.next.why}</p><a class="btn pri" style="margin-top:10px" href={`#perfil/${nx.id}`}>Ir agora<Icon id="arrow" /></a></div>}
         <a class="btn full" href="#perfil"><Icon id="check" />Concluir</a></div></>;
@@ -158,6 +159,6 @@ export default function Perfil({ route }: { route: Route }) {
     <nav aria-label="Atalhos" class="stack"><a class="sec" href={`#perfil/${FORA.id}`}><span class="n"><Icon id={FORA.icon} /></span><span><b>{FORA.nm}</b><br /><span class="small sub">{FORA.why}</span><br /><span class="small">{FORA.resumo()}</span></span><Icon id="arrow" /></a>
       <a class="sec" href="#academias"><span class="n"><Icon id="gym" /></span><span><b>Academias</b><br /><span class="small sub">{S.gyms.map((g) => g.name).join(" · ")}</span></span><Icon id="arrow" /></a>
       <a class="sec" href="#corpo"><span class="n"><Icon id="body" /></span><span><b>Corpo e dores</b><br /><span class="small sub">{S.pains.length} dor(es) ativa(s)</span></span><Icon id="arrow" /></a></nav>
-    <hr /><a class="btn full" href="#primeiros-passos/0"><Icon id="spark" />Refazer checkup</a>
+    <hr /><a class="btn full" href="#primeiros-passos/0"><Icon id="spark" />Responder de novo, passo a passo</a>
     <p class="small sub" style="text-align:center;margin-top:6px">Suas respostas atuais já vêm preenchidas.</p></>;
 }

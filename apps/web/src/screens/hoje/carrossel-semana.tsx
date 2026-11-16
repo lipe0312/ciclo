@@ -45,7 +45,7 @@ export function SemanaCarrossel() {
   if (!s) {
     const vazio = getVazio();
     return <Card><div class="row between wrapx"><h2>Sua semana</h2><span class="badge">{vazio ? "ainda sem plano" : "carregando"}</span></div>
-      {vazio ? <><p class="small sub" style="margin-top:6px">{vazio}</p><a class="btn pri" style="margin-top:10px" href="#primeiros-passos">Primeiros passos<Icon id="arrow" /></a></>
+      {vazio ? <><p class="small sub" style="margin-top:6px">{vazio}</p><a class="btn pri" style="margin-top:10px" href="#primeiros-passos">Perfil de treino<Icon id="arrow" /></a></>
         : <><div class="hm-esq" style="height:150px;margin-top:10px" aria-hidden="true" /><button type="button" class="btn" style="margin-top:10px" onClick={() => void garantirSemana(true)}>Tentar de novo</button></>}</Card>;
   }
   const treinos = s.days.filter((d) => d.kind !== "folga").length;

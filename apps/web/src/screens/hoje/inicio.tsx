@@ -23,7 +23,7 @@ function Saida({ children, sair }: { children: (fechar: () => void) => Component
 /** #71/#73 Checkup feito: a semana já existe. Some no 1º treino, em 3 dias ou no ✕ (regra: cartaoBoasVindas). */
 export const BoasVindas = () => <Saida sair={dispensarBoasVindas}>{(fechar) =>
   <Card cls="hm-vazia hm-bv"><div class="row between start" style="gap:8px">
-    <div style="min-width:0"><p class="kicker">Primeiros passos feitos</p><h2 style="margin-top:4px">Sua semana está pronta</h2></div>
+    <div style="min-width:0"><p class="kicker">Perfil de treino respondido</p><h2 style="margin-top:4px">Sua semana está pronta</h2></div>
     <button type="button" class="btn ghost hm-x" aria-label="Dispensar o cartão de boas-vindas" onClick={fechar}><Icon id="x" /></button></div>
     <p class="small sub" style="margin-top:6px">Os gráficos da sua evolução aparecem aqui depois do 1º treino.</p>
     <a class="btn pri full" style="margin-top:12px" href="#treino">Ver o treino de hoje<Icon id="arrow" /></a></Card>}</Saida>;
