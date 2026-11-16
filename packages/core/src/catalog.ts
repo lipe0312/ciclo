@@ -68,10 +68,19 @@ export const SUB_MUSCLE_IDS = Object.keys(SUB_MUSCLES) as SubMuscleId[];
 export const REGIONS: Record<Region, string> = { ombro: "Ombro", costas: "Costas", bracos: "Braços", peito: "Peito", pernas: "Pernas", core: "Core" };
 
 export type EquipmentCat = "livres" | "cabos" | "maquinas" | "corpo" | "cardio";
-export interface Equipment { id: string; nm: string; cat: EquipmentCat; img: string; busy: 0 | 1 | 2; note?: string }
+export interface Equipment {
+  id: string; nm: string; cat: EquipmentCat; busy: 0 | 1 | 2; note?: string;
+  /** ID de exercício do catálogo, usado só como referência (não é a foto do aparelho). Ausente nos aparelhos novos. */
+  img?: string;
+  /** Ilustração do próprio aparelho (SVG do projeto em apps/web/public/img/ap/). Nunca aponta para /img/ex/. */
+  foto?: string;
+  /** Cardio: id da modalidade em CARDIO (cardio.ts) que este aparelho executa. */
+  cardio?: string;
+}
 // busy = quanto costuma ficar ocupado (0 nunca, 2 sempre). Usado no modo "academia cheia".
-// img = ID do catálogo cuja imagem representa o aparelho.
-export const EQUIPMENT: Equipment[] = [
+// img = ID de exercício de referência (detalhe "o que dá para fazer aqui"); foto = imagem do aparelho (#96).
+// Os 33 primeiros IDs são os antigos: academias já cadastradas dependem deles (teste de compatibilidade).
+const EQUIPMENT_RAW: Equipment[] = [
   { id: "halteres", nm: "Halteres", cat: "livres", img: "Dumbbell_Bicep_Curl", busy: 0 },
   { id: "barra", nm: "Barra olímpica", cat: "livres", img: "Barbell_Curl", busy: 1 },
   { id: "ez", nm: "Barra W", cat: "livres", img: "EZ-Bar_Curl", busy: 0 },
@@ -106,11 +115,56 @@ export const EQUIPMENT: Equipment[] = [
   { id: "barrafixa", nm: "Barra fixa", cat: "corpo", img: "Pullups", busy: 0 },
   { id: "paralela", nm: "Paralelas", cat: "corpo", img: "Dips_-_Triceps_Version", busy: 0 },
 ];
+// #96: aparelhos novos em formato compacto (id|nome|categoria|ocupação|modalidade de cardio). Categoria: l livres, c cabos, m máquinas, d cardio.
+const CATS: Record<string, EquipmentCat> = { l: "livres", c: "cabos", m: "maquinas", d: "cardio" };
+for (const r of `anilhas|Anilhas|l|0|
+trapbar|Trap bar (hexagonal)|l|1|
+bancoreto|Banco reto|l|1|
+bancodecl|Banco declinado|l|0|
+suporte|Suporte de supino|l|2|
+landmine|Landmine|l|0|
+miniband|Faixa / mini band|l|0|
+bola|Bola suíça|l|0|
+medball|Medicine ball|l|0|
+step|Step / caixa de salto|l|0|
+trx|TRX / suspensão|l|0|
+colchonete|Colchonete|l|0|
+poliasimples|Polia simples|c|1|
+legpressh|Leg press horizontal|m|1|
+graviton|Graviton (barra assistida)|m|1|
+pendulum|Pendulum squat|m|1|
+belt|Belt squat|m|1|
+hackv|Hack V (agachamento articulado)|m|1|
+hipthrust|Máquina de hip thrust|m|1|
+gluteo4|Glúteo 4 apoios (coice)|m|1|
+lateralmaq|Elevação lateral máquina|m|1|
+crucinv|Crucifixo inverso máquina|m|1|
+puxarticulado|Puxador articulado (plate-loaded)|m|1|
+remarticulada|Remada articulada (plate-loaded)|m|1|
+remapeito|Remada apoiada no peito|m|1|
+supinc|Supino inclinado articulado|m|1|
+pantlegpress|Panturrilha no leg press|m|1|
+ghd|GHD|m|0|
+sissy|Sissy squat|m|0|
+reversehyper|Reverse hyper|m|0|
+esteira|Esteira|d|2|Running_Treadmill
+bikevert|Bicicleta ergométrica vertical|d|1|Bicycling_Stationary
+bikehor|Bicicleta horizontal|d|1|Recumbent_Bike
+spinning|Bike de spinning|d|1|Bicycling_Stationary
+eliptico|Elíptico (transport)|d|1|Elliptical_Trainer
+escada|Escada (stair climber)|d|1|Stairmaster
+remoerg|Remo ergômetro|d|1|Rowing_Stationary
+airbike|Air bike|d|1|Bicycling_Stationary
+esqui|Simulador de esqui|d|0|Elliptical_Trainer
+corda|Corda de pular|d|0|Rope_Jumping`.split("\n")) {
+  const [id, nm, c, b, cardio] = r.split("|");
+  EQUIPMENT_RAW.push({ id, nm, cat: CATS[c], busy: +b as 0 | 1 | 2, ...(cardio ? { cardio } : {}) });
+}
+export const EQUIPMENT: Equipment[] = EQUIPMENT_RAW.map((e) => ({ ...e, foto: `/img/ap/${e.id}.svg` }));
 export const EQUIPMENT_BY_ID: Record<string, Equipment> = Object.fromEntries(EQUIPMENT.map((e) => [e.id, e]));
 
 /** Texto didático por exercício (pt-BR). Opcional: o conteúdo é preenchido pelas tarefas de conteúdo do catálogo. */
 export interface ExerciseInfo {
-  howTo?: string[]; tips?: string[]; mistakes?: string[];
   subMuscles?: SubMuscleId[]; secondary?: SubMuscleId[];
   aliases?: string[];
 }
@@ -202,7 +256,7 @@ const RAW: Exercise[] = [
   X("Butt_Lift_Bridge", "Ponte de glúteo no chão", "gluteo", [], "corpo", [12, 20], 60, 1, {}, { inc: 0, prehab: ["lombar", "quadril", "joelho"] }),
 
   X("Standing_Calf_Raises", "Panturrilha em pé na máquina", "pant", ["pant"], "maquina", [10, 15], 60, 1, {}, { stretch: true, inc: 5 }),
-  X("Calf_Press_On_The_Leg_Press_Machine", "Panturrilha no leg press", "pant", ["legpress"], "maquina", [12, 15], 60, 1, {}, { stretch: true, inc: 10 }),
+  X("Calf_Press_On_The_Leg_Press_Machine", "Panturrilha no leg", "pant", ["legpress"], "maquina", [12, 15], 60, 1, {}, { stretch: true, inc: 10 }),
   X("Seated_Calf_Raise", "Panturrilha sentado (banco solear)", "pant", ["pantsent"], "maquina", [12, 20], 60, 1, {}, { inc: 5 }),
   X("Standing_Dumbbell_Calf_Raise", "Panturrilha em pé com halter", "pant", ["halteres"], "livre", [12, 20], 60, 1, {}, { inc: 2 }),
 
@@ -302,7 +356,6 @@ export interface Cardio {
   /** unidade principal de registro; `units` = todas aceitas. kcal é sempre estimada (MET × kg × horas). */
   metUnit: CardioUnit; units: CardioUnit[];
   met: Record<Intensity, number>;
-  howTo?: string[]; tips?: string[]; mistakes?: string[];
   subMuscles?: SubMuscleId[]; secondary?: SubMuscleId[]; aliases?: string[];
   /** modalidade do registro de cardio (#44): ícone, grupo e se é esporte. Só as de `CARDIO` entram na biblioteca de exercícios. */
   modo?: CardioModo; icon?: string; fonte?: string;
@@ -317,8 +370,8 @@ const CARDIO_RAW: Cardio[] = [
   K("Running_Treadmill", "Esteira · corrida", [], ["min", "km", "kcal"], [8, 9.8, 11.5], { modo: "maquina", icon: "run" }),
   K("Walking_Treadmill", "Esteira · caminhada inclinada", [], ["min", "km", "kcal"], [4.5, 6, 7], { modo: "maquina", icon: "walk" }),
   K("Bicycling_Stationary", "Bicicleta ergométrica", [], ["min", "km", "kcal"], [5.5, 7, 10], { modo: "maquina", icon: "bike" }),
-  K("Recumbent_Bike", "Bicicleta horizontal", [], ["min", "km", "kcal"], [4.5, 6, 8], { modo: "maquina", icon: "bike" }),
-  K("Elliptical_Trainer", "Elíptico (transport)", [], ["min", "kcal"], [5, 7, 9], { modo: "maquina", icon: "ellip" }),
+  K("Recumbent_Bike", "Bike horizontal", [], ["min", "km", "kcal"], [4.5, 6, 8], { modo: "maquina", icon: "bike" }),
+  K("Elliptical_Trainer", "Transport", [], ["min", "kcal"], [5, 7, 9], { modo: "maquina", icon: "ellip" }),
   K("Stairmaster", "Escada (simulador)", [], ["min", "kcal"], [6, 9, 11], { modo: "maquina", icon: "stairs" }),
   K("Rowing_Stationary", "Remo ergômetro", [], ["min", "km", "kcal"], [6, 8.5, 11], { modo: "maquina", icon: "swim" }),
   K("Trail_Running_Walking", "Corrida / caminhada na rua", [], ["min", "km", "kcal"], [5, 9, 10.5], { modo: "rua", icon: "run" }),
