@@ -60,7 +60,10 @@ export interface DayPlan {
   suggestCompensatory: boolean; perMuscle: Partial<Record<MuscleId, number>>;
   /** gerado como "mais leve hoje" */
   leve?: boolean;
+  /** #108 gerado pelo app no "Gerar treino": a revisão da IA (assíncrona) está pendente, mudou o treino ou manteve */
+  revisao?: RevisaoTreino;
 }
+export type RevisaoTreino = "pendente" | "revisada" | "mantida";
 
 const MIN_PER_SET = 3;
 /** Repetições em reserva no "mais leve hoje" (o normal é sobrar 1–2). */

@@ -198,7 +198,8 @@ export function planWeek(inp: WeekInput): WeekPlan {
   const base = new Set<string>(trainingDows(inp.profile.daysUsual, inp.profile.daysTarget));
   const days: WeekDay[] = weekDates(inp.weekStart).map((date, i) => {
     const dow = DOWS[i], ov = inp.overrides?.[date], fx = inp.fixed?.[date];
-    const kind: DayKind = ov?.kind ?? (base.has(dow) ? "treino" : "folga");
+    // #108 treino salvo (Chat/MCP/à mão) num dia sem treino vira extra com esse plano; antes ficava folga e sumia
+    const kind: DayKind = ov?.kind ?? (base.has(dow) ? "treino" : fx ? "extra" : "folga");
     const opts: DayOpts = { ...(ov?.opts ?? {}) };
     return { date, dow, kind, plan: null, gymId: gymFor(inp.profile, dow, opts.gymId), opts, source: fx ? (fx.source === "claude" ? "claude" : "voce") : ov ? "voce" : "auto", warn: [] };
   });
