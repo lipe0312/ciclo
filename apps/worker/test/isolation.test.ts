@@ -250,12 +250,14 @@ async function matriz(env: any, ana: string, bia: string) {
 }
 
 test("conta A não lê nem altera dados da conta B (usuários de dev, todas as rotas e ferramentas)", async (t) => {
+  t.mock.method(Date, "now", () => Date.parse(`${D}T15:00:00Z`)); // #108 o `today` do aparelho tem de bater com o relógio
   t.mock.method(globalThis, "fetch", async () => new Response("[]", { status: 200 })); // Nominatim (busca de endereço) não sai da máquina
   await matriz(makeEnv(), "ana", "bia");
 });
 
 // "Sair de todos" fica fora da matriz (derrubaria a A no meio); o isolamento dele está em conta.test.ts.
 test("#54 duas contas criadas por convite (passkey + cookie) não veem nem alteram os dados uma da outra (rotas e MCP)", async (t) => {
+  t.mock.method(Date, "now", () => Date.parse(`${D}T15:00:00Z`));
   t.mock.method(globalThis, "fetch", async () => new Response("[]", { status: 200 }));
   const env = envConta();
   const d = await dono(env);

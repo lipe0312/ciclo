@@ -107,3 +107,31 @@ test("revisão da IA: inválida é descartada (fica a do app); válida pela caix
   d = (await a.c("GET", `/api/week?date=${QUA}`)).data.week.days.find((x: any) => x.date === SAB).plan;
   assert.equal(d.revisao, "revisada");
 });
+
+test("revisão chega depois de o dono editar o dia à mão: a edição fica e o pedido revisar_treino sai da fila", async (t) => {
+  naQuarta(t);
+  const env = makeEnv();
+  const a = await conta(env, "ana");
+  const g = await a.c("POST", `/api/week/day/${QUA}/gerar-treino`, { today: QUA });
+  assert.equal(g.status, 200, g.text);
+  const ed = await a.c("POST", "/api/plan-edits", { date: QUA, edit: { index: 0, sets: 2 } });
+  assert.equal(ed.status, 200, ed.text);
+  const antes = env.DB.raw.prepare("SELECT plan, source FROM day_plan WHERE date = ?1").get(QUA);
+  assert.equal(antes.source, "manual");
+  const id = env.DB.raw.prepare("SELECT id FROM inbox WHERE action = 'revisar_treino'").get().id;
+  const r = await tool(env, a.token, "ciclo_responder_pedido", { id, resposta: "Revisado.", itens: [{ id: "Exercicio_Inventado", sets: 3 }] });
+  assert.ok(!r.erro, JSON.stringify(r));
+  assert.match(r.change.nota, /já revisado|editado/);
+  const p = env.DB.raw.prepare("SELECT status FROM inbox WHERE id = ?1").get(id);
+  assert.equal(p.status, "respondido", "não fica na fila para sempre");
+  assert.deepEqual(env.DB.raw.prepare("SELECT plan, source FROM day_plan WHERE date = ?1").get(QUA), antes, "a edição à mão não é sobrescrita");
+  assert.match((await tool(env, a.token, "ciclo_revisar_treino", { date: QUA, aplicar: true })).erro, /pendente/);
+});
+
+test("gerar-treino recusa `today` com mais de 1 dia de diferença do relógio do servidor", async (t) => {
+  naQuarta(t);
+  const env = makeEnv();
+  const a = await conta(env, "ana");
+  assert.equal((await a.c("POST", `/api/week/day/${SEX}/gerar-treino`, { today: SEX })).status, 400, "2 dias no futuro");
+  assert.equal((await a.c("POST", `/api/week/day/${QUA}/gerar-treino`, { today: "2026-11-09" })).status, 400, "semana passada");
+});

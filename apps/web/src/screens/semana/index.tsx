@@ -62,7 +62,7 @@ function DiaCard({ d }: { d: Dia }) {
         {p && <a class="btn" href={href("semana", ["dia", d.date])}>Ver</a>}
         {pode && d.kind !== "folga" && <button type="button" class="btn" onClick={() => abrirTrocar(d)}>Trocar</button>}
         {pode && <button type="button" class="btn" onClick={() => abrirMover(d)}>{d.kind !== "folga" ? "Mover" : "Planejar"}</button>}
-        {d.status === "livre" && <button type="button" class="btn pri" onClick={() => void gerarTreino(d.date)}><Icon id="bolt" />Gerar treino</button>}
+        {semTreino(d) && <button type="button" class={`btn${d.status === "livre" ? " pri" : ""}`} onClick={() => void gerarTreino(d.date)}><Icon id="bolt" />Gerar treino</button>}
       </div>
     </div></div>;
 }

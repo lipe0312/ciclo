@@ -124,9 +124,24 @@ const demo = (() => {
     const vs = load().concat({ plan, overrides, source, createdAt: Date.now(), fixed }).slice(-20);
     lsSet(KEY, vs); return vs;
   };
+  /** Dia gerado pelo app (o mesmo gerador do servidor), com "revisão da IA pendente". */
+  const diaGerado = (date: string): C.DayPlan | null => {
+    const p = calc(), dow = C.DOWS[(new Date(date + "T12:00:00Z").getUTCDay() + 6) % 7];
+    const gym = S.gyms.find((g) => g.id === p.dayGym?.[dow]) ?? S.gyms[0];
+    const g = C.gerarTreinoDia({ sexo: S.profile.sex ?? null, nivel: p.level, prioridades: p.priorities, equipamentos: gym?.equipment ?? [], dias: p.daysUsual, diasMeta: p.daysTarget,
+      minutos: p.minutes, dores: S.pains.map((x) => ({ region: x.region, intensity: x.intensity })), evitar: p.avoid, prefs: p.prefs, pinned: p.pinned }, dow);
+    return g ? C.planoDoDiaGerado(g.dia, "pendente") : null;
+  };
   const ver = (): Semana => {
     let vs = load();
-    if (!vs.length) vs = push(C.planWeek(input({}, null)), {}, "auto");
+    if (!vs.length) {
+      // #108 demonstração: o 1º dia de folga depois de hoje já vem com um treino gerado, revisão da IA pendente
+      const base = C.planWeek(input({}, null, undefined));
+      const sab = base.days.find((d) => d.kind === "folga" && d.date > today)?.date;
+      const plan = sab ? diaGerado(sab) : null;
+      const fixed = sab && plan ? { [sab]: { plan, source: "claude" as const } } : undefined;
+      vs = push(fixed ? C.planWeek(input({}, null, fixed)) : base, {}, "auto", fixed);
+    }
     const cur = vs[vs.length - 1];
     const v = C.weekView(input(cur.overrides, null), cur.plan);
     const p = prog();
@@ -148,12 +163,9 @@ const demo = (() => {
       return { week: ver() };
     },
     gerarTreino(date: string) {
-      const c = cur(), p = calc(), dow = C.DOWS[(new Date(date + "T12:00:00Z").getUTCDay() + 6) % 7];
-      const gym = S.gyms.find((g) => g.id === p.dayGym?.[dow]) ?? S.gyms[0];
-      const g = C.gerarTreinoDia({ sexo: S.profile.sex ?? null, nivel: p.level, prioridades: p.priorities, equipamentos: gym?.equipment ?? [], dias: p.daysUsual, diasMeta: p.daysTarget,
-        minutos: p.minutes, dores: S.pains.map((x) => ({ region: x.region, intensity: x.intensity })), evitar: p.avoid, prefs: p.prefs, pinned: p.pinned }, dow);
-      if (!g) throw Object.assign(new Error("Não deu para montar um treino válido"), { status: 409 });
-      const fixed = { ...(c.fixed ?? {}), [date]: { plan: C.planoDoDiaGerado(g.dia, "pendente"), source: "claude" as const } };
+      const c = cur(), plan = diaGerado(date);
+      if (!plan) throw Object.assign(new Error("Não deu para montar um treino válido"), { status: 409 });
+      const fixed = { ...(c.fixed ?? {}), [date]: { plan, source: "claude" as const } };
       push(C.planWeek(input(c.overrides, c.plan, fixed)), c.overrides, "ajuste", fixed);
       return { week: ver() };
     },

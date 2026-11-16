@@ -8,6 +8,7 @@ import type { DayPlan, Dow, PerfilGerador, TreinoGerado } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { EMPTY_MSG, buildDayInput, getProfile, parse } from "./db.ts";
 import { HttpError, date, id } from "./http.ts";
+import { today as hojeSP } from "./mcp-tipos.ts";
 import { aplicarNaSemana, getWeek } from "./semana.ts";
 
 const dowDe = (d: string) => DOWS[(new Date(d + "T12:00:00Z").getUTCDay() + 6) % 7] as Dow;
@@ -32,6 +33,8 @@ const salvar = (env: Env, uid: string, d: string, gymId: string | null, plan: Da
 /** "Gerar treino" (só por toque, nunca ao abrir a tela): dia desta semana, de hoje em diante, sem treino salvo nem feito. */
 export async function gerarTreinoDoDia(env: Env, uid: string, dia: string, hoje: string) {
   const d = date(dia), t = date(hoje, "today");
+  // o `today` vem do aparelho: aceita só ±1 dia do relógio do servidor (fuso de São Paulo)
+  if (Math.abs(Date.parse(t) - Date.parse(hojeSP())) > 864e5) throw new HttpError(400, "today: data do aparelho fora do dia atual");
   if (d < t || !weekDates(mondayOf(t)).includes(d)) throw new HttpError(400, "Gerar treino só para dias desta semana, de hoje em diante");
   // sem treino = folga na semana (nem planejado, nem salvo pelo Chat/à mão, nem feito)
   const w = await getWeek(env, uid, t);
@@ -69,9 +72,10 @@ export async function revisoesPendentes(env: Env, uid: string, d?: string) {
  *  Tira o selo "revisão pendente" e resolve o pedido `revisar_treino` daquele dia. */
 export async function revisarTreino(env: Env, uid: string, dia: string, itens: unknown, hoje: string, resposta = "Revisão aplicada") {
   const d = date(dia);
-  const row = await env.DB.prepare("SELECT plan, gym_id FROM day_plan WHERE user_id = ?1 AND date = ?2").bind(uid, d).first<{ plan: string; gym_id: string | null }>();
+  const row = await env.DB.prepare("SELECT plan, gym_id, source FROM day_plan WHERE user_id = ?1 AND date = ?2").bind(uid, d).first<{ plan: string; gym_id: string | null; source: string }>();
   const atual = parse<DayPlan | null>(row?.plan, null);
-  if (!atual || atual.revisao !== "pendente") throw new HttpError(404, "nenhum treino gerado com revisão pendente nesse dia");
+  // editado à mão depois de gerado: vale a escolha do dono (o selo pode ter ficado no plano editado)
+  if (!atual || atual.revisao !== "pendente" || row?.source === "manual") throw new HttpError(404, "nenhum treino gerado com revisão pendente nesse dia");
   const { g } = await gerado(env, uid, d);
   const r = g ? revisarTreinoDia(g, itens) : { dia: null, fonte: "deterministica" as const, violacoes: [{ codigo: "perfil", msg: "o perfil mudou: não deu para conferir a revisão" }] };
   const plan = r.fonte === "ia" && r.dia ? planoDoDiaGerado(r.dia, "revisada") : { ...atual, revisao: "mantida" as const, why: [atual.why[0], "A IA revisou e ficou a versão do app."] };

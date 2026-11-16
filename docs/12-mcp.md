@@ -38,7 +38,7 @@ L = lê (escopo `ler`), E = escreve (escopo `escrever`). Os schemas completos es
 | `ciclo_marcar_presenca` | E | fui / nao_fui / folga. | `date`, `status` | `ok` |
 | `ciclo_registrar_dor` | E | Dor no mapa (1–3). | `region`, `intensity` | `id` |
 | `ciclo_revisar_edicoes` / `ciclo_concluir_revisao` | L / E | Edições manuais aguardando revisão. | `id`, `review` | |
-| `ciclo_revisar_treino` | E | #108 Treino gerado pelo app ("Gerar treino", selo "revisão da IA pendente"): sem itens lista os dias pendentes; com `date` + `itens {id, sets}` aplica se passar no validador (inválido fica o do app e volta `violacoes`); `aplicar:true` sem itens aprova. Resolve o pedido `revisar_treino`. | `date`, `itens`, `aplicar` | |
+| `ciclo_revisar_treino` | E | #108 Treino gerado pelo app ("Gerar treino", selo "revisão da IA pendente"): sem itens lista os dias pendentes; com `date` + `itens {id, sets}` aplica se passar no validador (inválido fica o do app e volta `violacoes`); `aplicar:true` sem itens aprova. Resolve o pedido `revisar_treino`. Exige escopo **escrever**, inclusive para listar (token só `ler` recebe erro). | `date`, `itens`, `aplicar` | |
 
 ### Personalização
 | Ferramenta | L/E | O que faz | Entrada | Saída |

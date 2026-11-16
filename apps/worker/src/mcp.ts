@@ -123,7 +123,9 @@ export const TOOLS: Tool[] = [
       let change: unknown = null;
       // #108 revisar_treino: os itens são a revisão do treino gerado (validador do core; inválida → fica a do app)
       const revisao = own.action === ACAO_REVISAR_TREINO ? dataDoPedidoRevisao(own.text) : null;
-      if (revisao) change = await revisarTreino(env, uid, revisao, Array.isArray(a.itens) && a.itens.length ? a.itens : null, today(), resposta!);
+      // dia já revisado ou editado à mão (404): o pedido sai da fila assim mesmo, com a nota
+      if (revisao) change = await revisarTreino(env, uid, revisao, Array.isArray(a.itens) && a.itens.length ? a.itens : null, today(), resposta!)
+        .catch((e) => { if (e instanceof HttpError && e.status === 404) return { revisao: "ignorada", date: revisao, nota: "já revisado/editado: nada mudou" }; throw e; });
       else if (Array.isArray(a.itens) && a.itens.length) change = await saveCompact(env, uid, { ...a, motivo: a.motivo ?? a.resposta });
       await env.DB.prepare("UPDATE inbox SET status = 'respondido', response = ?2, change = ?3, answered_at = ?4, cerebro = 'claude-assinatura' WHERE id = ?1 AND user_id = ?5")
         .bind(iid, resposta, change ? JSON.stringify(change) : null, Date.now(), uid).run();

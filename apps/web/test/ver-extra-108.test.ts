@@ -79,6 +79,9 @@ test("dia sem treino mostra Gerar treino (nunca Ver extra) e abrir a Semana e o 
     assert.ok(botoes(r).some((b) => /Gerar treino/.test(b)), "botão Gerar treino no dia livre");
     assert.ok(!botoes(r).some((b) => /Ver extra/.test(b)), "sem Ver extra");
   }
+  // folga futura sem treino também oferece Gerar treino (secundário); dia com treino, não
+  const semTreino = s.week.days.filter((d: any) => d.status === "livre" || (d.status === "folga" && d.date >= M.today && !d.plan)).length;
+  assert.equal(botoes(lista).filter((b) => /Gerar treino/.test(b)).length, semTreino);
   const det = montar(M.Semana, { route: { screen: "semana", parts: ["dia", s.hoje], query: {} } }); await tick();
   assert.match(texto(det), /Sem treino/);
   assert.ok(botoes(det).some((b) => /Gerar treino/.test(b)));
