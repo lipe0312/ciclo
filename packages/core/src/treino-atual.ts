@@ -147,3 +147,28 @@ export function entradaTreinoAtual(perfil: { level?: unknown; treinoAtual?: unkn
   const comecando = !!t && Array.isArray(t.divisoes) && t.divisoes.length === 0;
   return { familiar: fortes, familiarFraco: fracos, iniciante: perfil?.level === 0 || comecando };
 }
+
+/** #93 PUT do perfil sem o campo `treinoAtual` (outra tela, sync, cache antigo) não apaga o que já está salvo; com o campo, vale o novo. */
+export function manterTreinoAtual<T extends Record<string, any>>(salvo: Record<string, any> | null | undefined, novo: T): T {
+  if (own(novo, "treinoAtual") && novo.treinoAtual != null) return novo;
+  const antes = salvo?.treinoAtual;
+  return antes == null ? novo : { ...novo, treinoAtual: antes };
+}
+
+/** #93 Só as divisões que passam na validação, cada uma por si: um treino com erro não impede de gravar os outros. */
+export function divisoesSalvaveis(t: TreinoAtual | null | undefined): TreinoAtual {
+  const ok = (t?.divisoes ?? []).filter((d) => validarTreinoAtual({ divisoes: [d] }).ok);
+  return { divisoes: ok };
+}
+
+/**
+ * #93 A resposta de "Você já treina?" quando a pessoa já passou pelos Primeiros passos (nível da experiência) ou já cadastrou o treino.
+ * null = ainda não respondeu: só aí a pergunta aparece. Nível 0 (nunca treinou) = "nao"; os outros = "sim".
+ */
+export function jaTreinaRespondido(perfil: { level?: unknown; treinoAtual?: unknown } | null | undefined): "sim" | "nao" | null {
+  const t = perfil?.treinoAtual as TreinoAtual | null | undefined;
+  if (t && Array.isArray(t.divisoes)) return t.divisoes.length ? "sim" : "nao";
+  if (perfil?.level === 0) return "nao";
+  if (typeof perfil?.level === "number" && perfil.level >= 1) return "sim";
+  return null;
+}
