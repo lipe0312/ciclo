@@ -4,4 +4,4 @@
 -- (ordena o "desfazer o último envio"). antes = foto do registro antes dessa correção (o desfazer volta a ela).
 ALTER TABLE food_log ADD COLUMN raw_original TEXT CHECK (raw_original IS NULL OR length(raw_original) <= 2000);
 ALTER TABLE food_log ADD COLUMN corrigido_at INTEGER;
-ALTER TABLE food_log ADD COLUMN antes TEXT CHECK (antes IS NULL OR (length(antes) <= 16000 AND json_valid(antes)));
+ALTER TABLE food_log ADD COLUMN antes TEXT CHECK (antes IS NULL OR (length(antes) <= 32000 AND json_valid(antes)));

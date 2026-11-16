@@ -135,7 +135,7 @@ export function DiaCard({ dia, setDia }: { dia: string; setDia: (d: string) => v
   const [apagar, setApagar] = useState<string | null>(null);
   // #87 o seletor de dia (seta + calendário, até 30 dias) fica no topo da coluna (dia.tsx); aqui só o título
   return <Card>
-    <div class="row between"><h2>{dia === today ? "Hoje" : longDate(dia)}</h2>{dia !== today && <button type="button" class="btn ghost sm" onClick={() => setDia(today)}>Voltar para hoje</button>}</div>
+    <h2>{dia === today ? "Hoje" : longDate(dia)}</h2>
     <div class="vol num" style="margin-top:12px"><span>Calorias</span><BarraSimples pct={(t.kcal / d.kcal) * 100} /><span>{fmt(t.kcal)}</span></div>
     <div class="vol num"><span>Proteína</span><BarraSimples pct={(t.prot / d.protein) * 100} color="var(--acc)" /><span>{fmt(t.prot)} g</span></div>
     <Falta dia={dia} />

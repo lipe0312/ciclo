@@ -34,9 +34,8 @@ export function SeletorDia({ dia, setDia }: { dia: string; setDia: (d: string) =
   useEffect(() => { carregarDia(dia); }, [dia]);
   return <div class="row" role="group" aria-label="Dia dos registros" style="gap:var(--sp-2);flex-wrap:nowrap">
     <button type="button" class="iconbtn" aria-label="Dia anterior" disabled={dia <= DIA_MIN} onClick={() => setDia(addDays(dia, -1))}><Icon id="back" /></button>
-    <label class="row" style="flex:1;min-width:0;gap:var(--sp-2);position:relative">
-      <span style="position:absolute;left:12px;pointer-events:none;display:flex" aria-hidden="true"><Icon id="cal" /></span>
-      <input class="input num" type="date" aria-label="Escolher o dia" style="padding-left:40px;min-width:0" min={DIA_MIN} max={today} value={dia}
+    <label class="row" style="flex:1;min-width:0">
+      <input class="input num" type="date" aria-label="Escolher o dia" style="min-width:0" min={DIA_MIN} max={today} value={dia}
         onChange={(e) => { const v = e.currentTarget.value; if (valido(v)) setDia(v); else e.currentTarget.value = dia; }} />
     </label>
     <button type="button" class="iconbtn" aria-label="Próximo dia" disabled={dia >= today} onClick={() => setDia(addDays(dia, 1))}><Icon id="arrow" /></button>
