@@ -1,0 +1,458 @@
+[
+ {
+  "id": "halteres",
+  "arquivo": "halteres.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "barra",
+  "arquivo": "barra.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "ez",
+  "arquivo": "ez.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "banco",
+  "arquivo": "banco.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "rack",
+  "arquivo": "rack.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "scott",
+  "arquivo": "scott.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "kettle",
+  "arquivo": "kettle.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "elastico",
+  "arquivo": "elastico.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "polia",
+  "arquivo": "polia.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "puxador",
+  "arquivo": "puxador.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "remada",
+  "arquivo": "remada.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "legpress",
+  "arquivo": "legpress.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "hack",
+  "arquivo": "hack.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "smith",
+  "arquivo": "smith.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "extensora",
+  "arquivo": "extensora.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "flexora",
+  "arquivo": "flexora.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "flexora_sent",
+  "arquivo": "flexora_sent.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "peck",
+  "arquivo": "peck.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "supmaq",
+  "arquivo": "supmaq.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "desenv",
+  "arquivo": "desenv.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "remmaq",
+  "arquivo": "remmaq.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "roscamaq",
+  "arquivo": "roscamaq.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "tricmaq",
+  "arquivo": "tricmaq.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "pant",
+  "arquivo": "pant.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "pantsent",
+  "arquivo": "pantsent.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "adutora",
+  "arquivo": "adutora.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "abdutora",
+  "arquivo": "abdutora.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "cavalinho",
+  "arquivo": "cavalinho.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "hiper",
+  "arquivo": "hiper.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "abdmaq",
+  "arquivo": "abdmaq.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "roda",
+  "arquivo": "roda.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "barrafixa",
+  "arquivo": "barrafixa.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "paralela",
+  "arquivo": "paralela.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "anilhas",
+  "arquivo": "anilhas.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "trapbar",
+  "arquivo": "trapbar.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "bancoreto",
+  "arquivo": "bancoreto.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "bancodecl",
+  "arquivo": "bancodecl.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "suporte",
+  "arquivo": "suporte.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "landmine",
+  "arquivo": "landmine.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "miniband",
+  "arquivo": "miniband.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "bola",
+  "arquivo": "bola.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "medball",
+  "arquivo": "medball.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "step",
+  "arquivo": "step.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "trx",
+  "arquivo": "trx.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "colchonete",
+  "arquivo": "colchonete.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "poliasimples",
+  "arquivo": "poliasimples.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "legpressh",
+  "arquivo": "legpressh.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "graviton",
+  "arquivo": "graviton.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "pendulum",
+  "arquivo": "pendulum.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "belt",
+  "arquivo": "belt.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "hackv",
+  "arquivo": "hackv.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "hipthrust",
+  "arquivo": "hipthrust.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "gluteo4",
+  "arquivo": "gluteo4.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "lateralmaq",
+  "arquivo": "lateralmaq.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "crucinv",
+  "arquivo": "crucinv.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "puxarticulado",
+  "arquivo": "puxarticulado.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "remarticulada",
+  "arquivo": "remarticulada.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "remapeito",
+  "arquivo": "remapeito.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "supinc",
+  "arquivo": "supinc.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "pantlegpress",
+  "arquivo": "pantlegpress.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "ghd",
+  "arquivo": "ghd.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "sissy",
+  "arquivo": "sissy.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "reversehyper",
+  "arquivo": "reversehyper.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "esteira",
+  "arquivo": "esteira.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "bikevert",
+  "arquivo": "bikevert.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "bikehor",
+  "arquivo": "bikehor.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "spinning",
+  "arquivo": "spinning.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "eliptico",
+  "arquivo": "eliptico.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "escada",
+  "arquivo": "escada.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "remoerg",
+  "arquivo": "remoerg.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "airbike",
+  "arquivo": "airbike.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "esqui",
+  "arquivo": "esqui.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "corda",
+  "arquivo": "corda.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "lugar-academia",
+  "arquivo": "lugar-academia.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "lugar-casa",
+  "arquivo": "lugar-casa.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ },
+ {
+  "id": "lugar-hotel",
+  "arquivo": "lugar-hotel.svg",
+  "origem": "svg-projeto",
+  "data": "2026-11-16"
+ }
+]
