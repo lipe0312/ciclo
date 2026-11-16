@@ -10,8 +10,8 @@ const Item = ({ to, icon, nm, desc }: { to: string; icon: string; nm: string; de
 
 export default function Mais() {
   if (SERVER && S.onboarding === "pendente") return <><h1 style="margin-bottom:14px">Mais</h1>
-    <p class="small sub" style="margin-bottom:12px">O resto do app abre quando você terminar ou pular os Primeiros passos.</p>
-    <nav class="stack" aria-label="Mais"><Item to="#primeiros-passos" icon="target" nm="Primeiros passos" desc="continuar de onde parou" /><Item to="#conta" icon="key" nm="Conta" /></nav></>;
+    <p class="small sub" style="margin-bottom:12px">O resto do app abre quando você terminar ou pular o Perfil de treino.</p>
+    <nav class="stack" aria-label="Mais"><Item to="#primeiros-passos" icon="target" nm="Perfil de treino" desc="continuar de onde parou" /><Item to="#conta" icon="key" nm="Conta" /></nav></>;
   return <><h1 style="margin-bottom:14px">Mais</h1>
     <nav class="stack" aria-label="Mais">{MAIS.map((d) => <Item key={d.id} to={`#${d.id}`} icon={d.icon} nm={d.nm} />)}</nav></>;
 }

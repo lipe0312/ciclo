@@ -9,9 +9,10 @@ import { mName } from "../../lib/store/regras.ts";
 import { SERVER } from "../../lib/api/index.ts";
 import { Card, Icon } from "../../lib/ui/index.tsx";
 import { longDate } from "../../lib/util.ts";
+import { href } from "../../lib/roteador/index.ts";
 import { FaixaCheckup, estadoDoCheckup } from "../../lib/faixa-checkup/index.tsx";
 import { AvisoFalta } from "../semana/aviso.tsx";
-import { garantirSemana, getSemana } from "../semana/estado.ts";
+import { garantirSemana, getSemana, getVazio } from "../semana/estado.ts";
 import { SemanaCarrossel } from "./carrossel-semana.tsx";
 import { ClaudeCard, ComidaPainel } from "./comida-claude.tsx";
 import { H, adiarPerfil, boasVindasVisivel, carregarHome, perfilAdiadoEm } from "./estado.ts";
@@ -33,21 +34,22 @@ function Compensa() {
   return null;
 }
 
-/** Conta sem dados: didática, leva aos Primeiros passos. */
-function Vazia() {
-  const passos: [string, string][] = [["target", "Diga seu objetivo e seus dias: o plano da semana nasce daí."], ["dumb", "Faça o 1º treino: cada série vira gráfico aqui."], ["body", "Meça braço e cintura a cada 15 dias."], ["food", "Registre o que come: proteína e calorias entram na média."]];
-  return <Card cls="hm-vazia"><p class="kicker">Bem-vindo</p><h2 style="margin-top:4px">Sua Home ainda está vazia</h2>
-    <p class="small sub" style="margin-top:6px">Ela mostra a sua evolução e o que falta registrar. Em poucos minutos você já vê o primeiro gráfico.</p>
-    <ul class="hm-passos">{passos.map(([i, t]) => <li key={t}><Icon id={i} /><span class="small">{t}</span></li>)}</ul>
-    <a class="btn pri full" href="#primeiros-passos">Começar pelos Primeiros passos<Icon id="arrow" /></a></Card>;
+/** #63 Conta sem treino: o Hoje fica vazio (nada é montado sozinho). "Montar" abre o 1º passo que falta do Perfil de treino
+ *  (o mínimo para gerar a semana); "Completar" leva ao Perfil de treino inteiro. */
+function ComecoVazio({ falta }: { falta: C.Falta[] }) {
+  return <Card cls="hm-vazia hm-comeco"><p class="kicker">Comece por aqui</p><h2 style="margin-top:4px">Seu Hoje está vazio</h2>
+    <p class="small sub" style="margin-top:6px">Nenhum treino é montado sem você. Responda o básico e o app monta a sua semana; o resto do Perfil de treino aprofunda depois.</p>
+    {falta.length > 0 && <ul class="hm-passos" aria-label="O que falta para o primeiro treino">{falta.map((f) => <li key={f.rotulo}><Icon id="target" /><span class="small">{f.rotulo}</span></li>)}</ul>}
+    <a class="btn pri full" href={href("primeiros-passos", [String(C.passoParaMontarTreino(falta))])}>Montar meu primeiro treino<Icon id="arrow" /></a>
+    <a class="btn ghost full" style="margin-top:6px" href="#perfil">Completar Perfil de treino</a></Card>;
 }
 
-/** #71 Pulou os Primeiros passos: o que falta para o app montar a semana e o caminho de volta. #73: aparece enquanto faltar
+/** #71 Pulou o Perfil de treino: o que falta para o app montar a semana e o caminho de volta. #73: aparece enquanto faltar
  *  algo; "Lembrar depois" esconde por 7 dias (no servidor). */
 function CompletePerfil({ falta }: { falta: C.Falta[] }) {
   const primeiro = falta[0]?.passo ? C.PASSOS_PP.indexOf(falta[0].passo) : 0;
-  return <Card cls="hm-vazia"><p class="kicker">Primeiros passos</p><h2 style="margin-top:4px">Complete o Perfil de treino</h2>
-    <p class="small sub" style="margin-top:6px">Você pulou o checkup. O que já respondeu está salvo; falta pouco para o app montar a sua semana.</p>
+  return <Card cls="hm-vazia"><p class="kicker">Perfil de treino</p><h2 style="margin-top:4px">Complete o Perfil de treino</h2>
+    <p class="small sub" style="margin-top:6px">Você pulou algumas perguntas. O que já respondeu está salvo; falta pouco para o app montar a sua semana.</p>
     {falta.length > 0 && <ul class="hm-passos">{falta.map((f) => <li key={f.rotulo}><Icon id="target" /><span class="small">{f.rotulo}</span></li>)}</ul>}
     <a class="btn pri full" href={`#primeiros-passos/${Math.max(0, primeiro)}`}>Continuar de onde parei<Icon id="arrow" /></a>
     <button type="button" class="btn ghost full" style="margin-top:6px" onClick={adiarPerfil}>Lembrar depois</button></Card>;
@@ -72,11 +74,11 @@ export default function Hoje() {
   const falta = checkup === "pulado" ? C.faltaParaGerar(S.profile) : [];
   const perfil = v && C.cartaoCompletePerfil({ falta: falta.length, adiadoEm: perfilAdiadoEm(v), hoje: today }) === "mostrar";
   const topo = <>{!falta.length && <FaixaCheckup />}<AvisoFalta /></>;
+  // #63 sem treino (o servidor não gerou a semana; demonstração `?demo&vazio`): só o começo guiado, sem treino aleatório
+  if (getVazio() != null || (v?.vazio && checkup === "nunca")) return <>{cab}<AvisoFalta /><ComecoVazio falta={C.faltaParaGerar(S.profile)} /></>;
   if (!v) return <>{cab}{topo}{H.erro
     ? <Card><h2>Não deu para carregar</h2><p class="small sub" style="margin-top:4px">Sem conexão ou o servidor não respondeu. Seus registros estão salvos.</p><button type="button" class="btn pri" style="margin-top:10px" onClick={() => void carregarHome(true)}>Tentar de novo</button></Card>
     : <Esqueleto />}</>;
-  // conta sem nada e sem checkup (demonstração `?demo&vazio`): só o "Comece"
-  if (v.vazio && checkup === "nunca") return <>{cab}{topo}<Vazia /></>;
   const sem = <><Descanso /><SemanaCarrossel /></>, obj = <Objetivo view={v} />, lac = <Lacunas gaps={v.gaps} />, com = <ComidaPainel c={v.comida} />, cla = <ClaudeCard />;
   const boas = checkup === "feito" && boasVindasVisivel(v) ? <BoasVindas /> : perfil ? <CompletePerfil falta={falta} /> : null;
   const cam = v.marcos?.length ? <Caminho marcos={v.marcos} /> : null, med = v.medias?.length ? <Medias medias={v.medias} /> : null, ata = <Atalhos view={v} />;

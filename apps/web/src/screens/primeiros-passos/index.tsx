@@ -16,6 +16,7 @@ import { BODY, DAYS_LONG, DIET, GOALS, LEVELS, LIM } from "../../lib/perfil-dado
 import { DEFAULT_GYMS } from "../../lib/store/index.ts";
 import { limparDispensaCheckup } from "../../lib/faixa-checkup/index.tsx";
 import { lsGet, lsSet, setPath } from "../../lib/util.ts";
+import { classePulso, pararPulso } from "../../lib/pulso/index.ts";
 
 const KEY = "ciclo:pp";
 /** `semDor`: tocou em "Nenhuma dor" (sem isso, nada aparece marcado nesse passo). */
@@ -45,6 +46,7 @@ export function salvarPasso(passo: string): Promise<void> {
 }
 /** Uma resposta mudou: fica no aparelho na hora e vai ao servidor logo depois (debounce). */
 function mudou(passo: string) {
+  pararPulso();
   profileChanged(false);
   if (SERVER) rascunhoPP.gravar(C.patchDoPasso(passo, S.profile));
   commit();
@@ -150,11 +152,11 @@ function addPainQuick(region: string) {
 }
 function Dores() {
   const setIntensity = (region: string, v: number) => { const p = S.pains.find((x) => x.region === region); if (!p) return; p.intensity = v; send("POST", "/api/pains", { region, intensity: v }).catch(() => {}); commit(); };
-  const nenhuma = () => { [...S.pains].forEach((p) => resolvePain(p.region)); pp.semDor = true; savePP(); commit(); };
+  const nenhuma = () => { pararPulso(); [...S.pains].forEach((p) => resolvePain(p.region)); pp.semDor = true; savePP(); commit(); };
   return <><div class="chips"><button type="button" class="chip tall" aria-pressed={pp.semDor && !S.pains.length} onClick={nenhuma}>Nenhuma dor</button></div>
     <span class="f" style="margin-top:16px">Ou toque onde dói ou incomoda</span>
     <div class="chips">{C.PAIN_REGIONS.map((r) => <button type="button" key={r.id} class="chip tall" aria-pressed={S.pains.some((p) => p.region === r.id)}
-      onClick={() => { S.pains.some((p) => p.region === r.id) ? resolvePain(r.id) : addPainQuick(r.id); commit(); }}>{r.nm}</button>)}</div>
+      onClick={() => { pararPulso(); S.pains.some((p) => p.region === r.id) ? resolvePain(r.id) : addPainQuick(r.id); commit(); }}>{r.nm}</button>)}</div>
     {S.pains.map((p) => <div key={p.region} class="prefrow" style="margin-top:12px"><span class="small"><b>{C.REGION_BY_ID[p.region]?.nm ?? p.region}</b></span>
       <Seg opts={[[1, "leve"], [2, "média"], [3, "forte"]]} value={p.intensity} onPick={(v) => setIntensity(p.region, v)} label={`Intensidade ${p.region}`} /></div>)}
     {S.pains.some((p) => p.intensity >= 3) && <div class="note warn" style="margin-top:14px"><Icon id="warn" /><span>Dor forte ou que dura mais de 1–2 semanas pede um profissional. O app adapta o treino, mas não diagnostica.</span></div>}</>;
@@ -267,7 +269,7 @@ async function pular(passo: string, setBusy: (b: boolean) => void) {
     await salvarPasso(passo);
     S.profile.meta = { ...S.profile.meta, checkup: "pulado" };
     if (SERVER) { await send("PATCH", "/api/profile", { data: { meta: { checkup: "pulado" } } }); await send("PATCH", "/api/account", { onboarding: "concluido" }); }
-    S.onboarding = "concluido"; pp.step = 0; savePP(); salvo = ""; commit(); toast("Sem problema: dá para fazer o checkup depois"); go("#hoje");
+    S.onboarding = "concluido"; pp.step = 0; savePP(); salvo = ""; commit(); toast("Sem problema: dá para completar o Perfil de treino depois"); go("#hoje");
   } catch (e) { toast(mensagemErro(e)); setBusy(false); }
 }
 
@@ -289,11 +291,11 @@ export default function PrimeirosPassos({ route }: { route: Route }) {
     <div class="pp-top"><button type="button" class="btn" disabled={step === 0} onClick={() => goto(step - 1)} aria-label="Voltar uma pergunta"><Icon id="back" />Voltar</button>
       <span class="small sub num" aria-hidden="true">{step + 1} de {PASSOS.length}</span>
       {feito ? <a class="btn ghost" href="#perfil">Sair</a> : <button type="button" class="btn ghost" disabled={busy} onClick={() => pular(P.id, setBusy)}>Pular por agora</button>}</div>
-    <div class="pp-bar" role="progressbar" aria-label="Progresso dos Primeiros passos" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><i style={`width:${pct}%`} /></div>
+    <div class="pp-bar" role="progressbar" aria-label="Progresso do Perfil de treino" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><i style={`width:${pct}%`} /></div>
     <Salvo />
     {porClaude && step === 0 && <div class="note" style="margin-top:14px"><Icon id="chat" /><span>Preenchido pelo Chat. Confira as respostas e siga até o fim para confirmar.</span></div>}
     <h1 class="pp-q">{P.title}</h1><p class="sub pp-sub">{P.sub}</p>
-    <div class="pp-body"><Tela /></div>
+    <div class={`pp-body ${classePulso()}`}><Tela /></div>
     {step === LAST && falta.length > 0 && <Faltando itens={falta} />}
     <div class="pp-cta">{step < LAST
       ? <><button type="button" class="btn pri lg full" disabled={blocked} onClick={() => goto(step + 1)}>Continuar<Icon id="arrow" /></button>
