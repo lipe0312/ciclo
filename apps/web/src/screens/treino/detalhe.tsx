@@ -9,13 +9,14 @@ import { href } from "../../lib/roteador/index.ts";
 import { img } from "../../lib/util.ts";
 import { ExImgs } from "./biblioteca.tsx";
 import { MediaBox } from "./midia.tsx";
+import { useTexto } from "../../lib/texto/index.ts";
 import { Estado } from "../../lib/estado/index.tsx";
 
 const List = ({ title, items, empty }: { title: string; items?: string[]; empty: string }) =>
   <Card><h2>{title}</h2>{items?.length ? <ol class="steps">{items.map((t, i) => <li key={i}>{t}</li>)}</ol> : <p class="small sub" style="margin-top:6px">{empty}</p>}</Card>;
 
 export function Detalhe({ id }: { id: string }) {
-  const it = C.CATALOG_BY_ID[id];
+  const it = C.CATALOG_BY_ID[id], tx = useTexto(id);
   if (!it) return <Estado tipo="vazio" titulo="Exercício não encontrado" acao={{ label: "Ver exercícios", href: "#treino/exercicios" }} />;
   const src = C.imageSrc(it);
   const primary = it.subMuscles?.length ? it.subMuscles : it.type === "forca" ? DEFAULT_SUB[it.m] : [];
@@ -28,8 +29,9 @@ export function Detalhe({ id }: { id: string }) {
           {it.type === "forca" ? <><span><b>{it.r[0]}–{it.r[1]}</b> reps</span><span>descanso <b>{it.rest}s</b></span>{it.stretch && <span class="badge">alongado</span>}</>
             : <><span>registro em <b>{it.units.join(" / ")}</b></span><span class="tiny sub">kcal é estimada (MET × peso × tempo)</span></>}
           <span>{it.eq.length ? it.eq.map((e) => C.EQUIPMENT_BY_ID[e]?.nm ?? e).join(" + ") : "sem aparelho"}</span></div></Card>
-      <List title="Como fazer" items={it.howTo} empty="Passo a passo em revisão. Enquanto isso: movimento controlado, amplitude completa e sobrar 1–2 repetições." />
-      <div class="grid g2"><List title="Dicas" items={it.tips} empty="Em breve." /><List title="Erros comuns" items={it.mistakes} empty="Em breve." /></div>
+      {/* #96 texto sob demanda: enquanto carrega (undefined), nada de mensagem de reserva piscando */}
+      {tx !== undefined && <><List title="Como fazer" items={tx?.howTo} empty="Passo a passo em revisão. Enquanto isso: movimento controlado, amplitude completa e sobrar 1–2 repetições." />
+      <div class="grid g2"><List title="Dicas" items={tx?.tips} empty="Em breve." /><List title="Erros comuns" items={tx?.mistakes} empty="Em breve." /></div></>}
       {it.type === "cardio" && <Card><h2>Intensidade</h2>{(Object.keys(C.INTENSITIES) as C.Intensity[]).map((k) => <div key={k} class="row between small" style="padding:6px 0"><span><b>{C.INTENSITIES[k].nm}</b> · {C.INTENSITIES[k].desc}</span><span class="num sub">~{C.cardioKcal(it, k, calc().weightKg, 30)} kcal/30 min</span></div>)}</Card>}
     </div><div class="stack">
       {primary.length > 0 && <Card><h2>Músculos</h2><MapaMusculos primary={primary} secondary={it.secondary} size="sm" /></Card>}

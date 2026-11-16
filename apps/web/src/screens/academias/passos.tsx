@@ -38,7 +38,8 @@ export function PassoAPasso({ inicial, onDone, onCancel }: PassoProps) {
       }} />
       <div style="margin-top:18px"><label class="f" for="lug-nome">Nome</label>
         <input id="lug-nome" class="input" value={d.name} maxLength={C.PLACE_NAME_MAX} autocomplete="off" onInput={(e) => { setAuto(false); set({ name: e.currentTarget.value }); }} />
-        <p class="tiny sub" style="margin-top:4px">{d.name.length} de {C.PLACE_NAME_MAX} letras</p></div></> },
+        <p class="tiny sub" style="margin-top:4px">{d.name.length} de {C.PLACE_NAME_MAX} letras</p></div>
+      <span class="ap-box lug-kind"><img class="ap-img" src={`/img/ap/lugar-${d.kind}.svg`} alt={kindNm(d.kind)} loading="lazy" width={160} height={120} /></span></> },
     { id: "mapa", title: "Onde fica?", sub: "Busque o endereço, use onde você está agora ou toque no mapa. Dá para pular.", ok: true, Tela: () =>
       <SeletorDeLocal ponto={d.lat != null && d.lng != null ? { lat: d.lat, lng: d.lng } : null} endereco={d.address ?? ""}
         onChange={(p, end) => set({ lat: p?.lat ?? null, lng: p?.lng ?? null, address: end || null })} /> },

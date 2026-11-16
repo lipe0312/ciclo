@@ -7,6 +7,7 @@ import { Chip, Icon, Seg, toast } from "../../lib/ui/index.tsx";
 import { Carrossel } from "../../lib/carrossel/index.tsx";
 import { go } from "../../lib/roteador/index.ts";
 import { img, uid } from "../../lib/util.ts";
+import { useTexto } from "../../lib/texto/index.ts";
 import { MediaBox } from "./midia.tsx";
 import { ExImgs } from "./biblioteca.tsx";
 import { OUTCOME_TXT, buildSummary, pastOf } from "./sessao.ts";
@@ -96,13 +97,13 @@ function Finish() {
 /** "Ver como fazer": detalhe do exercício numa folha (sem sair do modo treino): 2 imagens, passo a passo e a mídia do seu aparelho. */
 export const openComoFazer = (exId: string) => openSheet(() => <ComoFazer exId={exId} />);
 function ComoFazer({ exId }: { exId: string }) {
-  const it = C.CATALOG_BY_ID[exId];
+  const it = C.CATALOG_BY_ID[exId], tx = useTexto(exId);
   if (!it) return <><SheetHead kicker="Como fazer" title="Exercício seu" /><p class="small sub" style="margin:10px 0">Exercício fora do catálogo: sem passo a passo. Mantenha o movimento controlado e sobre 1–2 repetições.</p><MediaBox exId={exId} /></>;
   const src = C.imageSrc(it);
   return <><SheetHead kicker={it.type === "forca" ? `${C.MUSCLES[it.m].nm} · ${it.kind}` : "Cardio"} title={it.nm} />
     <div style="margin-top:10px">{it.images.length ? <Carrossel label="Imagens do exercício" items={it.images.map((n) => <img src={img(src, n)} alt={`${it.nm} · ${n ? "fim" : "início"} do movimento`} width={360} height={240} />)} /> : <ExImgs it={it} size="big" />}</div>
     <h3 style="margin:14px 0 4px">Passo a passo</h3>
-    {it.howTo?.length ? <ol class="steps">{it.howTo.map((t, i) => <li key={i}>{t}</li>)}</ol> : <p class="small sub">Movimento controlado, amplitude completa e sobrar 1–2 repetições.</p>}
-    {it.tips?.length ? <><h3 style="margin:14px 0 4px">Dicas</h3><ol class="steps">{it.tips.map((t, i) => <li key={i}>{t}</li>)}</ol></> : null}
+    {tx?.howTo.length ? <ol class="steps">{tx.howTo.map((t, i) => <li key={i}>{t}</li>)}</ol> : tx === undefined ? null : <p class="small sub">Movimento controlado, amplitude completa e sobrar 1–2 repetições.</p>}
+    {tx?.tips.length ? <><h3 style="margin:14px 0 4px">Dicas</h3><ol class="steps">{tx.tips.map((t, i) => <li key={i}>{t}</li>)}</ol></> : null}
     <h3 style="margin:14px 0 4px">Seu aparelho</h3><MediaBox exId={exId} /></>;
 }

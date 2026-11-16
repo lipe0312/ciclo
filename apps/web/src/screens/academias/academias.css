@@ -55,3 +55,16 @@
 .eq .eq-ph,.lug-ap .eq-ph{display:grid;place-items:center;width:100%;aspect-ratio:4/3;background:var(--sup-3);color:var(--sub)}
 .eq .eq-ph svg{width:36px;height:36px}
 .lug-ap .eq-ph{width:64px;height:48px;aspect-ratio:auto;border-radius:8px}
+
+/* #96: ilustrações de aparelho (SVG de traço). Em <img> o currentColor vira preto: no escuro o filtro inverte só o traço (o fundo fica no .ap-box). */
+.ap-box{display:block;position:relative;background:var(--sup-3);line-height:0}
+.ap-img{display:block;width:100%;height:100%;aspect-ratio:4/3;object-fit:contain;padding:6px;box-sizing:border-box;background:none}
+.lug-ap .ap-box{width:64px;height:48px;border-radius:8px;overflow:hidden}
+.lug-ap .ap-img{width:64px;height:48px;padding:3px;border-radius:0;background:none}
+.ap-big{background:var(--sup-3)}
+.ap-big .ap-box{position:absolute;inset:0}
+.ap-big .ap-img{padding:12px;aspect-ratio:auto}
+.eq .ap-img{background:none}
+.lug-kind{width:160px;max-width:60%;aspect-ratio:4/3;margin:18px auto 0;border-radius:12px;overflow:hidden}
+:root[data-theme="dark"] .ap-img{filter:invert(.92)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ap-img{filter:invert(.92)}}
