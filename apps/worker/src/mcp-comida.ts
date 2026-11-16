@@ -9,6 +9,8 @@ import type { ComidaAprovacao, Existente, InterpretacaoComida, ItemInformado, Me
 import type { Env } from "./env.ts";
 import { interpretarComIA } from "./porcao-ia.ts";
 import { temConferir } from "@ciclo/core/porcoes";
+// os itens da #80 levam `conferir` (fora do plausível); o tipo da #81 não declara o campo, mas ele segue no objeto
+const conferir = (i: InterpretacaoComida) => temConferir(i as unknown as Parameters<typeof temConferir>[0]);
 import { HttpError, date, id, num, oneOf, str } from "./http.ts";
 import { basePessoal } from "./comida.ts";
 import { confirmar, criarPrevia } from "./mcp-previa.ts";
@@ -182,7 +184,7 @@ async function registrar(a: Args, env: Env, uid: string) {
   const interpretar = (t: string, data: string | null) => interpretarComIA(env, uid, { texto: t, hoje, hora: horaSP(), refeicao, data, base });
 
   if (!dias || dias.length === 1) {
-    let interp = await (dias ? interpretar(dias[0].texto, dias[0].data) : interpretar(texto!, d));
+    let interp: InterpretacaoComida = await (dias ? interpretar(dias[0].texto, dias[0].data) : interpretar(texto!, d));
     if (!dentroDoLimite(interp.data, hoje)) throw new HttpError(400, LIMITE_MSG);
     const fora = extras.find((x) => x.data && x.data !== interp.data);
     if (fora) throw new HttpError(400, `itens: "${fora.nome}" é de ${fora.data}, mas o registro é de ${interp.data}`);
@@ -191,7 +193,7 @@ async function registrar(a: Args, env: Env, uid: string) {
     const dia = await doDia(env, uid, interp.data);
     const plano = planejarRegistro(interp, existentes(dia), modo);
     // #80 teto de sanidade: "⚠ conferir" nunca grava sem confirmação, qualquer que seja a preferência
-    if (a.simular === true || precisaAprovacao(pref, interp, plano.precisaEscolha) || temConferir(interp)) {
+    if (a.simular === true || precisaAprovacao(pref, interp, plano.precisaEscolha) || conferir(interp)) {
       const token = await criarPrevia(env, uid, "comida_registrar", { interp, modo } satisfies PayloadRegistro);
       return { ...previaRegistro(interp, plano.refeicoes, dia, token), aviso: AVISO_DADO };
     }
@@ -211,7 +213,7 @@ async function registrar(a: Args, env: Env, uid: string) {
   const duvidas = [...duv, ...p.dias.flatMap((i) => i.duvidas)].slice(0, MAX_DUVIDAS);
   const pior = p.dias.some((i) => i.confianca === "baixa") ? "baixa" as const : "media" as const;
   const escolher = planos.some((x) => x.plano.precisaEscolha);
-  if (a.simular === true || precisaAprovacao(pref, { duvidas, confianca: pior }, escolher) || p.dias.some(temConferir)) {
+  if (a.simular === true || precisaAprovacao(pref, { duvidas, confianca: pior }, escolher) || p.dias.some(conferir)) {
     const token = await criarPrevia(env, uid, "comida_registrar", p);
     return {
       previa: true, token, expiraEmMin: 15, aviso: AVISO_DADO,
