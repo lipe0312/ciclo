@@ -50,6 +50,9 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   const mediaLug = (await ok(call(env, "POST", `/api/media?gymId=${lug}&equipmentId=halteres&note=${tag}`, { user, raw: PNG, ct: "image/png" }))).data.id;
   await ok(c("GET", `/api/week?date=${D}`));
   await ok(c("POST", "/api/week/day/2026-11-07", { action: "gerar", today: D, opts: { focus: ["ombro"] } }));
+  // #108 "Gerar treino" num dia sem treino: plano com revisão pendente + pedido revisar_treino na caixa
+  const livre = ((await ok(c("GET", `/api/week?date=${D}`))).data.week.days as { date: string; status: string }[]).find((x) => x.date >= D && (x.status === "livre" || x.status === "folga"))!.date;
+  await ok(c("POST", `/api/week/day/${livre}/gerar-treino`, { today: D }));
   // #27 diário: checkout, lembrete, resumo dos dias e exame (texto bruto marcado)
   await ok(c("PUT", `/api/checkout/${D}`, { trained: false, alcohol: 2, smoke: true, note: `${tag} checkout`, cardio: { type: "Rope_Jumping", minutes: 10 } }));
   await ok(c("POST", "/api/diario/abrir", { today: D }));
@@ -69,8 +72,9 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   await ok(mcp(env, tok.token, "ciclo_comida_registrar", { confirmar: pv1.token }));
   const previa = JSON.parse((await ok(mcp(env, tok.token, "ciclo_comida_registrar", { texto: `jantei 150 g de frango ${tag}`, simular: true }))).data.result.content[0].text).token as string;
   const exp = (await c("GET", "/api/account/export")).data;
+  const revisao = (exp.inbox as { id: string; action: string }[]).find((i) => i.action === "revisar_treino")!.id;
   const dev = (await c("GET", "/api/account/devices")).data; // #54: sessão e passkey (só existem nas contas criadas por convite)
-  return { sessao: dev.sessions[0]?.id ?? "x1", passkey: dev.passkeys[0]?.id ?? "x1", mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id, previa };
+  return { sessao: dev.sessions[0]?.id ?? "x1", passkey: dev.passkeys[0]?.id ?? "x1", mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id, previa, livre, revisao };
 }
 const snap = async (env: any, user: string) => {
   const e = (await call(env, "GET", "/api/account/export", { user })).data;
@@ -83,7 +87,7 @@ async function matriz(env: any, ana: string, bia: string) {
   const A = await seed(env, ana, "MARCA_A", SID_A, 10);
   const before = await snap(env, bia);
   const r2Before = [...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length;
-  const secrets = [B.mem, "MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, String(MARK_KG), "bia@"];
+  const secrets = [B.mem, "MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, B.revisao, String(MARK_KG), "bia@"];
   const subsB = () => env.DB.raw.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE endpoint = ?1").get(B.endpoint).n;
   const restB = () => JSON.stringify(env.DB.raw.prepare("SELECT fire_at, sent_at FROM rest_timer WHERE user_id = ?1").get(B.uid));
   const restBefore = restB();
@@ -135,6 +139,8 @@ async function matriz(env: any, ana: string, bia: string) {
     ["PUT /api/week", () => a("PUT", "/api/week", { date: D, version: 1 })],
     ["POST /api/week/regenerate", () => a("POST", "/api/week/regenerate", { date: D, apply: true, reset: true })],
     ["POST /api/week/day/:date", () => a("POST", "/api/week/day/2026-11-08", { action: "folga", today: D })],
+    // #108 a A já gerou o dia dela: gerar de novo = 409 (o dia da B não conta nem muda)
+    ["POST /api/week/day/:date/gerar-treino", () => a("POST", `/api/week/day/${B.livre}/gerar-treino`, { today: D }), 409],
     ["POST /api/sessions/:id/sets", () => a("POST", `/api/sessions/${B.sid}/sets`, { exerciseId: B.ex, muscle: "ombro", setNo: 1, kg: 1, reps: 1 })],
     ["POST /api/sessions/:id/skip", () => a("POST", `/api/sessions/${B.sid}/skip`, { exerciseId: B.ex, reason: "dor" })],
     ["GET /api/sessions/:id", () => a("GET", `/api/sessions/${B.sid}`), 404],
@@ -205,6 +211,8 @@ async function matriz(env: any, ana: string, bia: string) {
     // #95: o treino atual e as academias lidos pelo MCP são só da A; academia da B no gymId = não encontrada
     ["ciclo_treino_atual", {}], ["ciclo_planejar_dia", { date: D, daysLeft: 2, gymId: B.lug }, true], ["ciclo_salvar_treino_do_dia", { date: D, gymId: B.lug, itens: [{ id: B.ex, sets: 2 }], motivo: "t" }, true],
     ["ciclo_preferencias", { comida_aprovacao: "so_duvidas" }], ["ciclo_historico", { tipo: "series", de: "2026-11-01", ate: D }],
+    // #108 o pedido revisar_treino da B não serve para a A; a revisão da A só vê e muda o dia dela
+    ["ciclo_responder_pedido", { id: B.revisao, resposta: "oi", itens: [{ id: B.ex, sets: 2 }] }, true], ["ciclo_revisar_treino", {}], ["ciclo_revisar_treino", { date: B.livre, aplicar: true }],
     ["ciclo_exame_pendente", {}], ["ciclo_exame_concluir", { id: B.exam, resumo: { marcadores: [{ nome: "TSH", valor: 1, status: "dentro" }] } }, true],
   ];
   assert.deepEqual([...new Set(cases.map((c) => c[0].replace(/ \(.*\)$/, "")))].concat("DELETE /api/account", "POST /api/account/logout-all").sort(), routeSignatures().sort(), "toda rota precisa de caso de isolamento");
@@ -215,6 +223,8 @@ async function matriz(env: any, ana: string, bia: string) {
     if (status) assert.equal(r.status, status, `${sig}: ${r.text}`); else assert.ok(r.status < 300, `${sig}: ${r.status} ${r.text}`);
     noLeak(sig, r.text);
   }
+  // a matriz passa de 120 escritas/min da A: janela nova do limite antes das ferramentas (o limite tem teste próprio)
+  env.DB.raw.prepare("DELETE FROM rate_limit WHERE user_id = ?1 AND bucket = 'write'").run(A.uid);
   for (const [name, args, isErr] of tools) {
     const r = await mcp(env, A.token, name, args);
     assert.equal(r.status, 200, `${name}: ${r.text}`); assert.equal(!!r.data.result.isError, !!isErr, `${name}: ${r.text}`);
