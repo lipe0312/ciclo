@@ -28,7 +28,11 @@
   // Só valores públicos aqui. Segredos (OWNER_SETUP_CODE, OWNER_EMAIL, AUTH_PEPPER, VAPID_*) vão por `wrangler secret put`;
   // DEV_NO_AUTH e MCP_TOKEN são só de .dev.vars (localhost) e NUNCA entram em produção (scripts/predeploy.mjs confere).
   // MAX_USERS: teto de contas (#54); o código nunca passa de 10. OWNER_SETUP_CODE é secret (wrangler secret put).
-  "vars": { "APP_VERSION": "0.1.0", "MAX_USERS": "10", "PUBLIC_ORIGIN": "https://ciclo.ciclo-worker.workers.dev" },
+  "vars": { "APP_VERSION": "0.1.0", "MAX_USERS": "10", "PUBLIC_ORIGIN": "https://ciclo.ciclo-worker.workers.dev",
+    // callbacks OAuth do MCP aceitos (substitui o padrão; o do Claude precisa continuar na lista). "/" no fim = prefixo do caminho.
+    // ChatGPT: fixo quando o servidor anuncia o iss (RFC 9207, nosso caso); o prefixo cobre o callback por conexão. Cursor: o web/agents
+    // (o desktop usa cursor:// e o loopback http://localhost, que já é aceito).
+    "OAUTH_REDIRECT_HOSTS": "https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback,https://chatgpt.com/connector_platform_oauth_redirect,https://chatgpt.com/connector/oauth/,https://www.cursor.com/agents/mcp/oauth/callback" },
   // PUBLIC_ORIGIN (#58, não é segredo): origem https do WebAuthn em produção; o predeploy exige. Ajuste se o workers.dev da sua conta for outro.
   "observability": { "enabled": true },
   "upload_source_maps": false,
