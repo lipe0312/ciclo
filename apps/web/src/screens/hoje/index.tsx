@@ -55,6 +55,11 @@ function CompletePerfil({ falta }: { falta: C.Falta[] }) {
     <button type="button" class="btn ghost full" style="margin-top:6px" onClick={adiarPerfil}>Lembrar depois</button></Card>;
 }
 
+/** #63 O Hoje está no começo guiado (sem treino)? A casca esconde a faixa do Diário para não disputar com o CTA. */
+export const hojeVazio = () => getVazio() != null || (!!H.view?.vazio && (SERVER ? estadoDoCheckup() : "nunca") === "nunca");
+/** Telas em que a casca não mostra a faixa do Diário (check-in/checkout): Perfil de treino e o Hoje vazio. */
+export const esconderLembrete = (screen: string) => screen === "primeiros-passos" || (screen === "hoje" && hojeVazio());
+
 const Esqueleto = () => <div class="stack" aria-busy="true" aria-label="Carregando a Home"><div class="hm-esq" style="height:210px" /><div class="hm-esq" style="height:150px" /><div class="hm-esq" style="height:130px" /></div>;
 
 /** Em tela larga, duas colunas independentes (sem buracos de linha); no celular, uma só, na ordem de importância. */
@@ -75,7 +80,7 @@ export default function Hoje() {
   const perfil = v && C.cartaoCompletePerfil({ falta: falta.length, adiadoEm: perfilAdiadoEm(v), hoje: today }) === "mostrar";
   const topo = <>{!falta.length && <FaixaCheckup />}<AvisoFalta /></>;
   // #63 sem treino (o servidor não gerou a semana; demonstração `?demo&vazio`): só o começo guiado, sem treino aleatório
-  if (getVazio() != null || (v?.vazio && checkup === "nunca")) return <>{cab}<AvisoFalta /><ComecoVazio falta={C.faltaParaGerar(S.profile)} /></>;
+  if (hojeVazio()) return <>{cab}<AvisoFalta /><ComecoVazio falta={C.faltaParaGerar(S.profile)} /></>;
   if (!v) return <>{cab}{topo}{H.erro
     ? <Card><h2>Não deu para carregar</h2><p class="small sub" style="margin-top:4px">Sem conexão ou o servidor não respondeu. Seus registros estão salvos.</p><button type="button" class="btn pri" style="margin-top:10px" onClick={() => void carregarHome(true)}>Tentar de novo</button></Card>
     : <Esqueleto />}</>;

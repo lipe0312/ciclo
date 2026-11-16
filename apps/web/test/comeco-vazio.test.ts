@@ -26,7 +26,8 @@ before(async () => {
   const out = join(dir, "m.mjs");
   await build({
     stdin: {
-      contents: `export { default as Hoje } from "./src/screens/hoje/index.tsx";
+      contents: `export { default as Hoje, hojeVazio, esconderLembrete } from "./src/screens/hoje/index.tsx";
+        export { LembreteDiario } from "./src/lib/lembrete-diario/index.tsx";
         export { default as PrimeirosPassos, PASSOS } from "./src/screens/primeiros-passos/index.tsx";
         export { default as Perfil } from "./src/screens/perfil/index.tsx";
         export { PassoAPasso } from "./src/screens/academias/passos.tsx";
@@ -80,6 +81,16 @@ test("conta nova que pulou: Hoje vazio, sem treino aleatório, com Montar (princ
   M.S.profile.goal.id = "bracos_ombros";
   assert.equal(link(montar(M.Hoje), "Montar meu primeiro treino")!.getAttribute("href"), `#primeiros-passos/${M.C.PASSOS_PP.indexOf("experiencia")}`);
   void nav;
+});
+
+test("Hoje vazio: a faixa do checkout/check-in não aparece acima do começo guiado", async () => {
+  contaNova(); M.S.profile.goal.id = "";
+  await M.garantirSemana(true); M.H.view = { vazio: true, gaps: [], marcos: [], medias: [] };
+  assert.equal(M.hojeVazio(), true);
+  assert.equal(M.esconderLembrete("hoje"), true);
+  assert.equal(montar(M.LembreteDiario, { hidden: M.esconderLembrete("hoje") }).porClasse("lembrete-diario").length, 0, "faixa do Diário no Hoje vazio");
+  assert.equal(M.esconderLembrete("primeiros-passos"), true);
+  assert.equal(M.esconderLembrete("diario"), false, "fora do Hoje vazio continua");
 });
 
 test("nenhum chip vem marcado de fábrica: Perfil de treino, blocos do Perfil e lugar novo", async () => {
