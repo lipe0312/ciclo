@@ -38,4 +38,6 @@ export interface AuthUser {
   reauthAt?: number | null;
   /** #62: falta aceitar a versão vigente dos termos ou da privacidade (app e MCP bloqueiam até aceitar). */
   aceitePendente?: boolean;
+  /** #81: escopos do token do MCP ("ler" ou "ler escrever"). Ausente = sessão do app ou bootstrap local (tudo). */
+  escopo?: string;
 }

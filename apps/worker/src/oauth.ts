@@ -4,7 +4,7 @@
 // A conexão vira uma linha de mcp_token (kind 'oauth'): mesma lista da Conta, revogável igual à chave manual (#55).
 // Todo SQL com bind; segredos só como SHA-256; nada de dado pessoal em log. Regras puras em packages/core/src/oauth.ts.
 import {
-  OAUTH, grantsParaRevogar, listaRedirects, metadataRecurso, redirectPermitido, metadataServidor, recursoValido, redirecionar, tokenValido,
+  OAUTH, escoposDe, grantsParaRevogar, listaRedirects, metadataRecurso, redirectPermitido, metadataServidor, recursoValido, redirecionar, tokenValido,
   validarPedidoAutorizacao, validarRegistro, verifierValido,
 } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
@@ -108,8 +108,8 @@ async function autorizar(req: Request, env: Env, url: URL, now: number): Promise
     return ir(redirecionar(v.redirectUri, { error: v.erro, error_description: v.descricao, state: v.state, iss: url.origin }));
   }
   const rid = rnd(16);
-  await env.DB.prepare("INSERT INTO oauth_request (id, client_id, redirect_uri, code_challenge, state, resource, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
-    .bind(rid, c.id, v.value.redirectUri, v.value.challenge, v.value.state, v.value.resource, now + OAUTH.pedidoMs).run();
+  await env.DB.prepare("INSERT INTO oauth_request (id, client_id, redirect_uri, code_challenge, state, resource, expires_at, escopo) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
+    .bind(rid, c.id, v.value.redirectUri, v.value.challenge, v.value.state, v.value.resource, now + OAUTH.pedidoMs, v.value.escopo).run();
   return ir(`/autorizar?req=${rid}`);
 }
 
@@ -119,11 +119,12 @@ const pedidoId = (v: unknown) => (typeof v === "string" && /^[0-9a-f]{32}$/.test
  *  se está na allowlist e se já há sessão. Sem segredo nenhum. */
 async function pedidoInfo(req: Request, env: Env, quem: Quem, id: string, now: number): Promise<Response> {
   const rid = pedidoId(id);
-  const r = rid ? await env.DB.prepare("SELECT redirect_uri FROM oauth_request WHERE id = ?1 AND expires_at > ?2").bind(rid, now).first<{ redirect_uri: string }>() : null;
+  const r = rid ? await env.DB.prepare("SELECT redirect_uri, escopo FROM oauth_request WHERE id = ?1 AND expires_at > ?2").bind(rid, now).first<{ redirect_uri: string; escopo: string | null }>() : null;
   if (!r) return json({ error: "pedido vencido ou inválido: volte ao Claude e tente de novo", code: "vencido" }, 404);
   const u = await quem(req, env).catch(() => null);
   const verificado = redirectPermitido(r.redirect_uri, listaRedirects(env.OAUTH_REDIRECT_HOSTS)) === "verificado";
-  return json({ destino: new URL(r.redirect_uri).host, verificado, conta: u ? { nome: u.name } : null });
+  // #81 o que a conexão vai poder: a tela mostra os escopos (ler e/ou escrever) antes do Face ID
+  return json({ destino: new URL(r.redirect_uri).host, verificado, conta: u ? { nome: u.name } : null, escopos: escoposDe(r.escopo) });
 }
 
 /** POST /oauth/decidir {req, permitir}: só com sessão. Devolve para onde o navegador vai (o app do Claude). */
@@ -143,13 +144,13 @@ async function decidir(req: Request, env: Env, quem: Quem, origin: string, now: 
     if (u.aceitePendente) return json({ error: "aceite os termos e a privacidade atualizados no app do Ciclo antes de conectar", code: "aceite" }, 403);
   }
   // uso único: o pedido sai na mesma leitura (não dá para permitir duas vezes)
-  const r = await env.DB.prepare("DELETE FROM oauth_request WHERE id = ?1 RETURNING client_id, redirect_uri, code_challenge, state, resource, expires_at").bind(rid)
-    .first<{ client_id: string; redirect_uri: string; code_challenge: string; state: string | null; resource: string | null; expires_at: number }>();
+  const r = await env.DB.prepare("DELETE FROM oauth_request WHERE id = ?1 RETURNING client_id, redirect_uri, code_challenge, state, resource, expires_at, escopo").bind(rid)
+    .first<{ client_id: string; redirect_uri: string; code_challenge: string; state: string | null; resource: string | null; expires_at: number; escopo: string | null }>();
   if (!r || r.expires_at <= now) return json({ error: "pedido vencido: volte ao Claude e tente de novo", code: "vencido" }, 404);
   if (b.permitir !== true) return json({ redirect: redirecionar(r.redirect_uri, { error: "access_denied", error_description: "a pessoa não permitiu", state: r.state, iss: origin }) });
   const code = rnd(32);
-  await env.DB.prepare("INSERT INTO oauth_code (code_hash, user_id, client_id, redirect_uri, code_challenge, resource, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
-    .bind(await sha256Hex(code), u!.id, r.client_id, r.redirect_uri, r.code_challenge, r.resource, now + OAUTH.codigoMs).run();
+  await env.DB.prepare("INSERT INTO oauth_code (code_hash, user_id, client_id, redirect_uri, code_challenge, resource, expires_at, escopo) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
+    .bind(await sha256Hex(code), u!.id, r.client_id, r.redirect_uri, r.code_challenge, r.resource, now + OAUTH.codigoMs, escoposDe(r.escopo).join(" ")).run();
   return json({ redirect: redirecionar(r.redirect_uri, { code, state: r.state, iss: origin }) });
 }
 
@@ -169,18 +170,18 @@ async function autenticarCliente(req: Request, env: Env, f: Record<string, strin
   return c;
 }
 
-async function emitir(env: Env, uid: string, c: ClienteRow, now: number) {
+async function emitir(env: Env, uid: string, c: ClienteRow, now: number, escopo: string) {
   // teto de conexões OAuth por pessoa: a mais antiga sai para caber a nova (a chave manual não conta)
   const { results } = await env.DB.prepare("SELECT id, created_at AS createdAt FROM mcp_token WHERE user_id = ?1 AND kind = 'oauth' AND revoked_at IS NULL ORDER BY created_at, rowid").bind(uid).all<{ id: string; createdAt: number }>();
   const sair = grantsParaRevogar(results, OAUTH.maxGrants);
   const id = rnd(8), access = `ciclo_${id}_${rnd(32)}`, refresh = `ciclor_${id}_${rnd(32)}`;
   await env.DB.batch([
     ...sair.map((t) => env.DB.prepare("UPDATE mcp_token SET revoked_at = ?3 WHERE id = ?1 AND user_id = ?2").bind(t, uid, now)),
-    env.DB.prepare("INSERT INTO mcp_token (id, user_id, hash, label, created_at, kind, client_id, refresh_hash, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, 'oauth', ?6, ?7, ?8)")
-      .bind(id, uid, await sha256Hex(access), `Conector · ${c.name}`.slice(0, 60), now, c.id, await sha256Hex(refresh), now + OAUTH.acessoS * 1000),
+    env.DB.prepare("INSERT INTO mcp_token (id, user_id, hash, label, created_at, kind, client_id, refresh_hash, expires_at, escopo) VALUES (?1, ?2, ?3, ?4, ?5, 'oauth', ?6, ?7, ?8, ?9)")
+      .bind(id, uid, await sha256Hex(access), `Conector · ${c.name}`.slice(0, 60), now, c.id, await sha256Hex(refresh), now + OAUTH.acessoS * 1000, escopo),
     env.DB.prepare("UPDATE oauth_client SET last_used_at = ?2 WHERE id = ?1").bind(c.id, now),
   ]);
-  return { access_token: access, token_type: "Bearer", expires_in: OAUTH.acessoS, refresh_token: refresh, scope: OAUTH.escopo };
+  return { access_token: access, token_type: "Bearer", expires_in: OAUTH.acessoS, refresh_token: refresh, scope: escopo };
 }
 
 async function token(req: Request, env: Env, origin: string, now: number): Promise<Response> {
@@ -193,23 +194,23 @@ async function token(req: Request, env: Env, origin: string, now: number): Promi
     if (typeof f.code !== "string" || !/^[0-9a-f]{64}$/.test(f.code)) return oErro("invalid_grant", "código inválido");
     if (!verifierValido(f.code_verifier)) return oErro("invalid_grant", "code_verifier inválido");
     // uso único: o código sai na mesma leitura, mesmo que o resto falhe (código vazado não serve duas vezes)
-    const k = await env.DB.prepare("DELETE FROM oauth_code WHERE code_hash = ?1 RETURNING user_id, client_id, redirect_uri, code_challenge, expires_at").bind(await sha256Hex(f.code))
-      .first<{ user_id: string; client_id: string; redirect_uri: string; code_challenge: string; expires_at: number }>();
+    const k = await env.DB.prepare("DELETE FROM oauth_code WHERE code_hash = ?1 RETURNING user_id, client_id, redirect_uri, code_challenge, expires_at, escopo").bind(await sha256Hex(f.code))
+      .first<{ user_id: string; client_id: string; redirect_uri: string; code_challenge: string; expires_at: number; escopo: string | null }>();
     if (!k || k.expires_at <= now) return oErro("invalid_grant", "código vencido ou já usado");
     if (k.client_id !== c.id) return oErro("invalid_grant", "código de outro cliente");
     if (f.redirect_uri != null && f.redirect_uri !== k.redirect_uri) return oErro("invalid_grant", "redirect_uri diferente da autorização");
     if (!timingSafeEqualHex(await s256(f.code_verifier), k.code_challenge)) return oErro("invalid_grant", "PKCE não confere");
     const u = await env.DB.prepare("SELECT id FROM user WHERE id = ?1 AND deleted_at IS NULL").bind(k.user_id).first<{ id: string }>();
     if (!u) return oErro("invalid_grant", "conta não existe mais");
-    return json(await emitir(env, u.id, c, now));
+    return json(await emitir(env, u.id, c, now, escoposDe(k.escopo).join(" ")));
   }
 
   if (f.grant_type === "refresh_token") {
     const m = REFRESH_RE.exec(f.refresh_token ?? "");
     if (!m) return oErro("invalid_grant", "refresh_token inválido");
-    const row = await env.DB.prepare(`SELECT t.id, t.user_id, t.client_id, t.refresh_hash, t.created_at, t.last_used_at, u.deleted_at FROM mcp_token t JOIN user u ON u.id = t.user_id
+    const row = await env.DB.prepare(`SELECT t.id, t.user_id, t.client_id, t.refresh_hash, t.created_at, t.last_used_at, t.escopo, u.deleted_at FROM mcp_token t JOIN user u ON u.id = t.user_id
       WHERE t.id = ?1 AND t.kind = 'oauth' AND t.revoked_at IS NULL`).bind(m[1])
-      .first<{ id: string; user_id: string; client_id: string; refresh_hash: string | null; created_at: number; last_used_at: number | null; deleted_at: number | null }>();
+      .first<{ id: string; user_id: string; client_id: string; refresh_hash: string | null; created_at: number; last_used_at: number | null; escopo: string | null; deleted_at: number | null }>();
     if (!row || row.client_id !== c.id || row.deleted_at != null) return oErro("invalid_grant", "refresh_token inválido");
     const got = await sha256Hex(f.refresh_token);
     if (!row.refresh_hash || !timingSafeEqualHex(got, row.refresh_hash)) {
@@ -222,7 +223,7 @@ async function token(req: Request, env: Env, origin: string, now: number): Promi
     const up = await env.DB.prepare("UPDATE mcp_token SET hash = ?3, refresh_hash = ?4, expires_at = ?5, last_used_at = ?6 WHERE id = ?1 AND refresh_hash = ?2 AND revoked_at IS NULL")
       .bind(row.id, row.refresh_hash, await sha256Hex(access), await sha256Hex(refresh), now + OAUTH.acessoS * 1000, now).run();
     if (!up.meta.changes) return oErro("invalid_grant", "refresh_token já usado");
-    return json({ access_token: access, token_type: "Bearer", expires_in: OAUTH.acessoS, refresh_token: refresh, scope: OAUTH.escopo });
+    return json({ access_token: access, token_type: "Bearer", expires_in: OAUTH.acessoS, refresh_token: refresh, scope: escoposDe(row.escopo).join(" ") });
   }
   return oErro("unsupported_grant_type", "use authorization_code ou refresh_token");
 }

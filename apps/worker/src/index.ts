@@ -5,13 +5,14 @@ import { handleApi, uploadMedia } from "./api.ts";
 import { HttpError, json } from "./http.ts";
 import { handleAuth, purgeAuth } from "./auth-conta.ts";
 import { handleMcp } from "./mcp.ts";
+import { purgePrevias } from "./mcp-previa.ts";
 import { closeStaleSessions, hitRateLimit, purgeTrash } from "./db.ts";
 import { sendDueRests } from "./push.ts";
 import { ambiente } from "./ambiente.ts";
 import { purgeExpiredExams } from "./diario.ts";
 import { purgeLimites } from "./limites.ts";
 import { handleOauth, purgeOauth } from "./oauth.ts";
-import { wwwAuthenticate } from "@ciclo/core";
+import { podeEscrever, wwwAuthenticate } from "@ciclo/core";
 import { handleDevCenario } from "./dev-cenario.ts";
 
 const LIVRE_SEM_ACEITE = new Set(["GET /api/account", "POST /api/account/consent", "GET /api/account/export", "DELETE /api/account", "POST /api/account/logout-all"]);
@@ -42,6 +43,7 @@ export default {
       const u = await authenticateMcp(req, env);
       if (!u) return unauthorized(req);
       if (u.aceitePendente) return json({ error: "aceite os termos e a privacidade atualizados no app", code: "aceite" }, 403); // #62
+      if (!podeEscrever(u.escopo)) return json({ error: "esta conexão só tem o escopo ler" }, 403, { "WWW-Authenticate": `Bearer error="insufficient_scope", scope="ler escrever"` }); // #81
       try {
         const wait = await hitRateLimit(env, u.id, "upload");
         if (wait) return json({ error: "muitas requisições; tente de novo em instantes" }, 429, { "Retry-After": String(wait) });
@@ -108,6 +110,7 @@ export default {
       ctx.waitUntil(purgeAuth(env, c.scheduledTime).catch(() => null)); // sessões vencidas, desafios e convites velhos (#54)
       ctx.waitUntil(purgeLimites(env, c.scheduledTime).catch(() => null)); // falhas de login e uso diário antigos (#56)
       ctx.waitUntil(purgeOauth(env, c.scheduledTime).catch(() => null)); // pedidos/códigos OAuth vencidos e clientes ociosos (#66)
+      ctx.waitUntil(purgePrevias(env, c.scheduledTime).catch(() => null)); // prévias do MCP vencidas há mais de 1 dia (#81)
     }
   },
 } satisfies ExportedHandler<Env>;

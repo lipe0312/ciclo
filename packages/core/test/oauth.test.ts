@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  OAUTH, REDIRECTS_PADRAO, grantsParaRevogar, listaRedirects, redirectPermitido, metadataRecurso, metadataServidor, recursoValido, redirecionar, redirectUriValida, urlsOauth,
+  OAUTH, escoposDe, normalizarEscopo, podeEscrever, REDIRECTS_PADRAO, grantsParaRevogar, listaRedirects, redirectPermitido, metadataRecurso, metadataServidor, recursoValido, redirecionar, redirectUriValida, urlsOauth,
   validarPedidoAutorizacao, validarRegistro, verifierValido, wwwAuthenticate,
 } from "../src/index.ts";
 
@@ -15,7 +15,7 @@ test("metadata: recurso aponta para o servidor de autorização; servidor anunci
   assert.equal(u.issuer, O); assert.equal(u.recurso, O + "/mcp");
   const r = metadataRecurso(O);
   assert.equal(r.resource, O + "/mcp"); assert.deepEqual(r.authorization_servers, [O]);
-  assert.deepEqual(r.scopes_supported, [OAUTH.escopo]); assert.deepEqual(r.bearer_methods_supported, ["header"]);
+  assert.deepEqual(r.scopes_supported, ["ler", "escrever"]); assert.deepEqual(r.bearer_methods_supported, ["header"]);
   const s = metadataServidor(O);
   assert.equal(s.issuer, O);
   assert.equal(s.authorization_endpoint, O + "/oauth/authorize"); assert.equal(s.token_endpoint, O + "/oauth/token");
@@ -94,8 +94,10 @@ test("pedido de autorização: exige code + PKCE S256; redirect_uri tem de ser u
     const r = validarPedidoAutorizacao({ ...base, ...mexe }, cli, O);
     assert.ok(!r.ok && r.redirecionavel && r.erro === erro, `${JSON.stringify(mexe)} → ${JSON.stringify(r)}`);
   }
-  // escopos aceitos: ausente, "ciclo" e o offline_access (ignorado)
-  for (const scope of [undefined, "ciclo", "ciclo offline_access", "offline_access"]) assert.ok(validarPedidoAutorizacao({ ...base, scope }, cli, O).ok, String(scope));
+  // escopos aceitos: ausente, "ciclo" (legado = ler + escrever), ler, escrever e o offline_access (ignorado)
+  for (const scope of [undefined, "ciclo", "ciclo offline_access", "offline_access", "ler", "ler escrever", "escrever"]) assert.ok(validarPedidoAutorizacao({ ...base, scope }, cli, O).ok, String(scope));
+  const soLer = validarPedidoAutorizacao({ ...base, scope: "ler" }, cli, O);
+  assert.ok(soLer.ok && soLer.value.escopo === "ler", "#81: só ler fica só ler");
 });
 
 test("recurso (RFC 8707): o /mcp ou a origem; host em maiúsculas é aceito", () => {
@@ -144,4 +146,16 @@ test("allowlist de redirect: caminho exato do Claude, prefixo com barra final, l
   assert.equal(redirectPermitido("https://app.exemplo.dev/outro", l), null);
   assert.deepEqual(listaRedirects(undefined), REDIRECTS_PADRAO);
   assert.deepEqual(listaRedirects(""), REDIRECTS_PADRAO);
+});
+
+test("#81 escopos: ausente/ciclo = ler + escrever; escrever leva ler; desconhecido recusa; token antigo (NULL) escreve", () => {
+  assert.equal(normalizarEscopo(undefined), "ler escrever");
+  assert.equal(normalizarEscopo("ciclo"), "ler escrever");
+  assert.equal(normalizarEscopo("escrever"), "ler escrever");
+  assert.equal(normalizarEscopo("ler offline_access"), "ler");
+  assert.equal(normalizarEscopo("admin"), null);
+  assert.equal(normalizarEscopo("ler admin"), null);
+  assert.equal(normalizarEscopo(5), null);
+  assert.deepEqual(escoposDe(null), ["ler", "escrever"], "tokens emitidos antes da #81 continuam escrevendo");
+  assert.equal(podeEscrever("ler"), false); assert.equal(podeEscrever("ler escrever"), true); assert.equal(podeEscrever("lixo"), false);
 });

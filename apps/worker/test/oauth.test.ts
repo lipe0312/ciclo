@@ -22,8 +22,8 @@ async function registrarCliente(env: unknown, extra: Record<string, unknown> = {
 }
 
 /** authorize → (tela) decidir com a sessão → código na redirect_uri. */
-async function autorizar(env: unknown, clientId: string, cookie: string, o: { permitir?: boolean; state?: string } = {}) {
-  const q = new URLSearchParams({ response_type: "code", client_id: clientId, redirect_uri: CB, code_challenge: await s256(VERIFIER), code_challenge_method: "S256", state: o.state ?? "estado-1", scope: "ciclo", resource: `${O}/mcp` });
+async function autorizar(env: unknown, clientId: string, cookie: string, o: { permitir?: boolean; state?: string; scope?: string; escopos?: string[] } = {}) {
+  const q = new URLSearchParams({ response_type: "code", client_id: clientId, redirect_uri: CB, code_challenge: await s256(VERIFIER), code_challenge_method: "S256", state: o.state ?? "estado-1", scope: o.scope ?? "ciclo", resource: `${O}/mcp` });
   const a = await call(env, "GET", `/oauth/authorize?${q}`, { headers: ip() });
   assert.equal(a.status, 302, a.text);
   const loc = a.headers.get("location")!;
@@ -32,6 +32,7 @@ async function autorizar(env: unknown, clientId: string, cookie: string, o: { pe
   const info = await call(env, "GET", `/oauth/pedido/${req}`, { headers: { Cookie: cookie } });
   assert.equal(info.status, 200); assert.equal(info.data.destino, "claude.ai"); assert.equal(info.data.verificado, true);
   assert.equal(info.data.cliente, undefined, "o client_name não é identidade: a tela mostra o destino");
+  assert.deepEqual(info.data.escopos, o.escopos ?? ["ler", "escrever"], "#81 a tela mostra os escopos pedidos");
   const d = await call(env, "POST", "/oauth/decidir", { body: { req, permitir: o.permitir ?? true }, headers: { Cookie: cookie, Origin: O } });
   assert.equal(d.status, 200, d.text);
   return new URL(d.data.redirect);
@@ -306,4 +307,29 @@ test("#62 aceite pendente: o consentimento recusa e o token OAuth também não u
   const nao = await call(env, "POST", "/oauth/decidir", { body: { req, permitir: true }, headers: { Cookie: d.cookie, Origin: O } });
   assert.ok([401, 403].includes(nao.status), nao.text);
   assert.ok(!nao.data.redirect);
+});
+
+test("#81 escopos: conexão só com `ler` lê, mas escrita → 403 insufficient_scope; o refresh mantém o escopo; legado ciclo = ler + escrever", async () => {
+  const env = envConta();
+  const d = await dono(env);
+  const c = await registrarCliente(env);
+  const code = (await autorizar(env, c.client_id, d.cookie, { scope: "ler", escopos: ["ler"] })).searchParams.get("code")!;
+  const t = await trocar(env, c.client_id, code);
+  assert.equal(t.status, 200, t.text); assert.equal(t.data.scope, "ler");
+  assert.equal((await mcp(env, t.data.access_token, "ciclo_comida_pendentes")).data.result.isError, undefined, "leitura passa");
+  const w = await mcp(env, t.data.access_token, "ciclo_marcar_presenca", { date: "2026-11-10", status: "folga" });
+  assert.equal(w.status, 403, w.text); assert.match(w.headers.get("www-authenticate")!, /insufficient_scope/);
+  const media = await call(env, "POST", "/mcp/media", { bearer: t.data.access_token, raw: new Uint8Array([137, 80, 78, 71]), ct: "image/png" });
+  assert.equal(media.status, 403, "upload também é escrita");
+  const r = await post(env, "/oauth/token", { grant_type: "refresh_token", refresh_token: t.data.refresh_token, client_id: c.client_id });
+  assert.equal(r.status, 200, r.text); assert.equal(r.data.scope, "ler");
+  assert.equal((await mcp(env, r.data.access_token, "ciclo_marcar_presenca", { date: "2026-11-10", status: "folga" })).status, 403);
+  // o pedido padrão (sem scope ou "ciclo") segue com ler + escrever, como antes da #81
+  const c2 = await registrarCliente(env);
+  const t2 = await trocar(env, c2.client_id, (await autorizar(env, c2.client_id, d.cookie)).searchParams.get("code")!);
+  assert.equal(t2.data.scope, "ler escrever");
+  assert.equal((await mcp(env, t2.data.access_token, "ciclo_marcar_presenca", { date: "2026-11-10", status: "folga" })).status, 200);
+  // token emitido antes da #81 (escopo NULL) continua escrevendo
+  env.DB.raw.prepare("UPDATE mcp_token SET escopo = NULL").run();
+  assert.equal((await mcp(env, t2.data.access_token, "ciclo_marcar_presenca", { date: "2026-11-10", status: "fui" })).data.result.isError, undefined);
 });

@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MAX_MCP_TOKENS, TOKEN_IDLE_MS } from "@ciclo/core";
-import { TOOLS, toolNames } from "../src/mcp.ts";
+import { TOOLS, toolNamesListadas } from "../src/mcp.ts";
 import { USER_TABLES, deleteAccount } from "../src/db.ts";
 import { call, makeEnv, mcp } from "./fakes.ts";
 import { contaPorConvite, dono, envConta } from "./conta-helpers.ts";
@@ -93,7 +93,7 @@ test("escopo: o token da A nunca lê nem escreve a B, mesmo mandando o user_id d
 
   const list = await rpc(env, A.token, "tools/list");
   const tools = list.data.result.tools as { name: string; inputSchema: any }[];
-  assert.deepEqual(tools.map((x) => x.name).sort(), [...toolNames].sort(), "lista vem do roteador");
+  assert.deepEqual(tools.map((x) => x.name).sort(), [...toolNamesListadas].sort(), "lista vem do roteador");
   const PROIBIDOS = /^(user_?id|uid|usuario|conta|account|email|owner)$/i;
   for (const x of tools) {
     assert.equal(x.inputSchema.additionalProperties, false, `${x.name} aceita campo extra`);
@@ -109,17 +109,22 @@ test("escopo: o token da A nunca lê nem escreve a B, mesmo mandando o user_id d
   const intrusos = { user_id: B.uid, userId: B.uid, uid: B.uid, email: B.email, conta: B.uid };
   for (const x of tools) {
     const base = gerar(x.inputSchema) as Record<string, unknown>;
-    for (const args of [{ ...base, ...intrusos }, { ...base, ...intrusos, id: B.inbox }, { ...base, ...intrusos, id: B.food }]) {
+    // #81 campo desconhecido (o user_id da B) é recusado pelo schema antes do handler
+    const fora = await mcp(env, A.token, x.name, { ...base, ...intrusos });
+    assert.equal(fora.status, 200); assert.equal(fora.data.result.isError, true, `${x.name} aceitou user_id`); assert.match(fora.text, /campo desconhecido/);
+    semVazar(x.name, fora.text);
+    const comId = "id" in (x.inputSchema.properties ?? {});
+    for (const args of [base, comId ? { ...base, id: B.inbox } : base, comId ? { ...base, id: B.food } : base]) {
       const r = await mcp(env, A.token, x.name, args);
       assert.equal(r.status, 200, `${x.name}: ${r.text}`);
       semVazar(x.name, r.text);
     }
   }
-  const naoChegou = TOOLS.filter((x) => (chegou.get(x.name) ?? 0) < 3).map((x) => `${x.name}${x.readOnly ? "" : " (escrita)"}`);
+  const naoChegou = TOOLS.filter((x) => !x.oculta && (chegou.get(x.name) ?? 0) < 3).map((x) => `${x.name}${x.readOnly ? "" : " (escrita)"}`);
   assert.deepEqual(naoChegou, [], "chamadas que não chegaram ao handler");
   assert.ok(TOOLS.some((x) => !x.readOnly), "há ferramentas de escrita na lista");
   // quem chama é a A: as leituras trazem a A (prova de que o token, e não o parâmetro, escolhe a conta)
-  const est = await mcp(env, A.token, "ciclo_contexto", { user_id: B.uid });
+  const est = await mcp(env, A.token, "ciclo_contexto", {});
   assert.ok(est.text.includes("MARCA_A")); semVazar("ciclo_contexto", est.text);
   const res = await rpc(env, A.token, "resources/read", { uri: "ciclo://contexto", user_id: B.uid });
   assert.ok(res.text.includes("MARCA_A")); semVazar("resources/read", res.text);
