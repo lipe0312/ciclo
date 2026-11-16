@@ -1,7 +1,7 @@
 // #70 Cenário `semi`: conta em uso. Perfil de treino respondido, 1 academia com aparelhos, 2 semanas de treinos feitos,
 // check-ins, 1 dor leve e comida de 3 dias. Tudo entra pela API (a mesma validação do app), então o formato é sempre o de verdade.
 import { DEFAULT_PROFILE } from "@ciclo/core";
-import { criarConta, diaSemana, somarDias } from "./lib.mjs";
+import { criarConta, diaSemana, lit, somarDias } from "./lib.mjs";
 
 export const slug = "cenario-semi";
 export const descricao = "Conta em uso: Perfil respondido, 1 academia, 2 semanas de treinos, check-ins (sono), água, 1 dor leve e comida de 3 dias.";
@@ -37,6 +37,9 @@ export async function criarSemi(ctx, opts = {}) {
   for (const n of [10, 9, 8, 6, 5, 3, 2, 1]) await ctx.api("PUT", `/api/checkout/${somarDias(ctx.hoje, -n)}`, { trained: DIAS_TREINO.has(diaSemana(somarDias(ctx.hoje, -n))), waterMl: 1500 + (n % 4) * 250 });
   await ctx.api("PUT", `/api/checkin/${ctx.hoje}`, { sleepH: 7, energy: 2, soreness: 1, stress: 2, food: 0 });
   await ctx.api("POST", "/api/pains", { region: "ombro_e", intensity: 1, context: "incômodo leve (fictício)" }, { status: 201 });
+  // #77 "1ª semana gerada" = MIN(week_start): a semana do 1º treino fictício (o seed só gera a atual, hoje, depois dos treinos)
+  const ini = somarDias(ctx.hoje, -14), seg = somarDias(ini, -((["seg", "ter", "qua", "qui", "sex", "sab", "dom"].indexOf(diaSemana(ini)))));
+  await ctx.sql(`UPDATE week_plan SET created_at = ${Date.parse(seg + "T12:00:00Z")} WHERE user_id = ${lit(uid)}`);
   for (let n = 2; n >= 0; n--) for (const [meal, text] of COMIDA) await ctx.api("POST", "/api/food", { date: somarDias(ctx.hoje, -n), text, meal }, { status: 201 });
   return uid;
 }

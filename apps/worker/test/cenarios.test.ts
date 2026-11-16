@@ -100,6 +100,9 @@ test("semi: Perfil respondido, 1 academia, 2 semanas de treinos, check-ins, 1 do
   assert.equal(q("SELECT COUNT(*) n FROM pain WHERE intensity = 1 AND resolved_at IS NULL"), 1);
   assert.equal(q("SELECT COUNT(DISTINCT date) n FROM food_log"), 3);
   assert.equal(q("SELECT COUNT(*) n FROM session WHERE date = '" + hojeSP() + "'"), 0, "hoje fica livre para treinar");
+  // #77 o marco "1ª semana gerada" (MIN(created_at) de week_plan) não pode vir depois do "1º treino"
+  const sem = env.DB.raw.prepare("SELECT MIN(created_at) t FROM week_plan").get().t, treino = env.DB.raw.prepare("SELECT MIN(date) d FROM session").get().d;
+  assert.ok(new Date(sem).toISOString().slice(0, 10) <= treino, `1ª semana ${new Date(sem).toISOString()} depois do 1º treino ${treino}`);
   assert.equal(q("SELECT COUNT(*) n FROM user"), 1);
 });
 
