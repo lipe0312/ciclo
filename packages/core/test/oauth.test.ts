@@ -66,6 +66,27 @@ test("registro dinâmico: valida URIs, tipos e método de autenticação; nome c
   assert.ok(longo.ok && longo.value.nome.length <= OAUTH.nomeMax, "nome é cortado, não recusa");
 });
 
+test("#95 registro com várias redirect_uris (Cursor desktop): guarda SÓ as permitidas; nenhuma permitida → invalid_redirect_uri", () => {
+  const WEB = "https://www.cursor.com/agents/mcp/oauth/callback", APP = "cursor://anysphere.cursor-mcp/oauth/callback", LOOP = "http://localhost:8787/callback";
+  const perm = [...REDIRECTS_PADRAO, WEB];
+  const r = validarRegistro({ client_name: "Cursor", redirect_uris: [APP, WEB, LOOP] }, perm);
+  assert.ok(r.ok); if (r.ok) assert.deepEqual(r.value.redirectUris, [WEB, LOOP]);
+  // com a lista padrão (sem o cursor.com), só o loopback fica
+  const padrao = validarRegistro({ redirect_uris: [APP, WEB, LOOP] }, REDIRECTS_PADRAO);
+  assert.ok(padrao.ok); if (padrao.ok) assert.deepEqual(padrao.value.redirectUris, [LOOP]);
+  for (const so of [[APP], [APP, "https://atacante.example/cb"], ["javascript:alert(1)", "http://mal.example/cb"]]) {
+    const x = validarRegistro({ redirect_uris: so }, perm);
+    assert.equal(x.ok, false, so.join()); if (!x.ok) assert.equal(x.erro, "invalid_redirect_uri");
+  }
+  // a descartada nunca é usada no authorize: não está registrada → erro na tela, sem redirecionar
+  if (r.ok) {
+    const q = { response_type: "code", redirect_uri: APP, code_challenge: CH, code_challenge_method: "S256" };
+    const a = validarPedidoAutorizacao(q, { redirectUris: r.value.redirectUris, permitidos: perm }, O);
+    assert.equal(a.ok, false); if (!a.ok) assert.equal(a.redirecionavel, false);
+    assert.ok(validarPedidoAutorizacao({ ...q, redirect_uri: WEB }, { redirectUris: r.value.redirectUris, permitidos: perm }, O).ok);
+  }
+});
+
 test("pedido de autorização: exige code + PKCE S256; redirect_uri tem de ser uma das registradas", () => {
   const cli = { redirectUris: ["https://claude.ai/api/mcp/auth_callback"], permitidos: REDIRECTS_PADRAO };
   const base = { response_type: "code", client_id: "c1", redirect_uri: cli.redirectUris[0], code_challenge: CH, code_challenge_method: "S256", state: "xyz", resource: O + "/mcp" };
