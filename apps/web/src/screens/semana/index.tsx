@@ -9,7 +9,7 @@ import type { Route } from "../../lib/roteador/index.ts";
 import { href } from "../../lib/roteador/index.ts";
 import { Card, Icon } from "../../lib/ui/index.tsx";
 import { DOW_NM, img, longDate } from "../../lib/util.ts";
-import { acaoDia, diaDe, garantirSemana, getSemana, getVazio } from "./estado.ts";
+import { acaoDia, diaDe, garantirSemana, gerarTreino, getSemana, getVazio, planoDoDia } from "./estado.ts";
 import type { Dia, Semana } from "./estado.ts";
 import { AvisoFalta } from "./aviso.tsx";
 import { abrirMover, abrirRegenerar, abrirTrocar, abrirVersoes, aberto, diaCurto } from "./folhas.tsx";
@@ -31,8 +31,18 @@ function Legenda() {
   return <div class="legend sem-legenda" aria-label="Legenda">{LEGENDA.map(([s, l]) => <span key={s}><i class={`sem-sw st-${s}`} />{l}</span>)}</div>;
 }
 
+/** #108 Selo de quem montou o dia: revisão da IA (treino gerado pelo app), Chat ou você. */
+export function SeloOrigem({ d, p }: { d: Dia; p: C.DayPlan }) {
+  const txt = p.revisao === "pendente" ? "revisão da IA pendente" : p.revisao === "revisada" ? "revisado pela IA" : p.revisao === "mantida" ? "gerado pelo app · revisado"
+    : d.source === "claude" ? "montado pelo Chat" : d.source === "voce" ? "escolha sua" : null;
+  return txt ? <span class={`badge${p.revisao === "pendente" ? " warn" : ""}`}>{txt}</span> : null;
+}
+
+/** #108 Dia sem treino: o botão é Gerar treino (nada é gerado ao abrir a tela). */
+export const semTreino = (d: Dia) => d.status === "livre" || (d.status === "folga" && d.date >= today && !planoDoDia(d));
+
 function DiaCard({ d }: { d: Dia }) {
-  const p = d.kind !== "folga" || d.status === "extra" ? d.plan : null;
+  const p = planoDoDia(d);
   const pode = aberto(d);
   const gym = gymById(d.gymId)?.name;
   return <div class={`sem-dia st-${d.status}`}>
@@ -44,15 +54,15 @@ function DiaCard({ d }: { d: Dia }) {
       {p ? <>
         <p class="small sub num" style="margin-top:2px">{p.items.length} exercícios · {p.setsTotal} séries · ~{p.estMinutes} min{gym ? ` · ${gym}` : ""}</p>
         <p class="tiny sub" style="margin-top:4px">{Object.entries(p.perMuscle).map(([m, n]) => `${mName(m)} ${n}`).join(" · ")}</p>
-        {d.source !== "auto" && <p class="tiny" style="margin-top:4px"><span class="badge">{d.source === "claude" ? "montado pelo Chat" : "escolha sua"}</span></p>}
+        {(d.source !== "auto" || p.revisao) && <p class="tiny" style="margin-top:4px"><SeloOrigem d={d} p={p} /></p>}
         {d.warn.map((w, i) => <p key={i} class="tiny" style="margin-top:4px;color:var(--warn)">{w}</p>)}
-      </> : d.status === "livre" ? <p class="small sub" style="margin-top:2px">Não planejado. Treinar hoje vira <b>extra</b>: só o que falta, sem passar do orçamento.</p> : null}
+      </> : d.status === "livre" ? <p class="small sub" style="margin-top:2px">Sem treino hoje. Se quiser treinar, gere um: só o que falta, sem passar do orçamento.</p> : null}
       {d.cardio && <p class="tiny" style="margin-top:4px"><Icon id={C.MODALIDADES.find((m) => m.id === d.cardio!.type)?.icon ?? "bolt"} />{" "}Cardio {d.cardio.minutes} min · {C.INTENSITIES[d.cardio.intensity].nm.toLowerCase()}</p>}
       <div class="sem-acts uma">
         {p && <a class="btn" href={href("semana", ["dia", d.date])}>Ver</a>}
         {pode && d.kind !== "folga" && <button type="button" class="btn" onClick={() => abrirTrocar(d)}>Trocar</button>}
         {pode && <button type="button" class="btn" onClick={() => abrirMover(d)}>{d.kind !== "folga" ? "Mover" : "Planejar"}</button>}
-        {d.status === "livre" && getSemana()?.extraToday?.items.length ? <a class="btn pri" href={href("semana", ["dia", d.date])}>Ver extra</a> : null}
+        {semTreino(d) && <button type="button" class={`btn${d.status === "livre" ? " pri" : ""}`} onClick={() => void gerarTreino(d.date)}><Icon id="bolt" />Gerar treino</button>}
       </div>
     </div></div>;
 }
@@ -108,16 +118,18 @@ function Lista({ s }: { s: Semana }) {
 function Detalhe({ date }: { date: string }) {
   const s = getSemana(), d = diaDe(date);
   if (!s || !d) return <Estado tipo="vazio" titulo="Dia fora desta semana" acao={{ label: "Ver a semana", href: "#semana" }} />;
-  const p = d.status === "livre" ? s.extraToday : d.plan;
+  const p = planoDoDia(d); // #108 o treino salvo do dia, nunca um extra calculado na hora
   const pode = aberto(d);
   return <>
     <p style="margin-bottom:10px"><span class={`sem-st st-${d.status}`}>{STATUS[d.status]}</span></p>
     <p class="kicker">{longDate(date)}{d.gymId ? ` · ${gymById(d.gymId)?.name ?? ""}` : ""}</p>
-    <h1 style="margin:2px 0 6px">{p?.name ?? "Folga"}</h1>
+    <h1 style="margin:2px 0 6px">{p?.name ?? (d.status === "livre" ? "Sem treino" : "Folga")}</h1>
+    {p && (d.source !== "auto" || p.revisao) && <p class="tiny" style="margin-bottom:6px"><SeloOrigem d={d} p={p} /></p>}
     {p && <p class="small sub num">{p.items.length} exercícios · {p.setsTotal} séries · ~{p.estMinutes} min{d.opts.format && d.opts.format !== "tradicional" ? ` · ${d.opts.format === "superserie" ? "superséries" : "circuito"}` : ""}</p>}
     <div class="grid dash" style="margin-top:14px"><div class="stack">
       {p && p.items.length > 0 ? <Card><h2>Exercícios</h2><div class="sem-exs">{[...p.prehab, ...p.items].map((it, i) => <Exercicio key={i} it={it} />)}</div></Card>
-        : <Card><p class="small">{p?.why[0] ?? "Dia de descanso. Recuperar também conta."}</p></Card>}
+        : <Card><p class="small">{p?.why[0] ?? (semTreino(d) ? "Nenhum treino neste dia. Gere um só se for treinar: sai na hora e a IA revisa depois." : "Dia de descanso. Recuperar também conta.")}</p>
+          {semTreino(d) && <button type="button" class="btn pri full" style="margin-top:10px" onClick={() => void gerarTreino(d.date)}><Icon id="bolt" />Gerar treino</button>}</Card>}
     </div><div class="stack">
       {d.cardio && <Card><h2>Cardio previsto</h2><p class="small" style="margin-top:6px"><b>{C.CARDIO_BY_ID[d.cardio.type]?.nm} · {d.cardio.minutes} min · {C.INTENSITIES[d.cardio.intensity].nm.toLowerCase()}</b></p><p class="tiny sub">{d.cardio.why}</p></Card>}
       {p && <Card><h2>Por quê</h2><ul class="sem-motivos">{p.why.map((w, i) => <li key={i}>{w}</li>)}{d.warn.map((w, i) => <li key={`w${i}`} class="menos">{w}</li>)}</ul></Card>}
@@ -125,7 +137,6 @@ function Detalhe({ date }: { date: string }) {
         {d.kind !== "folga" && <button type="button" class="btn pri" onClick={() => abrirGerarOutro(d.date)}><Icon id="cycle" />Gerar outro treino</button>}
         {d.kind !== "folga" && <button type="button" class="btn" onClick={() => abrirTrocar(d)}><Icon id="swap" />Trocar geração</button>}
         <button type="button" class="btn" onClick={() => abrirMover(d)}>{d.kind !== "folga" ? "Mover" : "Planejar treino"}</button>
-        {d.status === "livre" && p?.items.length ? <button type="button" class="btn pri" onClick={() => acaoDia(date, { action: "extra" }, "Treino extra na semana")}>Treinar hoje (extra)</button> : null}
       </div>{d.date === today && <a class="btn ghost full" style="margin-top:8px" href="#hoje">Ver no Hoje<Icon id="arrow" /></a>}</Card>}
     </div></div></>;
 }

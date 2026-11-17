@@ -38,6 +38,7 @@ L = lê (escopo `ler`), E = escreve (escopo `escrever`). Os schemas completos es
 | `ciclo_marcar_presenca` | E | fui / nao_fui / folga. | `date`, `status` | `ok` |
 | `ciclo_registrar_dor` | E | Dor no mapa (1–3). | `region`, `intensity` | `id` |
 | `ciclo_revisar_edicoes` / `ciclo_concluir_revisao` | L / E | Edições manuais aguardando revisão. | `id`, `review` | |
+| `ciclo_revisar_treino` | E | #108 Treino gerado pelo app ("Gerar treino", selo "revisão da IA pendente"): sem itens lista os dias pendentes; com `date` + `itens {id, sets}` aplica se passar no validador (inválido fica o do app e volta `violacoes`); `aplicar:true` sem itens aprova. Resolve o pedido `revisar_treino`. Exige escopo **escrever**, inclusive para listar (token só `ler` recebe erro). | `date`, `itens`, `aplicar` | |
 
 ### Personalização
 | Ferramenta | L/E | O que faz | Entrada | Saída |
@@ -79,7 +80,7 @@ No app, toda entrada vinda da IA mostra o selo **"via Chat, HH:MM · ≈ estimat
 | `ciclo_diario` / `ciclo_registrar_resumo_dias` | L / E | Diário de até 31 dias / relato dos dias. |
 | `ciclo_exame_pendente` / `ciclo_exame_concluir` | L / E | Laudo (dado) → resumo estruturado. |
 | `ciclo_chat_pendentes` | E (sinal de vida) | Pedidos da caixa; marca cada um como **lido** e grava a hora da passada (`origem`). |
-| `ciclo_responder_pedido` | E | Responde um pedido (com itens opcionais). |
+| `ciclo_responder_pedido` | E | Responde um pedido (com itens opcionais). Pedido `revisar_treino`: os itens são a revisão do treino gerado (mesmo validador do `ciclo_revisar_treino`). |
 | `ciclo_buscar`, `ciclo_memoria_salvar`, `ciclo_memoria_listar` | L/E/L | Busca no histórico e memória (dado). |
 
 ### Exemplo (comida)

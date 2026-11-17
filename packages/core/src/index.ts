@@ -43,5 +43,6 @@ export * from "./comida-conversa.ts";
 export * from "./comida-correcao.ts";
 export * from "./gerador.ts";
 export * from "./comeco.ts";
+export * from "./treino-gerado.ts";
 export * from "./exercicio-personalizado.ts";
 export * from "./medida.ts";
