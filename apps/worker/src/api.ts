@@ -11,6 +11,7 @@ import { newMcpToken } from "./auth.ts";
 import { exigirCotaConta, exigirCotaGlobal, somarBytesR2 } from "./limites.ts";
 import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
 import { registerComida } from "./comida.ts";
+import { listarPersonalizados, registerPersonalizados } from "./exercicio-personalizado.ts";
 import { registerHome } from "./home.ts";
 import { registerClaude } from "./mcp-chat.ts";
 import { exigirFaceId, perfilConta, registerConta } from "./auth-conta.ts";
@@ -39,7 +40,7 @@ on("GET", "/api/state", async (req, env, _p, u) => {
   const url = new URL(req.url);
   const today = date(url.searchParams.get("date"));
   await closeStaleSessions(env, u.id);
-  const [profile, gyms, week, dayPlan, hist, media, meas] = await Promise.all([
+  const [profile, gyms, week, dayPlan, hist, media, meas, personalizados] = await Promise.all([
     rawProfile(env, u.id), listGyms(env, u.id), weekState(env, u.id, today), // #71 sem DEFAULTS: o app não pode ver level/minutos do padrão como resposta
     env.DB.prepare("SELECT plan, source, gym_id, created_at FROM day_plan WHERE user_id = ?2 AND date = ?1").bind(today, u.id).first<{ plan: string; source: string; gym_id: string; created_at: number }>(),
     // última sessão de cada exercício (para a dupla progressão sugerir a carga)
@@ -48,6 +49,7 @@ on("GET", "/api/state", async (req, env, _p, u) => {
       ORDER BY l.exercise_id, l.set_no LIMIT 400`).bind(u.id).all<{ exercise_id: string; kg: number; reps: number | null; segundos: number | null }>(),
     env.DB.prepare("SELECT id, kind, exercise_id, equipment_id, gym_id, note FROM media WHERE user_id = ?1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 200").bind(u.id).all(),
     env.DB.prepare("SELECT date, arm_cm AS braco, waist_cm AS cintura FROM measurement WHERE user_id = ?1 ORDER BY date DESC LIMIT 12").bind(u.id).all(),
+    listarPersonalizados(env, u.id), // #107 exercícios personalizados da conta (selo, descrição e vídeo no treino)
   ]);
   const history: Record<string, { kg: number; reps: number; segundos?: number }[]> = {};
   for (const r of hist.results) (history[r.exercise_id] ??= []).push({ kg: r.kg, reps: r.reps ?? 0, ...(r.segundos ? { segundos: r.segundos } : {}) });
@@ -55,7 +57,7 @@ on("GET", "/api/state", async (req, env, _p, u) => {
   const profileFp = dayPlan ? await planProfileFingerprint(env, u.id, dayPlan.created_at) : null;
   return json({
     account: await account(env, u), onboarding: onboarding(u),
-    profile: profile ?? {}, gyms, week, history, media: media.results, measures: meas.results.reverse(),
+    profile: profile ?? {}, gyms, week, history, media: media.results, measures: meas.results.reverse(), personalizados,
     features: { ai: !!env.AI, media: !!env.MEDIA },
     dayPlan: dayPlan ? { ...dayPlan, plan: JSON.parse(dayPlan.plan), profileFp } : null, version: env.APP_VERSION,
   });
@@ -510,6 +512,7 @@ on("POST", "/api/inbox/:id/status", async (req, env, p, u) => {
 
 // Comida (registros, refeições salvas, metas adaptativas) e transcrição de voz: ver comida.ts
 registerComida(on);
+registerPersonalizados(on);
 // Home de evolução (#29): ver home.ts
 registerHome(on);
 // Claude no app (#30): status da fila e memória do Claude: ver mcp-chat.ts

@@ -8,6 +8,7 @@ import { fmt, img } from "../../lib/util.ts";
 import { ExImgs } from "./biblioteca.tsx";
 import { openEdit, openComoFazer, openFinish, openSkip, openSwap } from "./folhas.tsx";
 import { MediaBox } from "./midia.tsx";
+import { InfoPersonalizado, SeloPersonalizado } from "./personalizado.tsx";
 import { REASON_TXT, addSet, adjustRest, currentSets, curIdx, doneSets, dropSet, editedSet, ensureLogs, goEx, modoDe, nextSetOf, onTick, pastAll, pastOf, progress, refsOf, restFor, running, setCur, setModo, skipRest, toggleSet } from "./sessao.ts";
 
 export function useTick() { const [, set] = useState(0); useEffect(() => onTick(() => set((x) => x + 1)), []); }
@@ -89,12 +90,13 @@ function Atual({ it, idx }: { it: C.PlanItem; idx: number }) {
   return <article class={`tl-cur ${skipped ? "skipped" : ""}`} ref={ref} aria-current="step" aria-label={`Exercício atual: ${it.nm}`}>
     {cat ? <ExImgs it={cat} size="big" /> : <div class="exim big vazio"><Icon id="edit" /></div>}
     <div class="row between start" style="margin-top:10px"><h2 style="font-size:20px">{it.nm}</h2>
-      <div class="row" style="gap:4px">{ex?.stretch && <span class="badge">alongado</span>}{it.manual && <span class="badge warn">seu · em revisão</span>}</div></div>
+      <div class="row" style="gap:4px">{ex?.stretch && <span class="badge">alongado</span>}{it.manual && <span class="badge warn">seu · em revisão</span>}{it.personalizado && <SeloPersonalizado />}</div></div>
     <p class="meta num"><b style="color:var(--txt)">{alvoTxt(it)}</b> · {mName(it.muscle)} · descanso {restFor(S.session.plan, idx)}s{sg.kg && modoDe(it.exerciseId) !== "tempo" ? <> · sugestão <b style="color:var(--txt)">{fmt(sg.kg, 1)} kg × {sg.reps}</b></> : null}</p>
     {sg.note && modoDe(it.exerciseId) !== "tempo" && <p class="tiny sub" style="margin-top:2px">{sg.note}</p>}
+    {it.personalizado && <InfoPersonalizado id={it.exerciseId} />}
     {skipped ? <p class="small" style="margin-top:8px;color:var(--warn)">Não feito · {REASON_TXT[skipped] ?? skipped} <button type="button" class="btn sm ghost" onClick={() => { delete S.session.skipped[it.exerciseId]; commit(); }}>desfazer</button></p>
       : <><Refs exId={it.exerciseId} /><SetRows idx={idx} it={it} /></>}
-    <div class="acts"><button type="button" class="btn" onClick={() => openComoFazer(it.exerciseId)}><Icon id="info" />Ver como fazer</button>
+    <div class="acts">{!it.personalizado && <button type="button" class="btn" onClick={() => openComoFazer(it.exerciseId)}><Icon id="info" />Ver como fazer</button>}
       {it.alts.length > 0 && <button type="button" class="btn" onClick={() => openSwap(idx)}><Icon id="swap" />Trocar</button>}
       <button type="button" class="btn" onClick={() => openEdit(idx)}><Icon id="edit" />Editar</button>
       {!skipped && <button type="button" class="btn" onClick={() => openSkip(idx)}><Icon id="skip" />Não fiz</button>}</div>

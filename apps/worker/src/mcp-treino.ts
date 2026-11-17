@@ -9,6 +9,12 @@ import { aplicarNaSemana, dayAction, getWeek, regenerate } from "./semana.ts";
 import { confirmar, criarPrevia } from "./mcp-previa.ts";
 import { aprovacaoDe, salvarAprovacao } from "./mcp-comida.ts";
 import { S, addDays, obj, today } from "./mcp-tipos.ts";
+import { lerPersonalizado } from "./exercicio-personalizado.ts";
+
+const personalizadoComo = async (env: Env, uid: string, id: string) => {
+  const p = await lerPersonalizado(env, uid, id);
+  return p ? { m: p.musculo, nm: p.nome } : undefined;
+};
 import type { Args, Tool } from "./mcp-tipos.ts";
 
 const EX_RE = "^[A-Za-z0-9_.-]{1,80}$";
@@ -69,7 +75,7 @@ async function treinoRegistrar(a: Args, env: Env, uid: string) {
   const d = a.date ? date(a.date) : today();
   if (d > today() || d < addDays(today(), -7)) throw new HttpError(400, "date: de até 7 dias atrás até hoje");
   const ex = str(a.exercicioId, "exercicioId", 80)!;
-  const e = EXERCISE_BY_ID[ex];
+  const e = EXERCISE_BY_ID[ex] ?? (await personalizadoComo(env, uid, ex)); // #107 cus_ só desta conta
   if (!e) throw new HttpError(400, "exercicioId: use um ID do ciclo_catalogo");
   const series = a.series as { kg?: number; reps?: number; segundos?: number; rir?: number }[];
   // #106 cada série: reps OU segundos, conforme a medida do exercício (prancha só tempo; polichinelo os dois)
