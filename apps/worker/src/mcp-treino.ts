@@ -1,6 +1,6 @@
 // #81 Ferramentas de treino, personalização e leitura do MCP. Só chamam a lógica que o app já usa (semana.ts, saveProfile,
 // alternativas da #74, planDay): nenhuma regra nova aqui. Respostas compactas (IDs + números) e paginadas.
-import { EXERCISE_BY_ID, MUSCLE_IDS, alternativas, divisoesDe, ehLivre, paginar, resumoTreinoAtual, validarTreinoAtual } from "@ciclo/core";
+import { EXERCISE_BY_ID, MUSCLE_IDS, SEGUNDOS_MAX, SEGUNDOS_MIN, alternativas, erroSerie, fmtSerie, medidaDe, divisoesDe, ehLivre, paginar, resumoTreinoAtual, validarTreinoAtual } from "@ciclo/core";
 import type { MuscleId, WeekDay } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { HttpError, date, int, str } from "./http.ts";
@@ -77,7 +77,9 @@ async function treinoRegistrar(a: Args, env: Env, uid: string) {
   const ex = str(a.exercicioId, "exercicioId", 80)!;
   const e = EXERCISE_BY_ID[ex] ?? (await personalizadoComo(env, uid, ex)); // #107 cus_ só desta conta
   if (!e) throw new HttpError(400, "exercicioId: use um ID do ciclo_catalogo");
-  const series = a.series as { kg?: number; reps: number; rir?: number }[];
+  const series = a.series as { kg?: number; reps?: number; segundos?: number; rir?: number }[];
+  // #106 cada série: reps OU segundos, conforme a medida do exercício (prancha só tempo; polichinelo os dois)
+  series.forEach((s, i) => { const er = erroSerie(ex, s); if (er) throw new HttpError(400, `series[${i}]: ${er}`); });
   const now = Date.now();
   let sess = await env.DB.prepare("SELECT id FROM session WHERE user_id = ?1 AND date = ?2 AND (finished_at IS NULL OR closed_by = 'auto') ORDER BY started_at DESC LIMIT 1").bind(uid, d).first<{ id: string }>();
   if (!sess) {
@@ -92,10 +94,11 @@ async function treinoRegistrar(a: Args, env: Env, uid: string) {
   const max = await env.DB.prepare("SELECT COALESCE(MAX(set_no), 0) AS n FROM set_log WHERE user_id = ?1 AND session_id = ?2 AND exercise_id = ?3").bind(uid, sess.id, ex).first<{ n: number }>();
   const ini = max?.n ?? 0;
   if (ini + series.length > 12) throw new HttpError(400, "no máximo 12 séries por exercício na sessão");
-  await env.DB.batch(series.map((s, i) => env.DB.prepare(`INSERT INTO set_log (user_id, session_id, exercise_id, muscle, set_no, kg, reps, rir, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-    ON CONFLICT(user_id, session_id, exercise_id, set_no) DO UPDATE SET kg = ?6, reps = ?7, rir = ?8`).bind(uid, sess!.id, ex, e.m, ini + i + 1, s.kg ?? null, s.reps, s.rir ?? null, now + i)));
+  await env.DB.batch(series.map((s, i) => env.DB.prepare(`INSERT INTO set_log (user_id, session_id, exercise_id, muscle, set_no, kg, reps, rir, created_at, segundos) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+    ON CONFLICT(user_id, session_id, exercise_id, set_no) DO UPDATE SET kg = ?6, reps = ?7, rir = ?8, segundos = ?10`).bind(uid, sess!.id, ex, e.m, ini + i + 1, s.kg ?? null, s.reps ?? null, s.rir ?? null, now + i, s.segundos ?? null)));
   return {
-    registrado: series.length, sessao: sess.id, date: d, exercicio: `${ex} (${e.nm})`, series: series.map((s, i) => `${ini + i + 1}: ${s.kg ?? "-"} kg × ${s.reps}${s.rir != null ? ` RIR ${s.rir}` : ""}`),
+    registrado: series.length, sessao: sess.id, date: d, exercicio: `${ex} (${e.nm})`, medida: medidaDe(ex),
+    series: series.map((s, i) => `${ini + i + 1}: ${fmtSerie({ kg: s.kg ?? 0, reps: s.reps ?? 0, segundos: s.segundos })}${s.rir != null ? ` RIR ${s.rir}` : ""}`),
     nota: "exercício fora do plano do dia conta como troca forçada: a semana repõe a parte que saiu (ciclo_semana_ver)",
   };
 }
@@ -166,10 +169,10 @@ async function historico(a: Args, env: Env, uid: string) {
   const ex = a.exercicioId == null ? null : str(a.exercicioId, "exercicioId", 80);
   let linhas: unknown[];
   if (tipo === "series") {
-    linhas = (await env.DB.prepare(`SELECT s.date, l.exercise_id AS ex, l.set_no AS n, l.kg, l.reps, l.rir FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
+    linhas = (await env.DB.prepare(`SELECT s.date, l.exercise_id AS ex, l.set_no AS n, l.kg, l.reps, l.segundos AS seg, l.rir FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
       WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 AND (?4 IS NULL OR l.exercise_id = ?4) ORDER BY s.date DESC, l.created_at LIMIT 600`).bind(uid, de, ate, ex).all()).results;
   } else if (tipo === "cargas") {
-    linhas = (await env.DB.prepare(`SELECT s.date, l.exercise_id AS ex, MAX(l.kg) AS kgMax, MAX(l.reps) AS repsMax, COUNT(*) AS series FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
+    linhas = (await env.DB.prepare(`SELECT s.date, l.exercise_id AS ex, MAX(l.kg) AS kgMax, MAX(l.reps) AS repsMax, MAX(l.segundos) AS segMax, COUNT(*) AS series FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
       WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 AND (?4 IS NULL OR l.exercise_id = ?4) GROUP BY s.date, l.exercise_id ORDER BY s.date DESC LIMIT 600`).bind(uid, de, ate, ex).all()).results;
   } else if (tipo === "medidas") {
     const [m, p] = await env.DB.batch([
@@ -201,10 +204,10 @@ export const TOOLS_TREINO: Tool[] = [
   },
   {
     name: "ciclo_treino_registrar",
-    description: "Registra séries feitas de UM exercício (ID do ciclo_catalogo) num dia (padrão hoje; até 7 dias atrás): carga, reps e RIR. Abre a sessão do dia se não houver e marca presença. Exercício fora do plano do dia vira troca forçada: a semana repõe a parte que saiu. Escreve.",
+    description: "Registra séries feitas de UM exercício (ID do ciclo_catalogo) num dia (padrão hoje; até 7 dias atrás): carga, reps (ou segundos se a medida do exercício for tempo/ambos, ex.: prancha) e RIR. Abre a sessão do dia se não houver e marca presença. Exercício fora do plano do dia vira troca forçada: a semana repõe a parte que saiu. Escreve.",
     inputSchema: obj({
       date: S.date, exercicioId: { type: "string", pattern: EX_RE },
-      series: { type: "array", minItems: 1, maxItems: 12, items: { type: "object", required: ["reps"], additionalProperties: false, properties: { kg: { type: "number", minimum: 0, maximum: 600 }, reps: { type: "integer", minimum: 0, maximum: 100 }, rir: { type: "integer", minimum: 0, maximum: 6 } } } },
+      series: { type: "array", minItems: 1, maxItems: 12, items: { type: "object", additionalProperties: false, properties: { kg: { type: "number", minimum: 0, maximum: 600 }, reps: { type: "integer", minimum: 0, maximum: 100 }, segundos: { type: "integer", minimum: SEGUNDOS_MIN, maximum: SEGUNDOS_MAX }, rir: { type: "integer", minimum: 0, maximum: 6 } } } },
     }, ["exercicioId", "series"]),
     run: treinoRegistrar,
   },
@@ -244,7 +247,7 @@ export const TOOLS_TREINO: Tool[] = [
   },
   {
     name: "ciclo_historico", readOnly: true,
-    description: "Histórico paginado por período (padrão: últimas 4 semanas; até 92 dias): series (cada série: data, ID, kg, reps, RIR), cargas (por dia e exercício: kg e reps máximos), medidas (braço, cintura, ombro e peso) ou comida (totais por dia). Filtro exercicioId em series/cargas. Use `proximo` como cursor.",
+    description: "Histórico paginado por período (padrão: últimas 4 semanas; até 92 dias): series (cada série: data, ID, kg, reps ou seg, RIR), cargas (por dia e exercício: kg, reps e seg máximos), medidas (braço, cintura, ombro e peso) ou comida (totais por dia). Filtro exercicioId em series/cargas. Use `proximo` como cursor.",
     inputSchema: obj({ tipo: { type: "string", enum: TIPOS_HIST }, de: S.date, ate: S.date, exercicioId: { type: "string", pattern: EX_RE }, limite: { type: "integer", minimum: 1, maximum: 50 }, cursor: { type: "string", maxLength: 6 } }, ["tipo"]),
     run: historico,
   },

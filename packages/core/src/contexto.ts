@@ -85,6 +85,8 @@ function objetivo(perfil: Record<string, any>): Fatia["objetivo"] {
 export const objetivoDoPerfil = objetivo;
 
 const hasEx = (id: unknown): id is string => typeof id === "string" && Object.prototype.hasOwnProperty.call(EXERCISE_BY_ID, id);
+/** #106 medida só quando não é reps (o padrão), para não pesar a fatia. */
+const medidaInfo = (id: string) => { const e = EXERCISE_BY_ID[id]; return e.medida ? { medida: e.medida, ...(e.medidaPadrao ? { medidaPadrao: e.medidaPadrao } : {}) } : {}; };
 
 const volumeLinha = (s: NonNullable<EstadoContexto["semana"]>) => Object.fromEntries(MUSCLE_IDS.map((m) => {
   const alvo = nn(s.alvo[m]), feito = nn(s.feito[m]);
@@ -100,8 +102,8 @@ function fatiaTroca(e: EstadoContexto, comDor: boolean): Record<string, unknown>
   const alts = (id: string) => candidates(EXERCISE_BY_ID[id].m, ctx).filter((c) => !c.blockedByPain && c.ex.id !== id && !noDia.has(c.ex.id)).slice(0, ALTERNATIVAS).map((c) => c.ex.id);
   const alvo = ex ? [ex.id] : itens.map((i) => i.exerciseId);
   const out: Record<string, unknown> = {
-    dia: { itens: itens.map((i) => ({ id: i.exerciseId, sets: i.sets })) },
-    exercicio: ex ? { id: ex.id, nm: ex.nm, musculo: ex.m } : null,
+    dia: { itens: itens.map((i) => ({ id: i.exerciseId, sets: i.sets, ...medidaInfo(i.exerciseId) })) },
+    exercicio: ex ? { id: ex.id, nm: ex.nm, musculo: ex.m, ...medidaInfo(ex.id) } : null,
     aparelhos: [...e.aparelhos].sort(),
     dores: e.dores.map((d) => ({ regiao: d.region, intensidade: d.intensity })),
     alternativas: Object.fromEntries(alvo.map((id) => [id, alts(id)])),

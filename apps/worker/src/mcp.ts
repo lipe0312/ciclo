@@ -80,13 +80,13 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "ciclo_catalogo", readOnly: true,
-    description: "Exercícios de UM músculo (ID, nome, tipo, aparelhos, ok = dá na academia indicada), paginados (padrão 25; `proximo` vira o cursor). soDisponiveis:true filtra pelo que dá na academia. Use antes de propor trocas (ou ciclo_treino_trocar, que já filtra e ordena).",
+    description: "Exercícios de UM músculo (ID, nome, tipo, aparelhos, ok = dá na academia indicada, medida tempo/ambos quando não é reps), paginados (padrão 25; `proximo` vira o cursor). soDisponiveis:true filtra pelo que dá na academia. Use antes de propor trocas (ou ciclo_treino_trocar, que já filtra e ordena).",
     inputSchema: obj({ muscle: { type: "string", enum: MUSCLE_IDS }, gymId: { type: "string", maxLength: 40 }, soDisponiveis: { type: "boolean" }, limite: { type: "integer", minimum: 1, maximum: 60 }, cursor: { type: "string", maxLength: 6 } }, ["muscle"]),
     run: async (a, env, uid) => {
       const m = oneOf(a.muscle, "muscle", MUSCLE_IDS);
       const gyms = await listGyms(env, uid);
       const eq = new Set((gyms.find((g) => g.id === a.gymId) ?? gyms[0])?.equipment ?? []);
-      const todos = EXERCISES.filter((e) => e.m === m).map((e) => ({ id: e.id, nm: e.nm, tipo: e.kind, ok: e.eq.every((q) => eq.has(q)), aparelhos: e.eq, alongado: e.stretch ? true : undefined }));
+      const todos = EXERCISES.filter((e) => e.m === m).map((e) => ({ id: e.id, nm: e.nm, tipo: e.kind, ok: e.eq.every((q) => eq.has(q)), aparelhos: e.eq, alongado: e.stretch ? true : undefined, medida: e.medida }));
       // #107 os personalizados desta conta para o músculo (reusar antes de criar outro)
       const meus = (await listarPersonalizados(env, uid)).filter((x) => x.musculo === m).slice(0, 20).map(personalizadoMcp);
       return { muscle: m, ...paginar(a.soDisponiveis === true ? todos.filter((e) => e.ok) : todos, a.cursor, int(a.limite, "limite", 1, 60, false) ?? 25), personalizados: meus.length ? meus : undefined };

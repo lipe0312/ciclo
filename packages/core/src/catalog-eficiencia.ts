@@ -150,6 +150,8 @@ export const EFICIENCIA_POP: Record<string, [Eficiencia, Popularidade]> = {
   Hanging_Leg_Raise: [{ abdomen: 3, obliquos: 1, antebraco: 1 }, 2],
   Dead_Bug: [{ abdomen: 2, obliquos: 1 }, 2],
   Plank: [{ abdomen: 2, obliquos: 1 }, 2],
+  Side_Bridge: [{ obliquos: 3, abdomen: 1 }, 2],
+  Star_Jump: [{ pant: 2, gluteo: 1 }, 3],
   Crunches: [{ abdomen: 2 }, 2],
   Reverse_Crunch: [{ abdomen: 3, obliquos: 1 }, 2],
   Ab_Crunch_Machine: [{ abdomen: 3 }, 2],
