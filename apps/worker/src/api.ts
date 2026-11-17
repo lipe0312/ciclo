@@ -1,6 +1,6 @@
 // API JSON do app (sessão própria, #54/#62). Rotas pequenas, um estado agregado por chamada (/api/state)
 // para o celular fazer 1 requisição ao abrir. Toda rota recebe o usuário autenticado (u) e filtra por u.id.
-import { MAX_MCP_TOKENS, estadoToken, tokensAtivos, CARDIO_BY_ID, COTA_MSG, EQUIPMENT_BY_ID, EXERCISE_BY_ID, INTENSITIES, MAX_PLACES, MEDIA_MAX_BYTES, MUSCLE_IDS, PROMPTS, applyManualEdit, checkCardio, classify, planDay, tipoConfere, validatePlace } from "@ciclo/core";
+import { MAX_MCP_TOKENS, estadoToken, tokensAtivos, CARDIO_BY_ID, COTA_MSG, EQUIPMENT_BY_ID, EXERCISE_BY_ID, INTENSITIES, MAX_PLACES, MEDIA_MAX_BYTES, MUSCLE_IDS, PROMPTS, SEGUNDOS_MAX, SEGUNDOS_MIN, applyManualEdit, checkCardio, erroSerie, classify, planDay, tipoConfere, validatePlace } from "@ciclo/core";
 import type { Action, DayPlan, Intensity, ManualEdit, Mode, MuscleId, Tier } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, id, int, isDate, json, num, oneOf, readJson, str } from "./http.ts";
@@ -12,6 +12,7 @@ import { exigirCotaConta, exigirCotaGlobal, somarBytesR2 } from "./limites.ts";
 import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
 import { gerarTreinoDoDia } from "./treino-gerado.ts";
 import { registerComida } from "./comida.ts";
+import { listarPersonalizados, registerPersonalizados } from "./exercicio-personalizado.ts";
 import { registerHome } from "./home.ts";
 import { registerClaude } from "./mcp-chat.ts";
 import { exigirFaceId, perfilConta, registerConta } from "./auth-conta.ts";
@@ -40,23 +41,24 @@ on("GET", "/api/state", async (req, env, _p, u) => {
   const url = new URL(req.url);
   const today = date(url.searchParams.get("date"));
   await closeStaleSessions(env, u.id);
-  const [profile, gyms, week, dayPlan, hist, media, meas] = await Promise.all([
+  const [profile, gyms, week, dayPlan, hist, media, meas, personalizados] = await Promise.all([
     rawProfile(env, u.id), listGyms(env, u.id), weekState(env, u.id, today), // #71 sem DEFAULTS: o app não pode ver level/minutos do padrão como resposta
     env.DB.prepare("SELECT plan, source, gym_id, created_at FROM day_plan WHERE user_id = ?2 AND date = ?1").bind(today, u.id).first<{ plan: string; source: string; gym_id: string; created_at: number }>(),
     // última sessão de cada exercício (para a dupla progressão sugerir a carga)
-    env.DB.prepare(`SELECT l.exercise_id, l.kg, l.reps FROM set_log l
+    env.DB.prepare(`SELECT l.exercise_id, l.kg, l.reps, l.segundos FROM set_log l
       WHERE l.user_id = ?1 AND l.session_id = (SELECT s2.session_id FROM set_log s2 WHERE s2.user_id = ?1 AND s2.exercise_id = l.exercise_id ORDER BY s2.created_at DESC LIMIT 1)
-      ORDER BY l.exercise_id, l.set_no LIMIT 400`).bind(u.id).all<{ exercise_id: string; kg: number; reps: number }>(),
+      ORDER BY l.exercise_id, l.set_no LIMIT 400`).bind(u.id).all<{ exercise_id: string; kg: number; reps: number | null; segundos: number | null }>(),
     env.DB.prepare("SELECT id, kind, exercise_id, equipment_id, gym_id, note FROM media WHERE user_id = ?1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 200").bind(u.id).all(),
     env.DB.prepare("SELECT date, arm_cm AS braco, waist_cm AS cintura FROM measurement WHERE user_id = ?1 ORDER BY date DESC LIMIT 12").bind(u.id).all(),
+    listarPersonalizados(env, u.id), // #107 exercícios personalizados da conta (selo, descrição e vídeo no treino)
   ]);
-  const history: Record<string, { kg: number; reps: number }[]> = {};
-  for (const r of hist.results) (history[r.exercise_id] ??= []).push({ kg: r.kg, reps: r.reps });
+  const history: Record<string, { kg: number; reps: number; segundos?: number }[]> = {};
+  for (const r of hist.results) (history[r.exercise_id] ??= []).push({ kg: r.kg, reps: r.reps ?? 0, ...(r.segundos ? { segundos: r.segundos } : {}) });
   // Treino desatualizado: impressão do perfil na hora em que o treino foi gerado (o app compara com o perfil de hoje).
   const profileFp = dayPlan ? await planProfileFingerprint(env, u.id, dayPlan.created_at) : null;
   return json({
     account: await account(env, u), onboarding: onboarding(u),
-    profile: profile ?? {}, gyms, week, history, media: media.results, measures: meas.results.reverse(),
+    profile: profile ?? {}, gyms, week, history, media: media.results, measures: meas.results.reverse(), personalizados,
     features: { ai: !!env.AI, media: !!env.MEDIA },
     dayPlan: dayPlan ? { ...dayPlan, plan: JSON.parse(dayPlan.plan), profileFp } : null, version: env.APP_VERSION,
   });
@@ -318,10 +320,14 @@ on("POST", "/api/sessions/:id/sets", async (req, env, p, u) => {
   const b = await readJson<Record<string, unknown>>(req);
   const ex = str(b.exerciseId, "exerciseId", 80)!;
   const muscle = EXERCISE_BY_ID[ex]?.m ?? oneOf(b.muscle, "muscle", MUSCLE_IDS);
-  const r = await env.DB.prepare(`INSERT INTO set_log (user_id, session_id, exercise_id, muscle, set_no, kg, reps, rir, created_at)
-    SELECT ?9, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 WHERE EXISTS (SELECT 1 FROM session WHERE user_id = ?9 AND id = ?1 AND (finished_at IS NULL OR closed_by = 'auto'))
-    ON CONFLICT(user_id, session_id, exercise_id, set_no) DO UPDATE SET kg=?5, reps=?6, rir=?7`)
-    .bind(p.id, ex, muscle, int(b.setNo, "setNo", 1, 12), num(b.kg, "kg", 0, 600, false), int(b.reps, "reps", 0, 100), int(b.rir, "rir", 0, 6, false), Date.now(), u.id).run();
+  // #106 série por tempo: `segundos` (1–3600) no lugar de `reps`, conforme a medida do exercício (core)
+  const segundos = int(b.segundos, "segundos", SEGUNDOS_MIN, SEGUNDOS_MAX, false), reps = int(b.reps, "reps", 0, 100, false);
+  const erro = erroSerie(ex, { reps, segundos });
+  if (erro) throw new HttpError(400, erro);
+  const r = await env.DB.prepare(`INSERT INTO set_log (user_id, session_id, exercise_id, muscle, set_no, kg, reps, rir, created_at, segundos)
+    SELECT ?9, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?10 WHERE EXISTS (SELECT 1 FROM session WHERE user_id = ?9 AND id = ?1 AND (finished_at IS NULL OR closed_by = 'auto'))
+    ON CONFLICT(user_id, session_id, exercise_id, set_no) DO UPDATE SET kg=?5, reps=?6, rir=?7, segundos=?10`)
+    .bind(p.id, ex, muscle, int(b.setNo, "setNo", 1, 12), num(b.kg, "kg", 0, 600, false), reps, int(b.rir, "rir", 0, 6, false), Date.now(), u.id, segundos).run();
   return json({ ok: true, saved: r.meta.changes > 0 });
 });
 
@@ -353,13 +359,13 @@ on("GET", "/api/sessions/:id", async (_req, env, p, u) => {
     .first<{ id: string; date: string; gym_id: string | null; plan: string; started_at: number; finished_at: number | null; closed_by: string | null; summary: string | null }>();
   if (!s) throw new HttpError(404, "sessão não encontrada");
   const [sets, skips, rest] = await Promise.all([
-    env.DB.prepare("SELECT exercise_id, set_no, kg, reps, rir FROM set_log WHERE user_id = ?1 AND session_id = ?2 ORDER BY exercise_id, set_no").bind(u.id, p.id).all<{ exercise_id: string; set_no: number; kg: number | null; reps: number | null; rir: number | null }>(),
+    env.DB.prepare("SELECT exercise_id, set_no, kg, reps, rir, segundos FROM set_log WHERE user_id = ?1 AND session_id = ?2 ORDER BY exercise_id, set_no").bind(u.id, p.id).all<{ exercise_id: string; set_no: number; kg: number | null; reps: number | null; rir: number | null; segundos: number | null }>(),
     env.DB.prepare("SELECT exercise_id, reason FROM exercise_skip WHERE user_id = ?1 AND session_id = ?2").bind(u.id, p.id).all<{ exercise_id: string; reason: string }>(),
     env.DB.prepare("SELECT fire_at FROM rest_timer WHERE user_id = ?1 AND session_id = ?2 AND sent_at IS NULL").bind(u.id, p.id).first<{ fire_at: number }>(),
   ]);
   return json({
     id: s.id, date: s.date, gymId: s.gym_id, plan: parse(s.plan, {}), startedAt: s.started_at, finishedAt: s.finished_at, closedBy: s.closed_by, summary: parse(s.summary, null),
-    sets: sets.results.map((x) => ({ exerciseId: x.exercise_id, setNo: x.set_no, kg: x.kg, reps: x.reps, rir: x.rir })),
+    sets: sets.results.map((x) => ({ exerciseId: x.exercise_id, setNo: x.set_no, kg: x.kg, reps: x.reps, rir: x.rir, segundos: x.segundos })),
     skips: skips.results.map((x) => ({ exerciseId: x.exercise_id, reason: x.reason })),
     rest: rest ? { until: rest.fire_at } : null,
   });
@@ -419,8 +425,8 @@ on("GET", "/api/history/last", async (req, env, _p, u) => {
   const n = Math.min(Math.max(Number(q.get("n") ?? 5) || 5, 1), 10);
   const before = q.get("before") ? Number(q.get("before")) : null;
   if (before != null && !Number.isFinite(before)) throw new HttpError(400, "before inválido");
-  const out: Record<string, { kg: number; reps: number }[][]> = {};
-  await Promise.all(ids.map(async (id) => { out[exId(id)] = (await exerciseHistory(env, u.id, id, before, n)).map((s) => s.sets.map(({ kg, reps }) => ({ kg, reps }))); }));
+  const out: Record<string, { kg: number; reps: number; segundos?: number }[][]> = {};
+  await Promise.all(ids.map(async (id) => { out[exId(id)] = (await exerciseHistory(env, u.id, id, before, n)).map((s) => s.sets.map(({ kg, reps, segundos }) => ({ kg, reps, ...(segundos ? { segundos } : {}) }))); }));
   return json({ history: out });
 });
 
@@ -509,6 +515,7 @@ on("POST", "/api/inbox/:id/status", async (req, env, p, u) => {
 
 // Comida (registros, refeições salvas, metas adaptativas) e transcrição de voz: ver comida.ts
 registerComida(on);
+registerPersonalizados(on);
 // Home de evolução (#29): ver home.ts
 registerHome(on);
 // Claude no app (#30): status da fila e memória do Claude: ver mcp-chat.ts

@@ -71,10 +71,13 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   const pv1 = JSON.parse((await ok(mcp(env, tok.token, "ciclo_comida_registrar", { texto: `almocei 2 ovos ${tag}`, simular: true }))).data.result.content[0].text);
   await ok(mcp(env, tok.token, "ciclo_comida_registrar", { confirmar: pv1.token }));
   const previa = JSON.parse((await ok(mcp(env, tok.token, "ciclo_comida_registrar", { texto: `jantei 150 g de frango ${tag}`, simular: true }))).data.result.content[0].text).token as string;
+  // #107 exercício personalizado criado pela IA (nome e descrição com a marca)
+  // (só na B: a matriz fica dentro do limite de escritas por minuto)
+  const cus = tag !== "MARCA_B" ? "" : JSON.parse((await ok(mcp(env, tok.token, "ciclo_exercicio_criar", { jaBusqueiNoCatalogo: true, nome: `${tag} elevação`, musculo: "ombro", descricao: `${tag} execução` }))).data.result.content[0].text).exercicio.id as string;
   const exp = (await c("GET", "/api/account/export")).data;
   const revisao = (exp.inbox as { id: string; action: string }[]).find((i) => i.action === "revisar_treino")!.id;
   const dev = (await c("GET", "/api/account/devices")).data; // #54: sessão e passkey (só existem nas contas criadas por convite)
-  return { sessao: dev.sessions[0]?.id ?? "x1", passkey: dev.passkeys[0]?.id ?? "x1", mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id, previa, livre, revisao };
+  return { sessao: dev.sessions[0]?.id ?? "x1", passkey: dev.passkeys[0]?.id ?? "x1", mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id, previa, livre, revisao, cus };
 }
 const snap = async (env: any, user: string) => {
   const e = (await call(env, "GET", "/api/account/export", { user })).data;
@@ -87,7 +90,7 @@ async function matriz(env: any, ana: string, bia: string) {
   const A = await seed(env, ana, "MARCA_A", SID_A, 10);
   const before = await snap(env, bia);
   const r2Before = [...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length;
-  const secrets = [B.mem, "MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, B.revisao, String(MARK_KG), "bia@"];
+  const secrets = [B.mem, "MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, B.revisao, B.cus, String(MARK_KG), "bia@"];
   const subsB = () => env.DB.raw.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE endpoint = ?1").get(B.endpoint).n;
   const restB = () => JSON.stringify(env.DB.raw.prepare("SELECT fire_at, sent_at FROM rest_timer WHERE user_id = ?1").get(B.uid));
   const restBefore = restB();
@@ -191,6 +194,10 @@ async function matriz(env: any, ana: string, bia: string) {
     ["POST /api/claude/memoria", () => a("POST", "/api/claude/memoria", { fato: "A outro fato" }), 201],
     ["PUT /api/claude/memoria/:id", () => a("PUT", `/api/claude/memoria/${B.mem}`, { fato: "hackeado" }), 404],
     ["DELETE /api/claude/memoria/:id", () => a("DELETE", `/api/claude/memoria/${B.mem}`), 404],
+    // #107 o personalizado da B não aparece nem muda pela A
+    ["GET /api/exercicios-personalizados", () => a("GET", "/api/exercicios-personalizados")],
+    ["PATCH /api/exercicios-personalizados/:id", () => a("PATCH", `/api/exercicios-personalizados/${B.cus}`, { nome: "hackeado" }), 404],
+    ["DELETE /api/exercicios-personalizados/:id", () => a("DELETE", `/api/exercicios-personalizados/${B.cus}`), 404],
   ];
   const tools: [string, Record<string, unknown>, boolean?][] = [
     ["ciclo_estado", { date: D }], ["ciclo_contexto", { pedido: "revisao", date: D }], ["ciclo_catalogo", { muscle: "ombro", gymId: "acad1" }], ["ciclo_planejar_dia", { date: D, daysLeft: 2 }],
@@ -213,6 +220,9 @@ async function matriz(env: any, ana: string, bia: string) {
     ["ciclo_preferencias", { comida_aprovacao: "so_duvidas" }], ["ciclo_historico", { tipo: "series", de: "2026-11-01", ate: D }],
     // #108 o pedido revisar_treino da B não serve para a A; a revisão da A só vê e muda o dia dela
     ["ciclo_responder_pedido", { id: B.revisao, resposta: "oi", itens: [{ id: B.ex, sets: 2 }] }, true], ["ciclo_revisar_treino", {}], ["ciclo_revisar_treino", { date: B.livre, aplicar: true }],
+    // #107 a A cria o dela; o cus_ da B no treino do dia da A = id desconhecido (não salva)
+    ["ciclo_exercicio_criar", { jaBusqueiNoCatalogo: true, nome: "A remada", musculo: "costas", descricao: "A" }],
+    ["ciclo_salvar_treino_do_dia", { date: D, itens: [{ id: B.cus, sets: 2, nm: "x", muscle: "ombro" }], motivo: "t" }],
     ["ciclo_exame_pendente", {}], ["ciclo_exame_concluir", { id: B.exam, resumo: { marcadores: [{ nome: "TSH", valor: 1, status: "dentro" }] } }, true],
   ];
   assert.deepEqual([...new Set(cases.map((c) => c[0].replace(/ \(.*\)$/, "")))].concat("DELETE /api/account", "POST /api/account/logout-all").sort(), routeSignatures().sort(), "toda rota precisa de caso de isolamento");
@@ -223,8 +233,8 @@ async function matriz(env: any, ana: string, bia: string) {
     if (status) assert.equal(r.status, status, `${sig}: ${r.text}`); else assert.ok(r.status < 300, `${sig}: ${r.status} ${r.text}`);
     noLeak(sig, r.text);
   }
-  // a matriz passa de 120 escritas/min da A: janela nova do limite antes das ferramentas (o limite tem teste próprio)
-  env.DB.raw.prepare("DELETE FROM rate_limit WHERE user_id = ?1 AND bucket = 'write'").run(A.uid);
+  // a matriz passa de 120 escritas/min (limite por pessoa, não é o que se testa aqui): zera a janela antes das ferramentas
+  env.DB.raw.exec("DELETE FROM rate_limit");
   for (const [name, args, isErr] of tools) {
     const r = await mcp(env, A.token, name, args);
     assert.equal(r.status, 200, `${name}: ${r.text}`); assert.equal(!!r.data.result.isError, !!isErr, `${name}: ${r.text}`);

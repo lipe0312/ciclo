@@ -14,6 +14,7 @@ import { OUTCOME_TXT, REASON_TXT, curIdx, running, startSession } from "./sessao
 import { openEdit, openSwap } from "./folhas.tsx";
 import { Biblioteca, ExImgs } from "./biblioteca.tsx";
 import { Detalhe } from "./detalhe.tsx";
+import { InfoPersonalizado, SeloPersonalizado } from "./personalizado.tsx";
 import { Historico } from "./historico.tsx";
 import { Cardio, cardioName } from "./cardio.tsx";
 import { abrirGerarOutro, anterior, desfazerGeracao } from "./gerar.tsx";
@@ -52,13 +53,13 @@ function Resumo({ s }: { s: any }) {
   const sm: C.SessionSummary | undefined = s.summary;
   const plan = activePlan();
   const out = plan.items.map((it) => ({ it, o: C.exerciseOutcome(it.sets, (s.logs[it.exerciseId] ?? []).filter((l: any) => l.done).length, !!s.skipped[it.exerciseId]) }));
-  const kind: Record<string, string> = { e1rm: "e1RM", carga: "carga", reps: "reps" };
+  const kind: Record<string, string> = { e1rm: "e1RM", carga: "carga", reps: "reps", tempo: "tempo" };
   return <>
     <div class="grid g3" style="margin-top:14px"><Card><p class="kicker">Duração</p><p class="big num">{C.fmtClock(s.finishedAt - s.startedAt)}</p></Card>
       <Card><p class="kicker">Séries feitas</p><p class="big num">{sm?.sets ?? Object.values(s.logs).flat().filter((l: any) => l.done).length}<span class="small sub">/{plan.setsTotal}</span></p></Card>
       <Card><p class="kicker">Volume</p><p class="big num">{fmt(sm?.volume ?? 0)}<span class="small sub"> kg</span></p>
         {sm?.vs.pct != null && <p class="small num" style={`margin-top:4px;color:var(--${sm.vs.pct >= 0 ? "ok" : "warn"})`}>{sm.vs.pct >= 0 ? "+" : ""}{sm.vs.pct}% vs média das últimas 4</p>}</Card></div>
-    {sm && sm.prs.length > 0 && <Card style="margin-top:12px"><h2>Recordes</h2><div class="row wrapx" style="gap:6px;margin-top:8px">{sm.prs.map((p, i) => <span class="badge ok num" key={i}>PR {kind[p.kind]} · {EXB[p.exerciseId]?.nm ?? p.exerciseId} {fmt(p.value, p.value % 1 ? 1 : 0)}{p.kind === "reps" ? " reps" : " kg"} (antes {fmt(p.prev, p.prev % 1 ? 1 : 0)})</span>)}</div></Card>}
+    {sm && sm.prs.length > 0 && <Card style="margin-top:12px"><h2>Recordes</h2><div class="row wrapx" style="gap:6px;margin-top:8px">{sm.prs.map((p, i) => <span class="badge ok num" key={i}>PR {kind[p.kind]} · {EXB[p.exerciseId]?.nm ?? p.exerciseId} {C.fmtPrValor(p.kind, p.value)} (antes {C.fmtPrValor(p.kind, p.prev)})</span>)}</div></Card>}
     {sm && sm.perExercise.length > 0 && <Card style="margin-top:12px"><h2>Médias vs última vez</h2>{sm.perExercise.map((e) => <div class="row between wrapx" key={e.exerciseId} style="padding:8px 0;border-top:1px solid var(--borda)">
       <span style="min-width:0">{EXB[e.exerciseId]?.nm ?? e.exerciseId}</span>
       <span class="num small">{fmt(e.avgKg, 1)} kg × {fmt(e.avgReps, 1)}{e.deltaReps != null ? <span class="sub"> · antes {fmt(e.lastAvgKg!, 1)} × {fmt(e.lastAvgReps!, 1)}{deltaTxt(e.deltaKg!, e.deltaReps)}</span> : <span class="sub"> · 1ª vez</span>}</span></div>)}</Card>}
@@ -127,9 +128,10 @@ function CardDia({ it, idx, run }: { it: C.PlanItem; idx: number; run: boolean }
   const logs = S.session?.logs?.[it.exerciseId] ?? [], d = logs.filter((l: { done: boolean }) => l.done).length;
   return <Card cls={skipped ? "skipped" : ""}>
     {cat && <a href={href("treino", ["exercicio", it.exerciseId])} aria-label={`Como fazer: ${it.nm}`}><ExImgs it={cat} /></a>}
-    <div class="row between start" style="margin-top:10px"><h3 style="font-size:17px">{it.nm}</h3>{it.manual && <span class="badge warn">seu · em revisão</span>}</div>
+    <div class="row between start" style="margin-top:10px"><h3 style="font-size:17px">{it.nm}</h3>{it.manual && <span class="badge warn">seu · em revisão</span>}{it.personalizado && <SeloPersonalizado />}</div>
     <p class="meta num small" style="margin-top:2px"><b style="color:var(--txt)">{it.sets} × {it.reps[0]}–{it.reps[1]}</b> · {mName(it.muscle)}{sg.kg ? <> · sugestão <b style="color:var(--txt)">{fmt(sg.kg, 1)} kg × {sg.reps}</b></> : null}</p>
     {sg.note && <p class="tiny sub" style="margin-top:2px">{sg.note}</p>}
+    {it.personalizado && <InfoPersonalizado id={it.exerciseId} />}
     {run && <p class="small num" style="margin-top:6px">{skipped ? `Não feito · ${REASON_TXT[String(skipped)] ?? skipped}` : `${d}/${Math.max(it.sets, logs.length)} séries`}</p>}
     {!run && <div class="acts" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">{it.alts.length > 0 && <button type="button" class="btn" onClick={() => openSwap(idx)}><Icon id="swap" />Trocar</button>}<button type="button" class="btn" onClick={() => openEdit(idx)}><Icon id="edit" />Editar</button></div>}
   </Card>;

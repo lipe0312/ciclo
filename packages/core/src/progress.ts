@@ -3,6 +3,7 @@
 
 import { epley } from "./loads.ts";
 import type { SetLog } from "./loads.ts";
+import { contarSeries, ehSerieTempo } from "./medida.ts";
 
 /** Sessões consideradas na "média das últimas 4". */
 export const AVG_SESSIONS = 4;
@@ -58,10 +59,20 @@ export function sessionVolumeVsAvg(current: Record<string, SetLog[]>, past: Reco
   return { current: cur, comparable, avg4, pct: avg4 > 0 ? Math.round((comparable / avg4 - 1) * 100) : null };
 }
 
-export type PrKind = "e1rm" | "carga" | "reps";
+export type PrKind = "e1rm" | "carga" | "reps" | "tempo";
 export interface Pr { kind: PrKind; value: number; prev: number }
 /** Recordes da sessão atual contra todas as anteriores. Sem histórico não há recorde (é a 1ª vez). */
 export function detectPrs(past: SetLog[][], cur: SetLog[]): Pr[] {
+  // #106 séries por tempo: recorde = maior tempo
+  const tP = past.flat().filter(ehSerieTempo), tC = cur.filter(ehSerieTempo);
+  const tempo: Pr[] = [];
+  if (tP.length && tC.length) {
+    const a = Math.max(...tC.map((s) => s.segundos!)), b = Math.max(...tP.map((s) => s.segundos!));
+    if (a > b) tempo.push({ kind: "tempo", value: a, prev: b });
+  }
+  return [...tempo, ...prsReps(past, cur)];
+}
+function prsReps(past: SetLog[][], cur: SetLog[]): Pr[] {
   const p = past.flatMap(clean), c = clean(cur);
   if (!p.length || !c.length) return [];
   const max = (a: number[]) => Math.max(...a);
@@ -86,9 +97,9 @@ export function sessionSummary(durationMs: number, current: Record<string, SetLo
   const perExercise: ExerciseDelta[] = [], prs: SessionSummary["prs"] = [];
   let sets = 0;
   for (const [id, cur] of Object.entries(current)) {
+    sets += contarSeries(cur); // #106 série por tempo conta como série
     const st = setStats(cur);
-    if (!st) continue;
-    sets += st.n;
+    if (!st) { for (const p of detectPrs(past[id] ?? [], cur)) prs.push({ ...p, exerciseId: id }); continue; }
     const last = exerciseRefs(past[id] ?? []).last;
     perExercise.push({ exerciseId: id, sets: st.n, avgKg: r1(st.avgKg), avgReps: r1(st.avgReps), lastAvgKg: last ? r1(last.avgKg) : null, lastAvgReps: last ? r1(last.avgReps) : null,
       deltaKg: last ? r1(st.avgKg - last.avgKg) : null, deltaReps: last ? r1(st.avgReps - last.avgReps) : null });

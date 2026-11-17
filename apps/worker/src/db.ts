@@ -208,21 +208,21 @@ export async function weekState(env: Env, uid: string, anyDate: string) {
 export interface CardioRow { id: string; date: string; type: string; minutes: number; intensity: string; distance_km: number | null }
 export const cardioOut = (r: CardioRow) => ({ id: r.id, date: r.date, type: r.type, minutes: r.minutes, intensity: r.intensity, distanceKm: r.distance_km });
 
-export interface ExerciseSession { sessionId: string; date: string; startedAt: number; sets: { setNo: number; kg: number; reps: number }[] }
+export interface ExerciseSession { sessionId: string; date: string; startedAt: number; sets: { setNo: number; kg: number; reps: number; segundos?: number }[] }
 /** Histórico de UM exercício, sessões da mais recente para trás (paginado por `before` = started_at da última recebida). */
 export async function exerciseHistory(env: Env, uid: string, exerciseId: string, before: number | null, limit: number): Promise<ExerciseSession[]> {
-  const { results } = await env.DB.prepare(`SELECT s.id AS session_id, s.date, s.started_at, l.set_no, l.kg, l.reps
+  const { results } = await env.DB.prepare(`SELECT s.id AS session_id, s.date, s.started_at, l.set_no, l.kg, l.reps, l.segundos
     FROM session s JOIN set_log l ON l.user_id = s.user_id AND l.session_id = s.id
     WHERE s.user_id = ?1 AND l.exercise_id = ?2 AND (?3 IS NULL OR s.started_at < ?3)
       AND s.id IN (SELECT s2.id FROM session s2 JOIN set_log l2 ON l2.user_id = s2.user_id AND l2.session_id = s2.id
         WHERE s2.user_id = ?1 AND l2.exercise_id = ?2 AND (?3 IS NULL OR s2.started_at < ?3) GROUP BY s2.id ORDER BY s2.started_at DESC LIMIT ?4)
     ORDER BY s.started_at DESC, l.set_no`).bind(uid, exerciseId, before, limit)
-    .all<{ session_id: string; date: string; started_at: number; set_no: number; kg: number | null; reps: number | null }>();
+    .all<{ session_id: string; date: string; started_at: number; set_no: number; kg: number | null; reps: number | null; segundos: number | null }>();
   const out: ExerciseSession[] = [];
   for (const r of results) {
     let cur = out[out.length - 1];
     if (!cur || cur.sessionId !== r.session_id) { cur = { sessionId: r.session_id, date: r.date, startedAt: r.started_at, sets: [] }; out.push(cur); }
-    cur.sets.push({ setNo: r.set_no, kg: r.kg ?? 0, reps: r.reps ?? 0 });
+    cur.sets.push({ setNo: r.set_no, kg: r.kg ?? 0, reps: r.reps ?? 0, ...(r.segundos ? { segundos: r.segundos } : {}) });
   }
   return out;
 }
@@ -231,20 +231,20 @@ export async function exerciseHistory(env: Env, uid: string, exerciseId: string,
 export async function summarizeSession(env: Env, uid: string, sid: string) {
   const ses = await env.DB.prepare("SELECT started_at, finished_at FROM session WHERE user_id = ?1 AND id = ?2").bind(uid, sid).first<{ started_at: number; finished_at: number | null }>();
   if (!ses) return null;
-  const cur = await env.DB.prepare("SELECT exercise_id, kg, reps FROM set_log WHERE user_id = ?1 AND session_id = ?2 ORDER BY exercise_id, set_no").bind(uid, sid).all<{ exercise_id: string; kg: number | null; reps: number | null }>();
+  const cur = await env.DB.prepare("SELECT exercise_id, kg, reps, segundos FROM set_log WHERE user_id = ?1 AND session_id = ?2 ORDER BY exercise_id, set_no").bind(uid, sid).all<{ exercise_id: string; kg: number | null; reps: number | null; segundos: number | null }>();
   const current: Record<string, SetLog[]> = {};
-  for (const r of cur.results) (current[r.exercise_id] ??= []).push({ kg: r.kg ?? 0, reps: r.reps ?? 0 });
+  for (const r of cur.results) (current[r.exercise_id] ??= []).push({ kg: r.kg ?? 0, reps: r.reps ?? 0, segundos: r.segundos });
   const ids = Object.keys(current);
   const past: Record<string, SetLog[][]> = {};
   if (ids.length) {
-    const rows = await env.DB.prepare(`SELECT l.exercise_id, l.session_id, l.kg, l.reps FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
+    const rows = await env.DB.prepare(`SELECT l.exercise_id, l.session_id, l.kg, l.reps, l.segundos FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
       WHERE l.user_id = ?1 AND l.session_id <> ?2 AND s.started_at < ?3 AND l.exercise_id IN (SELECT value FROM json_each(?4))
-      ORDER BY s.started_at DESC, l.set_no LIMIT 3000`).bind(uid, sid, ses.started_at, JSON.stringify(ids)).all<{ exercise_id: string; session_id: string; kg: number | null; reps: number | null }>();
+      ORDER BY s.started_at DESC, l.set_no LIMIT 3000`).bind(uid, sid, ses.started_at, JSON.stringify(ids)).all<{ exercise_id: string; session_id: string; kg: number | null; reps: number | null; segundos: number | null }>();
     const lastSid: Record<string, string> = {};
     for (const r of rows.results) {
       const list = (past[r.exercise_id] ??= []);
       if (lastSid[r.exercise_id] !== r.session_id) { lastSid[r.exercise_id] = r.session_id; list.push([]); }
-      list[list.length - 1].push({ kg: r.kg ?? 0, reps: r.reps ?? 0 });
+      list[list.length - 1].push({ kg: r.kg ?? 0, reps: r.reps ?? 0, segundos: r.segundos });
     }
   }
   const sum = sessionSummary(Math.max(0, (ses.finished_at ?? Date.now()) - ses.started_at), current, past);
@@ -340,12 +340,12 @@ export async function takeGeocodeSlot(env: Env, now = Date.now()): Promise<numbe
 
 // ---- direitos da conta (LGPD) ----
 /** Tabelas de dado pessoal (todas têm user_id). Ordem de apagar: filhas antes das mães. */
-export const USER_TABLES = ["oauth_code", "set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym_weekday", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "porcao_pessoal", "porcao_cache", "porcao_sombra", "claude_memory", "claude_heartbeat", "busca", "auth_challenge", "recovery_codes", "sessions", "passkeys", "invites", "consent", "ui_pref", "mcp_previa"] as const;
+export const USER_TABLES = ["oauth_code", "set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym_weekday", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "porcao_pessoal", "porcao_cache", "porcao_sombra", "claude_memory", "claude_heartbeat", "busca", "auth_challenge", "recovery_codes", "sessions", "passkeys", "invites", "consent", "ui_pref", "mcp_previa", "exercicio_personalizado"] as const;
 
 /** Tudo da conta em JSON (mídia: só metadados; tokens: sem hash). */
 export async function exportAccount(env: Env, uid: string) {
   const q = (sql: string) => env.DB.prepare(sql).bind(uid);
-  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "gym_weekday", "mcp_token", "week_plan", "day_override", "cardio_log", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat", "passkeys", "sessions", "recovery_codes", "invites", "consent", "ui_pref", "mcp_previa", "porcao_pessoal", "porcao_sombra", "porcao_cache"] as const;
+  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "gym_weekday", "mcp_token", "week_plan", "day_override", "cardio_log", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat", "passkeys", "sessions", "recovery_codes", "invites", "consent", "ui_pref", "mcp_previa", "porcao_pessoal", "porcao_sombra", "porcao_cache", "exercicio_personalizado"] as const;
   const res = await env.DB.batch([
     q("SELECT id, email, name, sobrenome, sexo, nascimento, altura_cm, peso_kg, role, created_at, last_seen_at, onboarding_done_at FROM user WHERE id = ?1"),
     q("SELECT data, updated_at FROM profile WHERE user_id = ?1"),
@@ -353,7 +353,7 @@ export async function exportAccount(env: Env, uid: string) {
     q("SELECT id, name, equipment, busy_hours, kind, lat, lng, address, sort, created_at, deleted_at FROM gym WHERE user_id = ?1 ORDER BY sort"),
     q("SELECT date, gym_id, input, plan, source, created_at FROM day_plan WHERE user_id = ?1 ORDER BY date"),
     q("SELECT id, date, gym_id, plan, started_at, finished_at, closed_by, feedback, summary FROM session WHERE user_id = ?1 ORDER BY started_at"),
-    q("SELECT session_id, exercise_id, muscle, set_no, kg, reps, rir, created_at FROM set_log WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT session_id, exercise_id, muscle, set_no, kg, reps, segundos, rir, created_at FROM set_log WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT session_id, exercise_id, reason, created_at FROM exercise_skip WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT date, status, reason, source, updated_at FROM attendance WHERE user_id = ?1 ORDER BY date"),
     q("SELECT date, sleep_h, energy, soreness, stress, food, weight_kg, note, updated_at FROM checkin WHERE user_id = ?1 ORDER BY date"),
@@ -392,6 +392,8 @@ export async function exportAccount(env: Env, uid: string) {
     q("SELECT alimento, medida, gramas, n, origem, updated_at FROM porcao_pessoal WHERE user_id = ?1 ORDER BY alimento, medida"),
     q("SELECT categoria, concordou, erro_g, comparacao, created_at FROM porcao_sombra WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT chave, itens, provedor, created_at FROM porcao_cache WHERE user_id = ?1 ORDER BY created_at"),
+    // #107 exercícios personalizados (nome, músculo, aparelho, descrição e o link do vídeo)
+    q("SELECT id, nome, musculo, aparelho, descricao, video_url, criado_por, created_at, updated_at FROM exercicio_personalizado WHERE user_id = ?1 ORDER BY created_at"),
   ]);
   const out: Record<string, unknown> = { formato: "ciclo-export-1", exportadoEm: new Date().toISOString() };
   names.forEach((n, i) => { out[n] = n === "user" || n === "profile" ? res[i].results[0] ?? null : res[i].results; });

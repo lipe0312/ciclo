@@ -11,11 +11,13 @@ import { ExImgs } from "./biblioteca.tsx";
 import { MediaBox } from "./midia.tsx";
 import { useTexto } from "../../lib/texto/index.ts";
 import { Estado } from "../../lib/estado/index.tsx";
+import { DetalhePersonalizado } from "./personalizado.tsx";
 
 const List = ({ title, items, empty }: { title: string; items?: string[]; empty: string }) =>
   <Card><h2>{title}</h2>{items?.length ? <ol class="steps">{items.map((t, i) => <li key={i}>{t}</li>)}</ol> : <p class="small sub" style="margin-top:6px">{empty}</p>}</Card>;
 
 export function Detalhe({ id }: { id: string }) {
+  if (C.ehIdPersonalizado(id)) return <DetalhePersonalizado id={id} />; // #107
   const it = C.CATALOG_BY_ID[id], tx = useTexto(id);
   if (!it) return <Estado tipo="vazio" titulo="Exercício não encontrado" acao={{ label: "Ver exercícios", href: "#treino/exercicios" }} />;
   const src = C.imageSrc(it);
@@ -26,7 +28,7 @@ export function Detalhe({ id }: { id: string }) {
     <div class="grid dash"><div class="stack">
       <Card>{it.images.length ? <Carrossel label="Imagens do exercício" items={it.images.map((n) => <img src={img(src, n)} alt={`${it.nm} · ${n ? "fim" : "início"} do movimento`} width={360} height={240} />)} /> : <ExImgs it={it} size="big" />}
         <div class="facts num">
-          {it.type === "forca" ? <><span><b>{it.r[0]}–{it.r[1]}</b> reps</span><span>descanso <b>{it.rest}s</b></span>{it.stretch && <span class="badge">alongado</span>}</>
+          {it.type === "forca" ? <><span><b>{it.r[0]}–{it.r[1]}</b> {it.medida === "tempo" ? "s" : "reps"}</span>{it.medida === "ambos" && <span>por tempo ou reps</span>}<span>descanso <b>{it.rest}s</b></span>{it.stretch && <span class="badge">alongado</span>}</>
             : <><span>registro em <b>{it.units.join(" / ")}</b></span><span class="tiny sub">kcal é estimada (MET × peso × tempo)</span></>}
           <span>{it.eq.length ? it.eq.map((e) => C.EQUIPMENT_BY_ID[e]?.nm ?? e).join(" + ") : "sem aparelho"}</span></div></Card>
       {/* #96 texto sob demanda: enquanto carrega (undefined), nada de mensagem de reserva piscando */}

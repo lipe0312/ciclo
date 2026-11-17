@@ -4,6 +4,8 @@
 import { EXERCISE_BY_ID, MUSCLES } from "./catalog.ts";
 import type { MuscleId } from "./catalog.ts";
 import { candidates, item, painBlocks, resumirDia } from "./plan-day.ts";
+import { ehIdPersonalizado, tipoPersonalizado } from "./exercicio-personalizado.ts";
+import type { ExercicioPersonalizado } from "./exercicio-personalizado.ts";
 import type { DayInput, DayPlan, PlanItem } from "./plan-day.ts";
 
 export type Severity = "erro" | "aviso" | "info";
@@ -12,11 +14,20 @@ export interface Issue { severity: Severity; code: string; msg: string; index?: 
 /** Formato compacto que o Claude devolve (economiza tokens). */
 export interface CompactItem { id: string; sets: number; reps?: [number, number]; nm?: string; muscle?: MuscleId }
 
-export function hydrate(compact: CompactItem[], inp: DayInput): { items: PlanItem[]; issues: Issue[] } {
+/** `personalizados`: os exercícios personalizados DESTA conta (#107). Um `cus_` fora do mapa (de outra conta ou apagado)
+ *  é sempre erro, mesmo com nome: o caminho "exercício seu" não vale para eles. */
+export function hydrate(compact: CompactItem[], inp: DayInput, personalizados: Readonly<Record<string, ExercicioPersonalizado>> = {}): { items: PlanItem[]; issues: Issue[] } {
   const issues: Issue[] = [];
   const items: PlanItem[] = [];
   compact.forEach((c, index) => {
     const ex = EXERCISE_BY_ID[c.id];
+    if (!ex && ehIdPersonalizado(c.id)) {
+      const p = Object.hasOwn(personalizados, c.id) ? personalizados[c.id] : undefined;
+      if (!p) { issues.push({ severity: "erro", code: "id_desconhecido", msg: `Item ${index + 1}: esse exercício personalizado não existe nesta conta (crie com ciclo_exercicio_criar).`, index }); return; }
+      items.push({ exerciseId: p.id, nm: p.nome, muscle: p.musculo, kind: tipoPersonalizado(p.aparelho), sets: c.sets, reps: c.reps ?? [8, 12], rest: 90, alts: [], personalizado: true });
+      if (p.aparelho && !inp.equipment.includes(p.aparelho)) issues.push({ severity: "aviso", code: "aparelho", msg: `${p.nome}: a academia ativa não tem ${p.aparelho}.`, index });
+      return;
+    }
     if (!ex) {
       if (c.nm && c.muscle && MUSCLES[c.muscle]) {
         items.push({ exerciseId: c.id, nm: c.nm, muscle: c.muscle, kind: "livre", sets: c.sets, reps: c.reps ?? [8, 12], rest: 90, alts: [], manual: true });

@@ -33,7 +33,8 @@ export function startLoad(exerciseId: string, remembered: Remembered[], targetRe
   return { kg: null, source: "calibrar", note: "1ª vez: escolha uma carga em que sobrariam ~3 reps. O app aprende daqui." };
 }
 
-export interface SetLog { kg: number; reps: number; rir?: number }
+/** #106 série por tempo: `segundos` (1–3600) com reps 0; não entra no kg × reps nem no e1RM. */
+export interface SetLog { kg: number; reps: number; rir?: number; segundos?: number | null }
 /** Dupla progressão: todas as séries no topo da faixa → sobe carga e volta ao fundo; senão +1 rep. */
 export function nextTarget(last: SetLog[], range: [number, number], inc: number): { kg: number; reps: number; reason: string } | null {
   if (!last.length) return null;

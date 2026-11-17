@@ -123,6 +123,8 @@ export const INFO: Record<string, Info> = {
   "Hanging_Leg_Raise": m(["abdomen"], ["antebraco"], ["elevação de pernas na barra"]),
   "Dead_Bug": m(["abdomen"], ["obliquos"], ["dead bug"]),
   "Plank": m(["abdomen"], ["obliquos"], ["prancha"]),
+  "Side_Bridge": m(["obliquos"], ["abdomen", "gluteo"], ["prancha lateral", "side plank"]),
+  "Star_Jump": m(["pant"], ["gluteo", "ombro_lat"], ["polichinelo", "jumping jack", "polichinelos"]),
   "Crunches": m(["abdomen"], [], ["abdominal","abdominal supra"]),
   "Ab_Crunch_Machine": m(["abdomen"], [], ["abdominal na máquina"]),
   "Reverse_Crunch": m(["abdomen"], ["obliquos"], ["abdominal infra","abdominal inverso"]),
