@@ -182,6 +182,10 @@ export interface Exercise extends ExerciseInfo {
   eficiencia?: Eficiencia;
   /** #74 1..5, de logs de apps de treino; só ordena listas e desempata. docs/09-base-cientifica.md#exercícios-mais-comuns */
   popularidade?: Popularidade;
+  /** #106 como a série se mede: ausente = reps; "tempo" (isométricos) ou "ambos" (o app mostra Tempo | Reps). medida.ts */
+  medida?: "tempo" | "ambos";
+  /** #106 só com medida "ambos": por onde o seletor começa. */
+  medidaPadrao?: "reps" | "tempo";
   type: "forca";
   images: ImageIdx[];
 }
@@ -263,7 +267,7 @@ const RAW: Exercise[] = [
   X("Cable_Crunch", "Abdominal na polia (ajoelhado)", "core", ["polia"], "cabo", [10, 15], 60, 1, {}, {}),
   X("Hanging_Leg_Raise", "Elevação de pernas na barra", "core", ["barrafixa"], "corpo", [8, 15], 60, 1, { lombar: 1 }, { inc: 0 }),
   X("Dead_Bug", "Dead bug", "core", [], "corpo", [8, 12], 45, 1, {}, { inc: 0, prehab: ["lombar", "quadril"] }),
-  X("Plank", "Prancha", "core", [], "corpo", [30, 60], 45, 1, { lombar: 1 }, { inc: 0, prehab: ["lombar"] }),
+  X("Plank", "Prancha", "core", [], "corpo", [30, 60], 45, 1, { lombar: 1 }, { inc: 0, prehab: ["lombar"], medida: "tempo" }),
 
   // ---- ampliação (#22): ombro lateral, bíceps, tríceps, costas e máquinas. Vai no fim: não muda a preferência acima. ----
   X("Arnold_Dumbbell_Press", "Desenvolvimento Arnold", "ombro", ["halteres", "banco"], "livre", [8, 12], 120, 2, { ombro: 2 }, { fam: "press_v", ratio: 0.3, inc: 2 }),
@@ -332,6 +336,11 @@ const RAW: Exercise[] = [
   X("Reverse_Crunch", "Abdominal infra (elevação de quadril)", "core", [], "corpo", [10, 15], 45, 1, { lombar: 1 }, { inc: 0 }),
   X("Ab_Crunch_Machine", "Abdominal na máquina", "core", ["abdmaq"], "maquina", [10, 15], 60, 1, {}, { inc: 5 }),
   X("Ab_Roller", "Roda abdominal", "core", ["roda"], "corpo", [8, 12], 60, 2, { lombar: 2, ombro: 1 }, { inc: 0 }),
+
+  // ---- #106 por tempo: prancha lateral (isométrico básico que faltava) e polichinelo (tempo ou reps). Fora da montagem automática.
+  // `r` em segundos no de tempo; no polichinelo, a faixa de reps quando registrado em reps.
+  X("Side_Bridge", "Prancha lateral", "core", [], "corpo", [20, 45], 45, 1, { ombro: 1 }, { inc: 0, planOff: true, medida: "tempo" }),
+  X("Star_Jump", "Polichinelo", "pant", [], "corpo", [20, 40], 45, 1, { joelho: 1, tornozelo: 1 }, { inc: 0, planOff: true, medida: "ambos", medidaPadrao: "tempo" }),
 ];
 /** Catálogo completo: dados do exercício + texto didático e músculos (catalog-info.ts). Imagens 0 (início) e 1 (fim). */
 export const EXERCISES: Exercise[] = RAW.map((e) => {

@@ -351,6 +351,10 @@ a.altlink{color:inherit;text-decoration:none}
 .tl-sets{display:grid;gap:6px;margin-top:12px}
 .tl-set{display:grid;grid-template-columns:24px minmax(0,1fr) 76px 64px 52px;gap:6px;align-items:center;font-size:13px}
 .tl-set.head{min-height:0}
+.tl-set.tempo{grid-template-columns:24px minmax(0,1fr) 146px 52px}
+.tl-medida{margin-bottom:4px}
+.tl-set .prev.outra{opacity:.6;font-style:italic}
+.tl-dica{margin:0}
 .tl-set .input{min-height:48px;padding:6px 6px;text-align:center;font-size:17px;font-weight:700}
 .tl-set .prev{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tl-set .ck{width:52px;height:48px;border-radius:10px;border:1px solid var(--borda-ctrl);background:var(--sup);display:grid;place-items:center;cursor:pointer}

@@ -33,7 +33,8 @@ export function fireRest() {
 export const OUTCOME_TXT: Record<string, string> = { feito: "feito", parcial: "parcial", nao_fiz: "não fiz", nao_registrado: "não registrado" };
 export const REASON_TXT: Record<string, string> = { ocupado: "aparelho ocupado", dor: "dor", sem_tempo: "sem tempo", nao_quis: "não quis", outro: "outro" };
 export const running = () => !!(S.session && !S.session.finishedAt);
-type Log = { kg: string | number; reps: string | number; done: boolean };
+/** `modo` (#106): "tempo" grava `seg` (mm:ss ou s); ausente = reps. */
+type Log = { kg: string | number; reps: string | number; done: boolean; modo?: C.ModoSerie; seg?: string };
 
 // ---------- começar ----------
 export async function startSession() {
@@ -66,7 +67,9 @@ export const refsOf = (exId: string) => C.exerciseRefs(pastOf(exId));
 
 const num = (v: string | number) => parseFloat(String(v).replace(",", "."));
 export const doneSets = (exId: string): C.SetLog[] =>
-  (S.session?.logs[exId] ?? []).filter((l: Log) => l.done).map((l: Log) => ({ kg: Number.isFinite(num(l.kg)) ? num(l.kg) : 0, reps: parseInt(String(l.reps), 10) || 0 }));
+  (S.session?.logs[exId] ?? []).filter((l: Log) => l.done).map((l: Log) => l.modo === "tempo"
+    ? { kg: 0, reps: 0, segundos: C.lerSegundos(l.seg ?? "") }
+    : { kg: Number.isFinite(num(l.kg)) ? num(l.kg) : 0, reps: parseInt(String(l.reps), 10) || 0 });
 export const currentSets = (): Record<string, C.SetLog[]> => {
   const out: Record<string, C.SetLog[]> = {};
   for (const it of S.session?.plan.items ?? []) { const d = doneSets(it.exerciseId); if (d.length) out[it.exerciseId] = d; }
@@ -77,17 +80,35 @@ export const pastAll = (): Record<string, C.SetLog[][]> => Object.fromEntries((S
 export const buildSummary = (endMs: number) => C.sessionSummary(endMs - S.session.startedAt, currentSets(), pastAll());
 
 // ---------- séries ----------
+/** #106 Tempo | Reps do exercício nesta sessão (começa no medidaPadrao do catálogo). */
+export const modoDe = (exId: string): C.ModoSerie => S.session?.medida?.[exId] ?? C.medidaPadraoDe(exId);
+const segInicial = (exId: string) => C.fmtSegundos(C.tempoSugerido(exId, pastOf(exId)));
+const novoLog = (it: C.PlanItem, base?: Log): Log => {
+  const modo = modoDe(it.exerciseId), sg = suggestFor(it);
+  const l: Log = { kg: base?.kg ?? sg.kg ?? "", reps: base?.reps ?? sg.reps, done: false };
+  return modo === "tempo" ? { ...l, kg: "", modo, seg: base?.seg ?? segInicial(it.exerciseId) } : l;
+};
 export function ensureLogs(it: C.PlanItem): Log[] {
   const s = S.session; if (!s) return [];
-  if (!s.logs[it.exerciseId]) { const sg = suggestFor(it); s.logs[it.exerciseId] = Array.from({ length: it.sets }, () => ({ kg: sg.kg ?? "", reps: sg.reps, done: false })); }
+  if (!s.logs[it.exerciseId]) s.logs[it.exerciseId] = Array.from({ length: it.sets }, () => novoLog(it));
   return s.logs[it.exerciseId];
+}
+/** Seletor Tempo | Reps (só exercícios de medida "ambos"): muda as séries ainda não feitas; as feitas ficam como foram. */
+export function setModo(i: number, modo: C.ModoSerie) {
+  const s = S.session, it: C.PlanItem = s.plan.items[i];
+  if (!C.modosAceitos(it.exerciseId).includes(modo)) return;
+  (s.medida ??= {})[it.exerciseId] = modo;
+  for (const l of ensureLogs(it)) if (!l.done) { if (modo === "tempo") { l.modo = "tempo"; l.seg ??= segInicial(it.exerciseId); } else delete l.modo; }
+  commit();
 }
 export const progress = () => C.sessionProgress(S.session.plan.items.map((it: C.PlanItem) => ({ exerciseId: it.exerciseId, sets: ensureLogs(it).length })), S.session.logs, S.session.skipped);
 export const curIdx = () => { const n = S.session?.plan.items.length ?? 0; return Math.min(Math.max(S.session?.cur ?? 0, 0), Math.max(0, n - 1)); };
 export function setCur(i: number) { if (S.session && S.session.cur !== i) { S.session.cur = i; commit(); } }
 export const goEx = (i: number) => { setCur(i); replace(href("treino", ["ativo", String(i)])); };
 
-const payload = (it: C.PlanItem, k: number, l: Log) => ({ exerciseId: it.exerciseId, muscle: it.muscle, setNo: k + 1, kg: Number.isFinite(num(l.kg)) ? num(l.kg) : null, reps: parseInt(String(l.reps), 10), rir: null });
+const payload = (it: C.PlanItem, k: number, l: Log) => l.modo === "tempo"
+  ? { exerciseId: it.exerciseId, muscle: it.muscle, setNo: k + 1, kg: null, segundos: C.lerSegundos(l.seg ?? ""), rir: null }
+  : { exerciseId: it.exerciseId, muscle: it.muscle, setNo: k + 1, kg: Number.isFinite(num(l.kg)) ? num(l.kg) : null, reps: parseInt(String(l.reps), 10), rir: null };
 const syncSet = (it: C.PlanItem, k: number, l: Log) => send("POST", `/api/sessions/${S.session.id}/sets`, payload(it, k, l)).catch(() => {});
 
 /** ✓: conclui a série (agenda o descanso); numa série já concluída, desfaz. */
@@ -99,7 +120,8 @@ export function toggleSet(i: number, k: number) {
     toast(`Série ${k + 1} desfeita`);
     return commit();
   }
-  if (!Number.isFinite(parseInt(String(l.reps), 10))) return toast("Preencha as repetições");
+  if (l.modo === "tempo") { if (C.lerSegundos(l.seg ?? "") == null) return toast("Preencha o tempo (mm:ss, até 60:00)"); }
+  else if (!Number.isFinite(parseInt(String(l.reps), 10))) return toast("Preencha as repetições");
   l.done = true;
   startRest(restFor(s.plan, i));
   unlockAudio();
@@ -117,7 +139,7 @@ export function editedSet(i: number, k: number) {
 export function addSet(i: number) {
   const it: C.PlanItem = S.session.plan.items[i], logs = ensureLogs(it), lst = logs[logs.length - 1];
   if (logs.length >= 12) return toast("Até 12 séries");
-  logs.push({ kg: lst?.kg ?? "", reps: lst?.reps ?? it.reps[0], done: false }); it.sets = logs.length; commit();
+  logs.push(novoLog(it, lst ? { ...lst, reps: lst.reps ?? it.reps[0] } : undefined)); it.sets = logs.length; commit();
 }
 export function dropSet(i: number) {
   const it: C.PlanItem = S.session.plan.items[i], logs = ensureLogs(it);
