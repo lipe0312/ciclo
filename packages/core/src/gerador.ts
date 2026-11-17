@@ -94,7 +94,7 @@ export function ehComposto(ex: Exercise | undefined): boolean {
 
 // Família que pertence a outro músculo (ex.: supino fechado é press_h, do peito): fica fora do gerador para o padrão
 // de cada músculo ser só dele e a regra "sem repetir o padrão em dias seguidos" sempre ter saída.
-const DONO_FAMILIA: Record<string, MuscleId> = (() => {
+const DONO_FAMILIA: Record<string, MuscleId> = /* @__PURE__ */ (() => {
   const c: Record<string, Partial<Record<MuscleId, number>>> = {};
   for (const e of EXERCISES) if (e.fam) (c[e.fam] ??= {})[e.m] = n(c[e.fam][e.m]) + 1;
   return Object.fromEntries(Object.entries(c).map(([f, ms]) => [f, (Object.entries(ms) as [MuscleId, number][]).sort((a, b) => b[1] - a[1])[0][0]]));

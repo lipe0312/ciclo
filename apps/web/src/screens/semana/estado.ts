@@ -37,7 +37,7 @@ export function garantirSemana(force = false): Promise<void> {
   carregando = (async () => {
     await Promise.resolve(); // o efeito da tela roda antes de a casca assinar o commit
     try {
-      if (!SERVER) return set(demo.ver());
+      if (!SERVER) { await demo.semear(); return set(demo.ver()); }
       const r = await api<{ week: Semana | null; empty?: string }>("GET", `/api/week?date=${today}`);
       vazio = r.week ? null : VAZIO[r.empty ?? ""] ?? VAZIO.sem_perfil;
       set(r.week);
@@ -60,7 +60,7 @@ export const acaoDia = (date: string, body: { action: string; opts?: C.DayOpts; 
 
 /** #108 "Gerar treino" num dia sem treino: só por toque. Sai na hora (gerador validado) com "revisão da IA pendente". */
 export const gerarTreino = (date: string) =>
-  rodar(() => (SERVER ? api("POST", `/api/week/day/${date}/gerar-treino`, { today }) : Promise.resolve(demo.gerarTreino(date))), "Treino gerado · revisão da IA pendente");
+  rodar(() => (SERVER ? api("POST", `/api/week/day/${date}/gerar-treino`, { today }) : demo.gerarTreino(date)), "Treino gerado · revisão da IA pendente");
 
 /** #108 O treino de um dia é sempre o salvo/planejado na semana. Dia sem treino não tem plano (nada é gerado ao abrir). */
 export const planoDoDia = (d: Dia): C.DayPlan | null => (d.kind !== "folga" || d.status === "extra" ? d.plan : null);
@@ -125,23 +125,28 @@ const demo = (() => {
     lsSet(KEY, vs); return vs;
   };
   /** Dia gerado pelo app (o mesmo gerador do servidor), com "revisão da IA pendente". */
-  const diaGerado = (date: string): C.DayPlan | null => {
+  // #108 o gerador (e a régua de #65) só carrega no toque do "Gerar treino": fora do JS inicial
+  const diaGerado = async (date: string): Promise<C.DayPlan | null> => {
+    const G = await import("@ciclo/core/treino-gerado");
     const p = calc(), dow = C.DOWS[(new Date(date + "T12:00:00Z").getUTCDay() + 6) % 7];
     const gym = S.gyms.find((g) => g.id === p.dayGym?.[dow]) ?? S.gyms[0];
-    const g = C.gerarTreinoDia({ sexo: S.profile.sex ?? null, nivel: p.level, prioridades: p.priorities, equipamentos: gym?.equipment ?? [], dias: p.daysUsual, diasMeta: p.daysTarget,
+    const g = G.gerarTreinoDia({ sexo: S.profile.sex ?? null, nivel: p.level, prioridades: p.priorities, equipamentos: gym?.equipment ?? [], dias: p.daysUsual, diasMeta: p.daysTarget,
       minutos: p.minutes, dores: S.pains.map((x) => ({ region: x.region, intensity: x.intensity })), evitar: p.avoid, prefs: p.prefs, pinned: p.pinned }, dow);
-    return g ? C.planoDoDiaGerado(g.dia, "pendente") : null;
+    return g ? G.planoDoDiaGerado(g.dia, "pendente") : null;
+  };
+  /** #108 demonstração: o 1º dia de folga depois de hoje já vem com um treino gerado, revisão da IA pendente. */
+  const semear = async () => {
+    if (load().length) return;
+    const base = C.planWeek(input({}, null, undefined));
+    const sab = base.days.find((d) => d.kind === "folga" && d.date > today)?.date;
+    const plan = sab ? await diaGerado(sab) : null;
+    if (load().length) return;
+    const fixed = sab && plan ? { [sab]: { plan, source: "claude" as const } } : undefined;
+    push(fixed ? C.planWeek(input({}, null, fixed)) : base, {}, "auto", fixed);
   };
   const ver = (): Semana => {
     let vs = load();
-    if (!vs.length) {
-      // #108 demonstração: o 1º dia de folga depois de hoje já vem com um treino gerado, revisão da IA pendente
-      const base = C.planWeek(input({}, null, undefined));
-      const sab = base.days.find((d) => d.kind === "folga" && d.date > today)?.date;
-      const plan = sab ? diaGerado(sab) : null;
-      const fixed = sab && plan ? { [sab]: { plan, source: "claude" as const } } : undefined;
-      vs = push(fixed ? C.planWeek(input({}, null, fixed)) : base, {}, "auto", fixed);
-    }
+    if (!vs.length) vs = push(C.planWeek(input({}, null)), {}, "auto");
     const cur = vs[vs.length - 1];
     const v = C.weekView(input(cur.overrides, null), cur.plan);
     const p = prog();
@@ -162,8 +167,9 @@ const demo = (() => {
       push(C.planWeek(input(ov, c.plan)), ov, b.action === "falta" ? "falta" : "ajuste");
       return { week: ver() };
     },
-    gerarTreino(date: string) {
-      const c = cur(), plan = diaGerado(date);
+    semear,
+    async gerarTreino(date: string) {
+      const c = cur(), plan = await diaGerado(date);
       if (!plan) throw Object.assign(new Error("Não deu para montar um treino válido"), { status: 409 });
       const fixed = { ...(c.fixed ?? {}), [date]: { plan, source: "claude" as const } };
       push(C.planWeek(input(c.overrides, c.plan, fixed)), c.overrides, "ajuste", fixed);
