@@ -1,13 +1,14 @@
 // Semana completa planejada (#24): monta a entrada do core a partir do D1, guarda versões (desfazer) e as escolhas
 // por dia. Todo SQL com bind e filtrado por user_id; o uid vem da autenticação.
 import {
-  EQUIPMENT_BY_ID, MUSCLE_IDS, applyDayAction, diffWeeks, entradaTreinoAtual, mondayOf, planWeek, resumirDia, trocasDoDia, weekDates, weekProgression, weekView, weeklyTargets,
+  EQUIPMENT_BY_ID, MUSCLE_IDS, applyDayAction, diffWeeks, empurrarTreinos, entradaTreinoAtual, mondayOf, planWeek, resumirDia, trocasDoDia, weekDates, weekProgression, weekView, weeklyTargets,
 } from "@ciclo/core";
 import type { CardioEntry, DayAction, DayOpts, DayOverride, DayPlan, Intensity, MuscleId, Progression, Sets, WeekInput, WeekPlan, WeekProfile } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { HttpError, date, int, oneOf, str } from "./http.ts";
 import { EMPTY_MSG, getProfile, listGyms, parse, weekState } from "./db.ts";
 import type { EmptyReason } from "./db.ts";
+import { today as hojeSP } from "./mcp-tipos.ts";
 
 export type Source = "auto" | "regenerar" | "ajuste" | "falta" | "extra" | "desfazer";
 /** O que vai no plan_json de cada versão. */
@@ -15,6 +16,8 @@ export interface Stored {
   plan: WeekPlan; overrides: Record<string, DayOverride>; progression: Progression; basis: string[];
   /** #74 trocas forçadas já consideradas (data:planejado>feito): uma troca nova reorganiza o resto da semana */
   trocas?: string;
+  /** #113 presença marcada da semana (data:status): "treinei"/"não treinei" em qualquer dia reorganiza o resto */
+  presenca?: string;
 }
 
 const addDays = (iso: string, k: number) => new Date(Date.parse(iso + "T12:00:00Z") + k * 864e5).toISOString().slice(0, 10);
@@ -124,10 +127,12 @@ const input = (c: Ctx, s: { overrides: Record<string, DayOverride>; progression:
 const trocasSig = (c: Ctx, plan: WeekPlan) => plan.days.filter((d) => d.date <= c.today)
   .flatMap((d) => trocasDoDia(d.plan, c.feitos[d.date], d.date)).map((t) => `${t.date}:${t.planejado}>${t.feito}`).join("|");
 
+const presencaSig = (c: Ctx) => Object.entries(c.attendance).filter(([d]) => c.dates.includes(d)).sort().map(([d, s]) => `${d}:${s}`).join("|");
+
 async function generate(env: Env, c: Ctx, overrides: Record<string, DayOverride>, fresh: boolean): Promise<Stored> {
   const prog = !fresh && c.latest?.stored?.progression ? c.latest.stored.progression : await progression(env, c);
   const plan = planWeek(input(c, { overrides, progression: prog }, c.latest?.stored?.plan ?? null));
-  return { plan, overrides, progression: prog, basis: Object.keys(c.sets).sort(), trocas: trocasSig(c, plan) };
+  return { plan, overrides, progression: prog, basis: Object.keys(c.sets).sort(), trocas: trocasSig(c, plan), presenca: presencaSig(c) };
 }
 
 /** Grava uma versão nova (e as escolhas vivas, se mudaram). "auto" só entra se a semana ainda não tem versão. */
@@ -172,6 +177,8 @@ export async function getWeek(env: Env, uid: string, today: string) {
     if (extra.length || velho) await persist(env, c, await generate(env, c, c.overrides, false), extra.length ? "extra" : "ajuste", false);
     // #74 troca forçada nova (ex.: desenvolvimento no lugar do crucifixo inverso): repõe a subparte nos próximos dias
     else if (trocasSig(c, st.plan) !== (st.trocas ?? "")) await persist(env, c, await generate(env, c, c.overrides, false), "ajuste", false);
+    // #113 presença marcada fora do app (MCP, diário) desde a última versão: a semana se reorganiza a partir dela
+    else if (presencaSig(c) !== (st.presenca ?? "")) await persist(env, c, await generate(env, c, c.overrides, false), "falta", false);
     else return { week: view(c, st, c.latest.version) };
   }
   c = (await loadCtx(env, uid, today)) as Ctx;
@@ -280,4 +287,29 @@ export async function dayAction(env: Env, uid: string, d: string, b: Record<stri
   await persist(env, c, s, source, action !== "falta");
   const c2 = (await loadCtx(env, uid, c.today)) as Ctx;
   return { week: view(c2, c2.latest!.stored!, c2.latest!.version) };
+}
+
+/** #113 Empurrar treino: os treinos de hoje em diante andam um dia, hoje vira folga, feito não se move e o que passa
+ *  do domingo volta para o orçamento. Sem apply devolve só a prévia (o que anda e o diff). Treino salvo (Chat/gerado/à mão)
+ *  muda de data junto; o que sai da semana é apagado. */
+export async function empurrar(env: Env, uid: string, b: Record<string, unknown>) {
+  const t = date(b.today, "today");
+  // o `today` vem do aparelho: aceita só ±1 dia do relógio do servidor (fuso de São Paulo), nunca empurra o passado
+  if (Math.abs(Date.parse(t) - Date.parse(hojeSP())) > 864e5) throw new HttpError(400, "today: data do aparelho fora do dia atual");
+  const c = await ready(env, uid, t);
+  const st = c.latest!.stored!;
+  const r = empurrarTreinos(input(c, st, st.plan), st.plan);
+  if ("error" in r) throw new HttpError(409, r.error);
+  const previa = { moves: r.moves, diff: r.diff };
+  if (b.apply !== true) return { ...previa, week: null };
+  // do último para o primeiro: o destino de cada um já está livre quando ele anda
+  const stmts = [...r.fixos].reverse().flatMap((f) => f.para
+    ? [env.DB.prepare("DELETE FROM day_plan WHERE user_id = ?1 AND date = ?2").bind(uid, f.para),
+      env.DB.prepare("UPDATE day_plan SET date = ?3 WHERE user_id = ?1 AND date = ?2").bind(uid, f.de, f.para)]
+    : [env.DB.prepare("DELETE FROM day_plan WHERE user_id = ?1 AND date = ?2").bind(uid, f.de)]);
+  if (stmts.length) await env.DB.batch(stmts);
+  c.fixed = r.fixed;
+  await persist(env, c, await generate(env, c, r.overrides, false), "ajuste", true);
+  const c2 = (await loadCtx(env, uid, c.today)) as Ctx;
+  return { ...previa, week: view(c2, c2.latest!.stored!, c2.latest!.version) };
 }
