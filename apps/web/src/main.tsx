@@ -13,6 +13,7 @@ import { autoClose, running } from "./screens/treino/sessao.ts";
 import { iniciarAtualizacao } from "./lib/atualizar/index.ts";
 import { D, loadDiario } from "./lib/diario/estado.ts";
 import { loadFood } from "./lib/store/regras.ts";
+import { recarregarDiasBuscados } from "./screens/comida/dia.tsx";
 import { carregarHome } from "./screens/hoje/estado.ts";
 import { garantirSemana } from "./screens/semana/estado.ts";
 
@@ -42,7 +43,7 @@ async function boot() {
     // Mudou (o Claude pelo MCP, a caixa, outro aparelho) → busca tudo de novo no lugar (sem piscar, sem perder a rolagem) + "Atualizado".
     iniciarAtualizacao(async () => {
       await loadServer(); commit();
-      await Promise.allSettled([carregarHome(true), garantirSemana(true), loadFood(), D.loaded ? loadDiario() : Promise.resolve()]);
+      await Promise.allSettled([carregarHome(true), garantirSemana(true), loadFood().then(recarregarDiasBuscados), D.loaded ? loadDiario() : Promise.resolve()]);
     }, running);
   }
   setVozAI(!!S.features.ai);

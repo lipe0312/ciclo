@@ -27,6 +27,20 @@ async function carregarDia(d: string) {
   } catch { buscados.delete(d); /* offline: fica o que há */ }
 }
 
+/** #114 Atualização sozinha: loadFood volta só a janela de 14 dias. Os dias antigos que a pessoa já abriu são buscados de novo e SUBSTITUEM
+ *  os registros do dia (nunca somam: o que foi apagado ou corrigido no servidor não volta). */
+export async function recarregarDiasBuscados() {
+  if (!SERVER) return;
+  for (const d of [...buscados]) {
+    try {
+      const r = await api<{ entries: any[] }>("GET", `/api/food?from=${d}&to=${d}`);
+      const dia: FoodRow[] = r.entries.map((e) => ({ id: e.id, date: e.date, text: e.text, kcal: e.kcal, prot: e.prot, meal: e.meal, source: e.source, confidence: e.confidence, via: e.via ?? null, createdAt: e.createdAt }));
+      S.food = S.food.filter((f) => f.date !== d).concat(dia);
+    } catch { /* offline: fica sem esse dia até abri-lo de novo */ }
+  }
+  commit();
+}
+
 const valido = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= DIA_MIN && d <= today;
 
 /** Seta para o dia anterior/próximo, calendário nativo e "Hoje". Toques de 44 px; a data escolhida vem escrita. */

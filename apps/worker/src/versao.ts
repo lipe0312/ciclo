@@ -13,3 +13,20 @@ export async function subirVersao(env: Env, uid: string): Promise<void> {
     await env.DB.prepare("INSERT INTO conta_versao (user_id, versao) VALUES (?1, 1) ON CONFLICT(user_id) DO UPDATE SET versao = versao + 1").bind(uid).run();
   } catch (e) { console.error("versao", e instanceof Error ? e.message : "erro"); }
 }
+
+/** O resultado de uma ferramenta do MCP gravou de verdade? Prévia (simular), conflito/problema (`salvo:false`), confirmação repetida,
+ *  retorno `isError` e `ciclo_chat_pendentes` sem pedido (só renova o heartbeat) NÃO sobem a versão: o app não tem o que atualizar. */
+export function gravou(nome: string, out: unknown): boolean {
+  const o = (out && typeof out === "object" ? out : {}) as { previa?: unknown; salvo?: unknown; jaConfirmado?: unknown; isError?: unknown; pendentes?: unknown[] };
+  if (o.previa === true || o.salvo === false || o.jaConfirmado === true || o.isError === true) return false;
+  if (nome === "ciclo_chat_pendentes") return !!o.pendentes?.length;
+  return true;
+}
+
+/** Sobe a versão sem atrasar a resposta quando há `ctx` (waitUntil); sem ctx (testes) espera terminar. */
+export function subirVersaoDepois(env: Env, uid: string, ctx?: { waitUntil(p: Promise<unknown>): void }): Promise<void> {
+  const p = subirVersao(env, uid);
+  if (!ctx) return p;
+  ctx.waitUntil(p);
+  return Promise.resolve();
+}

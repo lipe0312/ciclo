@@ -15,7 +15,7 @@ import { registerComida } from "./comida.ts";
 import { listarPersonalizados, registerPersonalizados } from "./exercicio-personalizado.ts";
 import { registerHome } from "./home.ts";
 import { registerClaude } from "./mcp-chat.ts";
-import { subirVersao, versaoDaConta } from "./versao.ts";
+import { subirVersaoDepois, versaoDaConta } from "./versao.ts";
 import { exigirFaceId, perfilConta, registerConta } from "./auth-conta.ts";
 import { createExam, deleteExam, getDiary, openDiary, putCheckout, saveDaysSummary, saveRecap, setReminder } from "./diario.ts";
 
@@ -599,7 +599,7 @@ export const routeSignatures = () => routes.map((r) => `${r.method} ${r.path}`);
 
 const isWrite = (method: string) => method !== "GET" && method !== "HEAD";
 
-export async function handleApi(req: Request, env: Env, u: AuthUser): Promise<Response> {
+export async function handleApi(req: Request, env: Env, u: AuthUser, ctx?: ExecutionContext): Promise<Response> {
   const url = new URL(req.url);
   for (const r of routes) {
     if (r.method !== req.method) continue;
@@ -612,7 +612,7 @@ export async function handleApi(req: Request, env: Env, u: AuthUser): Promise<Re
       }
       const res = await r.h(req, env, (m.groups ?? {}) as Record<string, string>, u);
       // #114 toda escrita aceita sobe a versão da conta (o app confere e recarrega); apagar a conta leva a linha junto
-      if (isWrite(req.method) && res.status < 400 && !(req.method === "DELETE" && r.path === "/api/account")) await subirVersao(env, u.id);
+      if (isWrite(req.method) && res.status < 400 && !(req.method === "DELETE" && r.path === "/api/account")) await subirVersaoDepois(env, u.id, ctx);
       return res;
     } catch (e) {
       if (e instanceof HttpError) return json(e.code ? { error: e.message, code: e.code } : { error: e.message }, e.status);

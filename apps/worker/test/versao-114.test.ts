@@ -45,6 +45,40 @@ test("escrita pelo MCP muda a versão; ferramenta só de leitura não", async ()
   assert.equal(await ver(env, "ana"), v0 + 1, "escrita pelo MCP sobe a versão que o app confere");
 });
 
+test("MCP: prévia (simular), retorno com erro e salvamento recusado (salvo:false) NÃO sobem a versão; o confirmar de verdade sobe", async () => {
+  const env = makeEnv();
+  const tok = await token(env, "ana");
+  const v0 = await ver(env, "ana");
+  const previa = await tool(env, tok, "ciclo_comida_registrar", { texto: "2 ovos e pão", simular: true });
+  assert.ok(!previa.isError, JSON.stringify(previa));
+  const p = JSON.parse(previa.content[0].text);
+  assert.equal(p.previa, true, "foi mesmo uma prévia");
+  assert.equal(await ver(env, "ana"), v0, "prévia não grava nada");
+  const erro = await tool(env, tok, "ciclo_comida_registrar", { confirmar: "prv_" + "0".repeat(32) });
+  assert.equal(erro.isError, true);
+  assert.equal(await ver(env, "ana"), v0, "erro (prévia inexistente) não sobe");
+  const recusado = await tool(env, tok, "ciclo_salvar_treino_do_dia", { date: D, itens: [{ id: "x_inexistente", sets: 2 }], motivo: "t" });
+  assert.ok(recusado.isError || JSON.parse(recusado.content[0].text).salvo === false, recusado.content?.[0]?.text);
+  assert.equal(await ver(env, "ana"), v0, "salvamento recusado não sobe");
+  const feito = await tool(env, tok, "ciclo_comida_registrar", { confirmar: p.token });
+  assert.ok(!feito.isError, JSON.stringify(feito));
+  assert.equal(await ver(env, "ana"), v0 + 1, "confirmar grava e sobe");
+  await tool(env, tok, "ciclo_comida_registrar", { confirmar: p.token });
+  assert.equal(await ver(env, "ana"), v0 + 1, "confirmar repetido (jaConfirmado) não sobe de novo");
+});
+
+test("com ctx (produção), a versão sobe via waitUntil sem atrasar a resposta", async () => {
+  const env = makeEnv();
+  const { default: worker } = await import("../src/index.ts");
+  const pend: Promise<unknown>[] = [];
+  const ctx = { waitUntil: (p: Promise<unknown>) => { pend.push(p); }, passThroughOnException() {} };
+  const r = await worker.fetch(new Request("http://localhost:8791/api/inbox", { method: "POST", headers: { "x-dev-user": "ana", "content-type": "application/json" }, body: JSON.stringify({ text: "pedido fictício" }) }), env, ctx as any);
+  assert.equal(r.status, 201);
+  assert.equal(pend.length, 1, "a subida da versão foi para o waitUntil");
+  await Promise.all(pend);
+  assert.equal(await ver(env, "ana"), 1);
+});
+
 test("isolamento: escrita da conta A (app e MCP) nunca muda a versão da B, e a B lê só a dela", async () => {
   const env = makeEnv();
   const tokA = await token(env, "ana");
