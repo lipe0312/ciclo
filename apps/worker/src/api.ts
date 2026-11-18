@@ -1,6 +1,6 @@
 // API JSON do app (sessão própria, #54/#62). Rotas pequenas, um estado agregado por chamada (/api/state)
 // para o celular fazer 1 requisição ao abrir. Toda rota recebe o usuário autenticado (u) e filtra por u.id.
-import { MAX_MCP_TOKENS, estadoToken, tokensAtivos, CARDIO_BY_ID, COTA_MSG, EQUIPMENT_BY_ID, EXERCISE_BY_ID, INTENSITIES, MAX_PLACES, MEDIA_MAX_BYTES, MUSCLE_IDS, PROMPTS, SEGUNDOS_MAX, SEGUNDOS_MIN, applyManualEdit, checkCardio, erroSerie, classify, planDay, tipoConfere, validatePlace } from "@ciclo/core";
+import { MAX_MCP_TOKENS, estadoToken, tokensAtivos, CARDIO_BY_ID, COTA_MSG, EQUIPMENT_BY_ID, EXERCISE_BY_ID, ehIdPersonalizado, INTENSITIES, MAX_PLACES, MEDIA_MAX_BYTES, MUSCLE_IDS, PROMPTS, SEGUNDOS_MAX, SEGUNDOS_MIN, applyManualEdit, checkCardio, erroSerie, classify, planDay, tipoConfere, validatePlace } from "@ciclo/core";
 import type { Action, DayPlan, Intensity, ManualEdit, Mode, MuscleId, Tier } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, id, int, isDate, json, num, oneOf, readJson, str } from "./http.ts";
@@ -12,7 +12,7 @@ import { exigirCotaConta, exigirCotaGlobal, somarBytesR2 } from "./limites.ts";
 import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
 import { gerarTreinoDoDia } from "./treino-gerado.ts";
 import { registerComida } from "./comida.ts";
-import { listarPersonalizados, registerPersonalizados } from "./exercicio-personalizado.ts";
+import { lerPersonalizado, listarPersonalizados, registerPersonalizados } from "./exercicio-personalizado.ts";
 import { registerHome } from "./home.ts";
 import { registerClaude } from "./mcp-chat.ts";
 import { exigirFaceId, perfilConta, registerConta } from "./auth-conta.ts";
@@ -319,7 +319,10 @@ on("POST", "/api/sessions", async (req, env, _p, u) => {
 on("POST", "/api/sessions/:id/sets", async (req, env, p, u) => {
   const b = await readJson<Record<string, unknown>>(req);
   const ex = str(b.exerciseId, "exerciseId", 80)!;
-  const muscle = EXERCISE_BY_ID[ex]?.m ?? oneOf(b.muscle, "muscle", MUSCLE_IDS);
+  // #112 cus_: só o desta conta, e o volume conta no músculo cadastrado nele (nunca no que o corpo mandar)
+  const meu = ehIdPersonalizado(ex) ? await lerPersonalizado(env, u.id, ex) : null;
+  if (ehIdPersonalizado(ex) && !meu) throw new HttpError(400, "exerciseId: exercício personalizado não existe nesta conta");
+  const muscle = EXERCISE_BY_ID[ex]?.m ?? meu?.musculo ?? oneOf(b.muscle, "muscle", MUSCLE_IDS);
   // #106 série por tempo: `segundos` (1–3600) no lugar de `reps`, conforme a medida do exercício (core)
   const segundos = int(b.segundos, "segundos", SEGUNDOS_MIN, SEGUNDOS_MAX, false), reps = int(b.reps, "reps", 0, 100, false);
   const erro = erroSerie(ex, { reps, segundos });
