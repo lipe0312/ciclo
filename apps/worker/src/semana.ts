@@ -127,12 +127,17 @@ const input = (c: Ctx, s: { overrides: Record<string, DayOverride>; progression:
 const trocasSig = (c: Ctx, plan: WeekPlan) => plan.days.filter((d) => d.date <= c.today)
   .flatMap((d) => trocasDoDia(d.plan, c.feitos[d.date], d.date)).map((t) => `${t.date}:${t.planejado}>${t.feito}`).join("|");
 
-const presencaSig = (c: Ctx) => Object.entries(c.attendance).filter(([d]) => c.dates.includes(d)).sort().map(([d, s]) => `${d}:${s}`).join("|");
+/** #113 Presenças que mudam o que a semana sabe: "treinei" num dia sem treino planejado, ou "não treinei"/folga num dia
+ *  que tinha treino. "Treinei" num dia já de treino (o que registrar séries grava) não reorganiza nada. */
+const presencaSig = (c: Ctx, plan: WeekPlan) => Object.entries(c.attendance).filter(([d, s]) => {
+  const kind = plan.days.find((x) => x.date === d)?.kind;
+  return kind != null && (s === "fui" ? kind === "folga" : kind !== "folga");
+}).sort().map(([d, s]) => `${d}:${s}`).join("|");
 
 async function generate(env: Env, c: Ctx, overrides: Record<string, DayOverride>, fresh: boolean): Promise<Stored> {
   const prog = !fresh && c.latest?.stored?.progression ? c.latest.stored.progression : await progression(env, c);
   const plan = planWeek(input(c, { overrides, progression: prog }, c.latest?.stored?.plan ?? null));
-  return { plan, overrides, progression: prog, basis: Object.keys(c.sets).sort(), trocas: trocasSig(c, plan), presenca: presencaSig(c) };
+  return { plan, overrides, progression: prog, basis: Object.keys(c.sets).sort(), trocas: trocasSig(c, plan), presenca: presencaSig(c, plan) };
 }
 
 /** Grava uma versão nova (e as escolhas vivas, se mudaram). "auto" só entra se a semana ainda não tem versão. */
@@ -178,7 +183,7 @@ export async function getWeek(env: Env, uid: string, today: string) {
     // #74 troca forçada nova (ex.: desenvolvimento no lugar do crucifixo inverso): repõe a subparte nos próximos dias
     else if (trocasSig(c, st.plan) !== (st.trocas ?? "")) await persist(env, c, await generate(env, c, c.overrides, false), "ajuste", false);
     // #113 presença marcada fora do app (MCP, diário) desde a última versão: a semana se reorganiza a partir dela
-    else if (presencaSig(c) !== (st.presenca ?? "")) await persist(env, c, await generate(env, c, c.overrides, false), "falta", false);
+    else if (presencaSig(c, st.plan) !== (st.presenca ?? "")) await persist(env, c, await generate(env, c, c.overrides, false), "falta", false);
     else return { week: view(c, st, c.latest.version) };
   }
   c = (await loadCtx(env, uid, today)) as Ctx;
