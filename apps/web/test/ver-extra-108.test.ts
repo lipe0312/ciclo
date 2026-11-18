@@ -16,6 +16,8 @@ const P = No.prototype as any;
 Object.defineProperty(P, "classList", { configurable: true, get: () => ({ toggle() {}, add() {}, remove() {}, contains: () => false }) });
 P.querySelector ??= () => null;
 P.addEventListener ??= () => {}; P.removeEventListener ??= () => {};
+// o carrossel centra o dia de hoje pelo layout (children/offsetLeft): sem layout, tudo 0 (antes quebrava de terça a domingo)
+if (!("children" in P)) Object.defineProperty(P, "children", { configurable: true, get(this: No) { return this.childNodes.filter((c) => c.nodeType === 1); } });
 const chamadas: string[] = [];
 let semana: unknown = null;
 (globalThis as any).fetch = async (path: string, init: RequestInit = {}) => {

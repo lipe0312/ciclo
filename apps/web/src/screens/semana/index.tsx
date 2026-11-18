@@ -9,10 +9,10 @@ import type { Route } from "../../lib/roteador/index.ts";
 import { href } from "../../lib/roteador/index.ts";
 import { Card, Icon } from "../../lib/ui/index.tsx";
 import { DOW_NM, img, longDate } from "../../lib/util.ts";
-import { acaoDia, diaDe, garantirSemana, gerarTreino, getSemana, getVazio, planoDoDia } from "./estado.ts";
+import { acaoDia, diaDe, garantirSemana, gerarTreino, getSemana, getVazio, marcar, marcavel, planoDoDia, podeNaoTreinei } from "./estado.ts";
 import type { Dia, Semana } from "./estado.ts";
 import { AvisoFalta } from "./aviso.tsx";
-import { abrirMover, abrirRegenerar, abrirTrocar, abrirVersoes, aberto, diaCurto } from "./folhas.tsx";
+import { abrirEmpurrar, abrirMover, abrirRegenerar, abrirTrocar, abrirVersoes, aberto, diaCurto } from "./folhas.tsx";
 import { abrirGerarOutro } from "../treino/gerar.tsx";
 import "./semana.css";
 import { Estado } from "../../lib/estado/index.tsx";
@@ -41,6 +41,23 @@ export function SeloOrigem({ d, p }: { d: Dia; p: C.DayPlan }) {
 /** #108 Dia sem treino: o botão é Gerar treino (nada é gerado ao abrir a tela). */
 export const semTreino = (d: Dia) => d.status === "livre" || (d.status === "folga" && d.date >= today && !planoDoDia(d));
 
+/** #113 Treinei / Não treinei em qualquer dia até hoje (dentro ou fora do cadastro). */
+export function Marcar({ d }: { d: Dia }) {
+  if (!marcavel(d)) return null;
+  return <div class="sem-acts sem-marcar">
+    <button type="button" class="btn" onClick={() => void marcar(d, true)}><Icon id="check" />Treinei</button>
+    {podeNaoTreinei(d) && <button type="button" class="btn" onClick={() => void marcar(d, false)}>Não treinei</button>}
+  </div>;
+}
+
+/** #113 Hoje tem treino e não dá: empurra os treinos um dia (prévia antes de confirmar). */
+function HojeNaoDa({ s }: { s: Semana }) {
+  if (s.days.find((d) => d.date === today)?.status !== "hoje") return null;
+  return <Card><div class="row between wrapx" style="gap:8px"><div style="min-width:0"><h2>Hoje não dá?</h2>
+    <p class="small sub" style="margin-top:4px">Empurre os treinos: hoje vira folga e cada um anda um dia.</p></div>
+    <button type="button" class="btn" onClick={abrirEmpurrar}><Icon id="arrow" />Empurrar treinos</button></div></Card>;
+}
+
 function DiaCard({ d }: { d: Dia }) {
   const p = planoDoDia(d);
   const pode = aberto(d);
@@ -64,6 +81,7 @@ function DiaCard({ d }: { d: Dia }) {
         {pode && <button type="button" class="btn" onClick={() => abrirMover(d)}>{d.kind !== "folga" ? "Mover" : "Planejar"}</button>}
         {semTreino(d) && <button type="button" class={`btn${d.status === "livre" ? " pri" : ""}`} onClick={() => void gerarTreino(d.date)}><Icon id="bolt" />Gerar treino</button>}
       </div>
+      <Marcar d={d} />
     </div></div>;
 }
 
@@ -100,6 +118,7 @@ function Lista({ s }: { s: Semana }) {
       <p class="small sub num" style="margin-top:4px">{treinos} treinos planejados · fecha em {s.closePct}% do orçamento</p></div></div>
     <div class="grid dash"><div class="stack">
       <AvisoFalta />
+      <HojeNaoDa s={s} />
       <Oferta s={s} />
       <Card><div class="row between wrapx" style="gap:8px"><h2>Dias</h2><Legenda /></div>
         <div class="sem-lista">{s.days.map((d) => <DiaCard key={d.date} d={d} />)}</div></Card>
@@ -133,6 +152,7 @@ function Detalhe({ date }: { date: string }) {
     </div><div class="stack">
       {d.cardio && <Card><h2>Cardio previsto</h2><p class="small" style="margin-top:6px"><b>{C.CARDIO_BY_ID[d.cardio.type]?.nm} · {d.cardio.minutes} min · {C.INTENSITIES[d.cardio.intensity].nm.toLowerCase()}</b></p><p class="tiny sub">{d.cardio.why}</p></Card>}
       {p && <Card><h2>Por quê</h2><ul class="sem-motivos">{p.why.map((w, i) => <li key={i}>{w}</li>)}{d.warn.map((w, i) => <li key={`w${i}`} class="menos">{w}</li>)}</ul></Card>}
+      {marcavel(d) && <Card><h2>Treinou neste dia?</h2><p class="small sub" style="margin-top:4px">Vale para qualquer dia: a semana se reorganiza.</p><Marcar d={d} /></Card>}
       {pode && <Card><h2>Mudar este dia</h2><div class="sem-acts uma">
         {d.kind !== "folga" && <button type="button" class="btn pri" onClick={() => abrirGerarOutro(d.date)}><Icon id="cycle" />Gerar outro treino</button>}
         {d.kind !== "folga" && <button type="button" class="btn" onClick={() => abrirTrocar(d)}><Icon id="swap" />Trocar geração</button>}
