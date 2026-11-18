@@ -15,6 +15,8 @@ instalarNavegador("#semana");
 const P = No.prototype as any;
 Object.defineProperty(P, "classList", { configurable: true, get: () => ({ toggle() {}, add() {}, remove() {}, contains: () => false }) });
 P.querySelector ??= () => null;
+// o Carrossel mede os filhos do trilho num timer de scroll (onScroll do Hoje): sem layout, lista vazia basta
+if (!("children" in P)) Object.defineProperty(P, "children", { configurable: true, get: () => [] });
 P.addEventListener ??= () => {}; P.removeEventListener ??= () => {};
 const chamadas: string[] = [];
 let semana: unknown = null;
