@@ -7,6 +7,7 @@ import { EXERCISES, EXERCISE_BY_ID, SUB_MUSCLES } from "./catalog.ts";
 import type { Exercise, MuscleId, SubMuscleId } from "./catalog.ts";
 import type { Remembered } from "./loads.ts";
 import { norm } from "./search.ts";
+import { ehIdPersonalizado } from "./exercicio-personalizado.ts";
 
 export const GRUPOS_TREINO = ["peito", "costas", "ombro", "biceps", "triceps", "pernas", "abdomen"] as const;
 export type GrupoTreino = (typeof GRUPOS_TREINO)[number];
@@ -54,10 +55,10 @@ export function textoLivreValido(s: unknown, max: number, min = 2): string | nul
 }
 
 /**
- * Valida o "Meu treino atual" vindo do app ou do Chat: até 7 divisões, só grupos grandes, IDs só do catálogo (de força),
+ * Valida o "Meu treino atual" vindo do app ou do Chat: até 7 divisões, só grupos grandes, IDs do catálogo (de força) ou cus_ da conta (#112),
  * sem repetir exercício na mesma divisão; exercício livre = `{ nome, grupo }` (texto curto, sem HTML), nunca com id.
  */
-export function validarTreinoAtual(v: unknown, p = "treinoAtual"): { ok: true; value: TreinoAtual; errors: [] } | { ok: false; errors: string[] } {
+export function validarTreinoAtual(v: unknown, p = "treinoAtual", personalizados: ReadonlySet<string> | "todos" = new Set()): { ok: true; value: TreinoAtual; errors: [] } | { ok: false; errors: string[] } {
   const errors: string[] = [];
   const err = (m: string) => { if (errors.length < 12) errors.push(m); };
   if (!isObj(v)) return { ok: false, errors: [`${p} deve ser um objeto`] };
@@ -85,7 +86,8 @@ export function validarTreinoAtual(v: unknown, p = "treinoAtual"): { ok: true; v
       if (own(x, "id")) {
         for (const k of Object.keys(x)) if (!["id", "sets", "reps", "kg"].includes(k)) err(`${r}.${k.slice(0, 40)}: campo desconhecido`);
         const id = x.id;
-        if (typeof id !== "string" || !own(EXERCISE_BY_ID, id)) return err(`${r}: exercício "${typeof id === "string" ? id.slice(0, 60) : typeof id}" não existe no catálogo`);
+        // #112 cus_ só se for desta conta (o Worker passa os IDs dela); "todos" = ler o que já foi validado ao gravar
+        if (typeof id !== "string" || !(own(EXERCISE_BY_ID, id) || (ehIdPersonalizado(id) && (personalizados === "todos" || personalizados.has(id))))) return err(`${r}: exercício "${typeof id === "string" ? id.slice(0, 60) : typeof id}" não existe no catálogo`);
         if (vistos.has(id)) return err(`${r}: "${id}" repetido no mesmo treino`);
         vistos.add(id);
         const it: ExercicioAtual = { id };
