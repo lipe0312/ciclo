@@ -99,6 +99,7 @@ async function matriz(env: any, ana: string, bia: string) {
   const a = (m: string, p: string, body?: unknown) => call(env, m, p, { user: ana, body });
   const cases: [string, () => Promise<{ status: number; text: string }>, number?][] = [
     ["GET /api/state", () => a("GET", `/api/state?date=${D}`)],
+    ["GET /api/version", () => a("GET", "/api/version")],
     ["GET /api/account", () => a("GET", "/api/account")],
     ["PATCH /api/account", () => a("PATCH", "/api/account", { onboarding: "concluido" })],
     ["GET /api/account/export", () => a("GET", "/api/account/export")],

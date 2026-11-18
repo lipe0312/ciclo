@@ -14,6 +14,7 @@ import { purgeLimites } from "./limites.ts";
 import { handleOauth, purgeOauth } from "./oauth.ts";
 import { podeEscrever, wwwAuthenticate } from "@ciclo/core";
 import { handleDevCenario } from "./dev-cenario.ts";
+import { subirVersao } from "./versao.ts";
 
 const LIVRE_SEM_ACEITE = new Set(["GET /api/account", "POST /api/account/consent", "GET /api/account/export", "DELETE /api/account", "POST /api/account/logout-all"]);
 // #66: o 401 diz onde está a metadata OAuth (RFC 9728): o claude.ai descobre o login sozinho a partir da URL do /mcp.
@@ -47,7 +48,9 @@ export default {
       try {
         const wait = await hitRateLimit(env, u.id, "upload");
         if (wait) return json({ error: "muitas requisições; tente de novo em instantes" }, 429, { "Retry-After": String(wait) });
-        return await uploadMedia(req, env, u.id);
+        const up = await uploadMedia(req, env, u.id);
+        if (up.status < 400) await subirVersao(env, u.id); // #114 mídia enviada pelo Claude Code também atualiza o app aberto
+        return up;
       } catch (e) { return e instanceof HttpError ? json({ error: e.message }, e.status) : json({ error: "erro interno" }, 500); }
     }
 

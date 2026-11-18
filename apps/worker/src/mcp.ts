@@ -23,6 +23,7 @@ import { TACO_FONTE, tacoHints } from "./taco.ts";
 import { checkoutsBetween, concludeExam, healthOfWeek, pendingExam, saveDaysSummary } from "./diario.ts";
 import { CONTEXTO_SCHEMA, ciclo_contexto, resumoDaConta } from "./mcp-contexto.ts";
 import { TOOLS_CHAT } from "./mcp-chat.ts";
+import { subirVersao } from "./versao.ts";
 
 const S = {
   date: ST.date,
@@ -352,6 +353,8 @@ async function dispatch(m: Rpc, env: Env, u: AuthUser): Promise<unknown | null> 
       try {
         if (!t.readOnly && (await hitRateLimit(env, u.id, "write"))) return falha(m.id, "muitas requisições; tente de novo em instantes");
         const out = await t.run(args, env, u.id);
+        // #114 escrita do Claude sobe a versão da conta: o app aberto percebe e atualiza sozinho (o heartbeat da caixa só conta se havia pedido)
+        if (!t.readOnly && (t.name !== "ciclo_chat_pendentes" || (out as { pendentes?: unknown[] }).pendentes?.length)) await subirVersao(env, u.id);
         const text = JSON.stringify(out);
         // orçamento: resposta grande demais é bug de contrato (pagine/filtre); avisa sem logar conteúdo
         if (tamanhoJson(out) > MCP_ORCAMENTO_BYTES) console.error("mcp", t.name, "resposta acima do orçamento", text.length);
