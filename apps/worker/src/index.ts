@@ -14,13 +14,14 @@ import { purgeLimites } from "./limites.ts";
 import { handleOauth, purgeOauth } from "./oauth.ts";
 import { podeEscrever, wwwAuthenticate } from "@ciclo/core";
 import { handleDevCenario } from "./dev-cenario.ts";
+import { subirVersaoDepois } from "./versao.ts";
 
 const LIVRE_SEM_ACEITE = new Set(["GET /api/account", "POST /api/account/consent", "GET /api/account/export", "DELETE /api/account", "POST /api/account/logout-all"]);
 // #66: o 401 diz onde está a metadata OAuth (RFC 9728): o claude.ai descobre o login sozinho a partir da URL do /mcp.
 const unauthorized = (req: Request) => json({ error: "não autorizado" }, 401, { "WWW-Authenticate": wwwAuthenticate(new URL(req.url).origin) });
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
     if (url.pathname === "/api/health") return json({ ok: true, version: env.APP_VERSION, ambiente: ambiente(env) });
@@ -35,7 +36,7 @@ export default {
       const u = await authenticateMcp(req, env);
       if (!u) return unauthorized(req);
       if (u.aceitePendente) return json({ error: "aceite os termos e a privacidade atualizados no app do Ciclo antes de usar pelo Claude", code: "aceite" }, 403); // #62
-      return handleMcp(req, env, u);
+      return handleMcp(req, env, u, ctx);
     }
 
     // Upload de mídia pelo Claude Code (apps/mcp-local), protegido pelo mesmo token do MCP (da conta)
@@ -47,7 +48,9 @@ export default {
       try {
         const wait = await hitRateLimit(env, u.id, "upload");
         if (wait) return json({ error: "muitas requisições; tente de novo em instantes" }, 429, { "Retry-After": String(wait) });
-        return await uploadMedia(req, env, u.id);
+        const up = await uploadMedia(req, env, u.id);
+        if (up.status < 400) await subirVersaoDepois(env, u.id, ctx); // #114 mídia enviada pelo Claude Code também atualiza o app aberto
+        return up;
       } catch (e) { return e instanceof HttpError ? json({ error: e.message }, e.status) : json({ error: "erro interno" }, 500); }
     }
 
@@ -88,7 +91,7 @@ export default {
       if (a.trava) return json({ error: "confirme que é você com o Face ID", code: "faceid" }, 401);
       // #62: versão nova dos termos/privacidade → aceite antes de usar (dá para ler a conta, exportar, apagar e aceitar)
       if (a.user.aceitePendente && !LIVRE_SEM_ACEITE.has(`${req.method} ${url.pathname}`)) return json({ error: "aceite os termos e a privacidade atualizados", code: "aceite" }, 403);
-      const res = await handleApi(req, env, a.user);
+      const res = await handleApi(req, env, a.user, ctx);
       // sessão renovada no uso (30 dias a partir de agora, até o teto de 180); a rota pode ter limpado o cookie (sair) e isso vence
       if (a.setCookie && !res.headers.has("Set-Cookie")) res.headers.append("Set-Cookie", a.setCookie);
       return res;

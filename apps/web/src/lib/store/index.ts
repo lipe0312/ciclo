@@ -3,6 +3,7 @@
 import { useEffect, useState } from "preact/hooks";
 import * as C from "@ciclo/core";
 import { SERVER, api, queue } from "../api/index.ts";
+import { marcarVersao } from "../atualizar/index.ts";
 import { addDays, clone, isoDate, lsGet, lsSet } from "../util.ts";
 
 export { C };
@@ -102,6 +103,7 @@ export const perfilSync = { pendente: false };
 
 export async function loadServer() {
   const st = await api("GET", `/api/state?date=${today}`);
+  marcarVersao(st.contaVersao); // #114 a versão da conta que estes dados refletem (lida no servidor antes deles)
   // #62/#71: conta nova = vazia. O perfil é o rascunho salvo sobre o vazio (+ o que veio do cadastro); nada do DEFAULT_PROFILE por baixo.
   // Respostas ainda na fila offline (PATCH dos Primeiros passos) entram por cima, para recarregar sem sinal não "desfazer" o passo.
   // Por cima de tudo, o rascunho do passo em andamento (gravado no aparelho a cada toque): recarregar no meio do passo não perde nada.

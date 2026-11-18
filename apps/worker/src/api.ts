@@ -15,6 +15,7 @@ import { registerComida } from "./comida.ts";
 import { lerPersonalizado, listarPersonalizados, registerPersonalizados } from "./exercicio-personalizado.ts";
 import { registerHome } from "./home.ts";
 import { registerClaude } from "./mcp-chat.ts";
+import { subirVersaoDepois, versaoDaConta } from "./versao.ts";
 import { exigirFaceId, perfilConta, registerConta } from "./auth-conta.ts";
 import { createExam, deleteExam, getDiary, openDiary, putCheckout, saveDaysSummary, saveRecap, setReminder } from "./diario.ts";
 
@@ -37,9 +38,12 @@ const account = async (env: Env, u: AuthUser) => {
 };
 const onboarding = (u: AuthUser) => (u.onboardingDoneAt ? "concluido" : "pendente");
 
+on("GET", "/api/version", async (_req, env, _p, u) => json({ version: await versaoDaConta(env, u.id) })); // #114 barato: uma linha por conta
+
 on("GET", "/api/state", async (req, env, _p, u) => {
   const url = new URL(req.url);
   const today = date(url.searchParams.get("date"));
+  const contaVersao = await versaoDaConta(env, u.id); // #114 lida ANTES dos dados: escrita no meio só gera uma recarga a mais, nunca perde mudança
   await closeStaleSessions(env, u.id);
   const [profile, gyms, week, dayPlan, hist, media, meas, personalizados] = await Promise.all([
     rawProfile(env, u.id), listGyms(env, u.id), weekState(env, u.id, today), // #71 sem DEFAULTS: o app não pode ver level/minutos do padrão como resposta
@@ -57,7 +61,7 @@ on("GET", "/api/state", async (req, env, _p, u) => {
   // Treino desatualizado: impressão do perfil na hora em que o treino foi gerado (o app compara com o perfil de hoje).
   const profileFp = dayPlan ? await planProfileFingerprint(env, u.id, dayPlan.created_at) : null;
   return json({
-    account: await account(env, u), onboarding: onboarding(u),
+    contaVersao, account: await account(env, u), onboarding: onboarding(u),
     profile: profile ?? {}, gyms, week, history, media: media.results, measures: meas.results.reverse(), personalizados,
     features: { ai: !!env.AI, media: !!env.MEDIA },
     dayPlan: dayPlan ? { ...dayPlan, plan: JSON.parse(dayPlan.plan), profileFp } : null, version: env.APP_VERSION,
@@ -600,7 +604,7 @@ export const routeSignatures = () => routes.map((r) => `${r.method} ${r.path}`);
 
 const isWrite = (method: string) => method !== "GET" && method !== "HEAD";
 
-export async function handleApi(req: Request, env: Env, u: AuthUser): Promise<Response> {
+export async function handleApi(req: Request, env: Env, u: AuthUser, ctx?: ExecutionContext): Promise<Response> {
   const url = new URL(req.url);
   for (const r of routes) {
     if (r.method !== req.method) continue;
@@ -611,7 +615,10 @@ export async function handleApi(req: Request, env: Env, u: AuthUser): Promise<Re
         const wait = await hitRateLimit(env, u.id, r.path === "/api/media" || r.path === "/api/transcribe" ? "upload" : "write");
         if (wait) return json({ error: "muitas requisições; tente de novo em instantes" }, 429, { "Retry-After": String(wait) });
       }
-      return await r.h(req, env, (m.groups ?? {}) as Record<string, string>, u);
+      const res = await r.h(req, env, (m.groups ?? {}) as Record<string, string>, u);
+      // #114 toda escrita aceita sobe a versão da conta (o app confere e recarrega); apagar a conta leva a linha junto
+      if (isWrite(req.method) && res.status < 400 && !(req.method === "DELETE" && r.path === "/api/account")) await subirVersaoDepois(env, u.id, ctx);
+      return res;
     } catch (e) {
       if (e instanceof HttpError) return json(e.code ? { error: e.message, code: e.code } : { error: e.message }, e.status);
       console.error("api", r.path, e instanceof Error ? e.message : "erro");

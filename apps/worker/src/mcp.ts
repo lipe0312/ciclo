@@ -23,6 +23,7 @@ import { TACO_FONTE, tacoHints } from "./taco.ts";
 import { checkoutsBetween, concludeExam, healthOfWeek, pendingExam, saveDaysSummary } from "./diario.ts";
 import { CONTEXTO_SCHEMA, ciclo_contexto, resumoDaConta } from "./mcp-contexto.ts";
 import { TOOLS_CHAT } from "./mcp-chat.ts";
+import { gravou, subirVersaoDepois } from "./versao.ts";
 
 const S = {
   date: ST.date,
@@ -320,7 +321,7 @@ const SEM_ESCOPO = "esta conexão só tem o escopo ler: reconecte permitindo esc
 /** tools/call de escrita com token só `ler`. */
 const semEscopo = (m: Rpc, u: AuthUser) => m.method === "tools/call" && !POR_NOME.get(String(m.params?.name))?.readOnly && POR_NOME.has(String(m.params?.name)) && !podeEscrever(u.escopo ?? "ler escrever");
 
-async function dispatch(m: Rpc, env: Env, u: AuthUser): Promise<unknown | null> {
+async function dispatch(m: Rpc, env: Env, u: AuthUser, ctx?: ExecutionContext): Promise<unknown | null> {
   switch (m.method) {
     case "initialize": {
       const v = String(m.params?.protocolVersion ?? "");
@@ -357,6 +358,8 @@ async function dispatch(m: Rpc, env: Env, u: AuthUser): Promise<unknown | null> 
       try {
         if (!t.readOnly && (await hitRateLimit(env, u.id, "write"))) return falha(m.id, "muitas requisições; tente de novo em instantes");
         const out = await t.run(args, env, u.id);
+        // #114 escrita do Claude sobe a versão da conta (o app aberto atualiza); prévia, conflito e erro não gravam nada
+        if (!t.readOnly && gravou(t.name, out)) await subirVersaoDepois(env, u.id, ctx);
         const text = JSON.stringify(out);
         // orçamento: resposta grande demais é bug de contrato (pagine/filtre); avisa sem logar conteúdo
         if (tamanhoJson(out) > MCP_ORCAMENTO_BYTES) console.error("mcp", t.name, "resposta acima do orçamento", text.length);
@@ -373,7 +376,7 @@ async function dispatch(m: Rpc, env: Env, u: AuthUser): Promise<unknown | null> 
   }
 }
 
-export async function handleMcp(req: Request, env: Env, u: AuthUser): Promise<Response> {
+export async function handleMcp(req: Request, env: Env, u: AuthUser, ctx?: ExecutionContext): Promise<Response> {
   if (req.method !== "POST") return json(err(null, -32000, "use POST"), 405, { Allow: "POST" });
   const len = Number(req.headers.get("Content-Length") ?? "0");
   if (len > 128 * 1024) return json(err(null, -32600, "requisição grande demais"), 413);
@@ -383,7 +386,7 @@ export async function handleMcp(req: Request, env: Env, u: AuthUser): Promise<Re
   if (!Array.isArray(body) && body && typeof body === "object" && semEscopo(body, u))
     return json(err(body.id, -32003, SEM_ESCOPO), 403, { "WWW-Authenticate": `Bearer error="insufficient_scope", scope="ler escrever", error_description="escopo escrever necessario"` });
   const batch = Array.isArray(body) ? body.slice(0, 20) : [body];
-  const out = (await Promise.all(batch.map((m) => dispatch(m, env, u)))).filter((x) => x !== null);
+  const out = (await Promise.all(batch.map((m) => dispatch(m, env, u, ctx)))).filter((x) => x !== null);
   if (!out.length) return new Response(null, { status: 202 });
   return json(Array.isArray(body) ? out : out[0]);
 }

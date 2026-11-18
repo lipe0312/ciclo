@@ -349,7 +349,7 @@ export async function takeGeocodeSlot(env: Env, now = Date.now()): Promise<numbe
 
 // ---- direitos da conta (LGPD) ----
 /** Tabelas de dado pessoal (todas têm user_id). Ordem de apagar: filhas antes das mães. */
-export const USER_TABLES = ["oauth_code", "set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym_weekday", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "porcao_pessoal", "porcao_cache", "porcao_sombra", "claude_memory", "claude_heartbeat", "busca", "auth_challenge", "recovery_codes", "sessions", "passkeys", "invites", "consent", "ui_pref", "mcp_previa", "exercicio_personalizado"] as const;
+export const USER_TABLES = ["oauth_code", "set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym_weekday", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "porcao_pessoal", "porcao_cache", "porcao_sombra", "claude_memory", "claude_heartbeat", "busca", "auth_challenge", "recovery_codes", "sessions", "passkeys", "invites", "consent", "ui_pref", "mcp_previa", "exercicio_personalizado", "conta_versao"] as const;
 
 /** Tudo da conta em JSON (mídia: só metadados; tokens: sem hash). */
 export async function exportAccount(env: Env, uid: string) {

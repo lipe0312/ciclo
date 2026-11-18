@@ -10,6 +10,12 @@ import { showFaixa } from "./lib/faixa/index.tsx";
 import { toast } from "./lib/ui/index.tsx";
 import { setVozAI } from "./lib/voz/index.tsx";
 import { autoClose, running } from "./screens/treino/sessao.ts";
+import { iniciarAtualizacao } from "./lib/atualizar/index.ts";
+import { D, loadDiario } from "./lib/diario/estado.ts";
+import { loadFood } from "./lib/store/regras.ts";
+import { recarregarDiasBuscados } from "./screens/comida/dia.tsx";
+import { carregarHome } from "./screens/hoje/estado.ts";
+import { garantirSemana } from "./screens/semana/estado.ts";
 
 setHttpErrorHandler(toast);
 
@@ -33,7 +39,12 @@ async function boot() {
         document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update().catch(() => {}); });
       }).catch(() => {});
     }
-    setInterval(() => { if (!document.hidden && !running()) loadServer().then(commit).catch(() => {}); }, 60000);
+    // #114 versão da conta: voltar à aba, a cada poucos segundos com a aba visível e depois de cada escrita deste aparelho.
+    // Mudou (o Claude pelo MCP, a caixa, outro aparelho) → busca tudo de novo no lugar (sem piscar, sem perder a rolagem) + "Atualizado".
+    iniciarAtualizacao(async () => {
+      await loadServer(); commit();
+      await Promise.allSettled([carregarHome(true), garantirSemana(true), loadFood().then(recarregarDiasBuscados), D.loaded ? loadDiario() : Promise.resolve()]);
+    }, running);
   }
   setVozAI(!!S.features.ai);
   S.ui.gymId = S.ui.gymId && S.gyms.some((g) => g.id === S.ui.gymId) ? S.ui.gymId : defaultGymFor(today);

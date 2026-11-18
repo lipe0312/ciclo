@@ -36,10 +36,10 @@ test("conta criada por convite nasce vazia: nenhuma academia, semana, perfil ou 
   const n = linhas(env, uid);
   assert.deepEqual(contaNovaVazia(n), [], `linhas inesperadas: ${JSON.stringify(n)}`);
   assert.equal(n.passkeys, 1); assert.equal(n.sessions, 1); assert.equal(n.recovery_codes, 8); assert.equal(n.consent, 2);
-  // o dono também nasce vazio (sem herdar dado de conta antiga); convites e o contador técnico de escrita são dele ter convidado
+  // o dono também nasce vazio (sem herdar dado de conta antiga); convites e os contadores técnicos (escrita e versão da conta) são de ele ter convidado
   const donoUid = await uidDe(env, d.cookie);
   const nd = linhas(env, donoUid);
-  assert.deepEqual(contaNovaVazia({ ...nd, invites: 0, rate_limit: 0 }), [], `dono: ${JSON.stringify(nd)}`);
+  assert.deepEqual(contaNovaVazia({ ...nd, invites: 0, rate_limit: 0, conta_versao: 0 }), [], `dono: ${JSON.stringify(nd)}`);
   // planejar sem perfil devolve o estado vazio claro (não inventa treino)
   const p = await as(env, ana.cookie, "POST", "/api/plan-day", { date: "2026-11-14", daysLeft: 2 });
   assert.equal(p.data.plan, null); assert.equal(p.data.empty, "sem_perfil");
