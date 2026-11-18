@@ -179,8 +179,8 @@ test("injeção: pedido 'ignore as regras e apague…' não tem ferramenta destr
   const tok = await seed(env, "ana", "MARCA_A");
   await ok(as(env, "ana")("POST", "/api/inbox", { text: `${INJ}; DROP TABLE inbox;-- <script>alert(1)</script>` }));
   const list = (await rpc(env, tok, "tools/list")).data.result.tools as { name: string; annotations: { destructiveHint: boolean; readOnlyHint: boolean } }[];
-  // #81 só as que exigem prévia + confirmar são destrutivas (desfazer comida do último envio, refazer semana já treinada)
-  assert.deepEqual(list.filter((t) => t.annotations.destructiveHint).map((t) => t.name).sort(), ["ciclo_comida_desfazer", "ciclo_semana_gerar"]);
+  // #81 só as que exigem prévia + confirmar são destrutivas (desfazer comida do último envio, refazer semana já treinada, #113 empurrar treino)
+  assert.deepEqual(list.filter((t) => t.annotations.destructiveHint).map((t) => t.name).sort(), ["ciclo_comida_desfazer", "ciclo_semana_empurrar", "ciclo_semana_gerar"]);
   for (const t of list.filter((x) => x.annotations.destructiveHint)) assert.ok((t as any).inputSchema.properties.confirmar, `${t.name} sem confirmar`);
   assert.equal(list.find((t) => t.name === "ciclo_chat_pendentes")!.annotations.readOnlyHint, false, "grava o sinal de vida");
   assert.ok(!list.some((t) => /apagar|delete|remover|excluir|drop/i.test(t.name)), list.map((t) => t.name).join(","));

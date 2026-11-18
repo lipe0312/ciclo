@@ -23,7 +23,7 @@ export const S = {
 } satisfies Record<string, Schema>;
 
 const SP = 3 * 3600e3; // America/Sao_Paulo (UTC−3)
-export const today = () => new Date(Date.now() - SP).toISOString().slice(0, 10);
+export { hojeSP as today } from "./relogio.ts";
 export const horaSP = () => new Date(Date.now() - SP).getUTCHours();
 export const hhmm = (ms: number) => new Date(ms - SP).toISOString().slice(11, 16);
 export const addDays = (iso: string, n: number) => new Date(Date.parse(iso + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);

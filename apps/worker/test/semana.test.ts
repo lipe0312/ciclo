@@ -84,7 +84,8 @@ test("falta no servidor: 1ª abertura na quarta já cobra seg/ter planejados e s
   assert.deepEqual(r.data.week.misses, [SEG]);
 });
 
-test("treino num dia não planejado vira extra e o resto da semana se reorganiza", async () => {
+// #113 os dias cadastrados são só referência: treinou num dia não planejado = dia de treino feito
+test("treino num dia não planejado vira dia de treino feito e o resto da semana se reorganiza", async () => {
   const env = makeEnv();
   const a = await conta(env, "ana");
   const w1 = (await a("GET", `/api/week?date=${SEG}`)).data.week;
@@ -92,7 +93,8 @@ test("treino num dia não planejado vira extra e o resto da semana se reorganiza
   assert.equal((await a("POST", "/api/sessions", { id: SID, date: QUA, plan })).status, 201);
   for (const [k, it] of plan.items.slice(0, 3).entries()) await a("POST", `/api/sessions/${SID}/sets`, { exerciseId: it.exerciseId, setNo: k + 1, kg: 10, reps: 10 });
   const w = (await a("GET", `/api/week?date=${QUA}`)).data.week;
-  assert.equal(w.days[2].status, "extra");
+  assert.equal(w.days[2].status, "feito");
+  assert.equal(w.days[2].kind, "treino");
   assert.equal(w.versions[0].source, "extra");
   assert.ok(w.version > 1);
 });

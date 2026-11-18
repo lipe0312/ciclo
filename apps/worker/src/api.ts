@@ -9,7 +9,7 @@ import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, countGyms, del
 import { pushEnabled, validEndpoint } from "./push.ts";
 import { newMcpToken } from "./auth.ts";
 import { exigirCotaConta, exigirCotaGlobal, somarBytesR2 } from "./limites.ts";
-import { dayAction, getWeek, regenerate, restore } from "./semana.ts";
+import { dayAction, empurrar, getWeek, regenerate, restore } from "./semana.ts";
 import { gerarTreinoDoDia } from "./treino-gerado.ts";
 import { registerComida } from "./comida.ts";
 import { lerPersonalizado, listarPersonalizados, registerPersonalizados } from "./exercicio-personalizado.ts";
@@ -302,6 +302,8 @@ on("POST", "/api/plan-edits", async (req, env, _p, u) => {
 on("GET", "/api/week", async (req, env, _p, u) => json(await getWeek(env, u.id, date(new URL(req.url).searchParams.get("date")))));
 on("PUT", "/api/week", async (req, env, _p, u) => json(await restore(env, u.id, await readJson(req, 2 * 1024))));
 on("POST", "/api/week/regenerate", async (req, env, _p, u) => json(await regenerate(env, u.id, await readJson(req, 2 * 1024))));
+// #113 empurrar treino: sem apply devolve a prévia; com apply grava (hoje vira folga, o resto anda um dia)
+on("POST", "/api/week/empurrar", async (req, env, _p, u) => json(await empurrar(env, u.id, await readJson(req, 1024))));
 on("POST", "/api/week/day/:date", async (req, env, p, u) => json(await dayAction(env, u.id, p.date, await readJson(req, 4 * 1024))));
 // #108 "Gerar treino" num dia sem treino: só por toque; gera, valida e abre o pedido de revisão da IA
 on("POST", "/api/week/day/:date/gerar-treino", async (req, env, p, u) => json(await gerarTreinoDoDia(env, u.id, p.date, date((await readJson<{ today?: unknown }>(req, 1024)).today, "today"))));

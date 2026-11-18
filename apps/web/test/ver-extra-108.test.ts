@@ -18,6 +18,8 @@ P.querySelector ??= () => null;
 // o Carrossel mede os filhos do trilho num timer de scroll (onScroll do Hoje): sem layout, lista vazia basta
 if (!("children" in P)) Object.defineProperty(P, "children", { configurable: true, get: () => [] });
 P.addEventListener ??= () => {}; P.removeEventListener ??= () => {};
+// o carrossel centra o dia de hoje pelo layout (children/offsetLeft): sem layout, tudo 0 (antes quebrava de terça a domingo)
+if (!("children" in P)) Object.defineProperty(P, "children", { configurable: true, get(this: No) { return this.childNodes.filter((c) => c.nodeType === 1); } });
 const chamadas: string[] = [];
 let semana: unknown = null;
 (globalThis as any).fetch = async (path: string, init: RequestInit = {}) => {

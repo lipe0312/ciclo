@@ -5,7 +5,7 @@ import type { MuscleId, WeekDay } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { HttpError, date, int, str } from "./http.ts";
 import { EMPTY_MSG, buildDayInput, getProfile, rawProfile, saveProfile, weekState } from "./db.ts";
-import { aplicarNaSemana, dayAction, getWeek, regenerate } from "./semana.ts";
+import { aplicarNaSemana, dayAction, empurrar, getWeek, regenerate } from "./semana.ts";
 import { confirmar, criarPrevia } from "./mcp-previa.ts";
 import { aprovacaoDe, salvarAprovacao } from "./mcp-comida.ts";
 import { S, addDays, dado, obj, today } from "./mcp-tipos.ts";
@@ -69,6 +69,23 @@ async function semanaGerar(a: Args, env: Env, uid: string) {
   }
   const r = await regenerate(env, uid, { date: hoje, apply: true, reset });
   return { refeita: true, mudancas: r.diff, ...(r.week ? semanaCompacta(r.week as never) : {}) };
+}
+
+/** #113 Empurrar treino: sempre com prévia (o que anda e o diff) + token; só grava com confirmar:<token>.
+ *  O token vale só no mesmo dia e para a mesma semana da prévia (versão + o que anda); senão, simule de novo. */
+interface PayloadEmpurrar { date: string; versao: number; assinatura: string }
+async function semanaEmpurrar(a: Args, env: Env, uid: string) {
+  if (a.confirmar != null) return confirmar<PayloadEmpurrar, unknown>(env, uid, "semana_empurrar", a.confirmar, async (p) => {
+    const r = await empurrar(env, uid, { today: p.date, apply: true, esperado: { versao: p.versao, assinatura: p.assinatura } });
+    return { empurrado: true, andou: r.moves, ...(r.week ? semanaCompacta(r.week as never) : {}) };
+  }, (p) => { if (p.date !== today()) throw new HttpError(409, "a prévia é de outro dia: simule de novo e mostre a prévia atualizada"); });
+  const hoje = today();
+  const r = await empurrar(env, uid, { today: hoje, apply: false });
+  const token = await criarPrevia(env, uid, "semana_empurrar", { date: hoje, versao: r.versao, assinatura: r.assinatura } satisfies PayloadEmpurrar);
+  return {
+    previa: true, token, expiraEmMin: 15, andou: r.moves, mudancas: r.diff,
+    proximoPasso: "Mostre o que anda (para null = passou do domingo e volta para o orçamento) e só com o sim chame de novo com confirmar:<token>.",
+  };
 }
 
 async function treinoRegistrar(a: Args, env: Env, uid: string) {
@@ -204,9 +221,15 @@ export const TOOLS_TREINO: Tool[] = [
   },
   {
     name: "ciclo_semana_gerar",
-    description: "Gera ou refaz a semana pelo core (a mesma lógica do app). Sem `dia`: refaz a semana; se ela já tem treino feito (ou com simular:true) devolve a prévia (mudanças por dia) + token e só grava com confirmar:<token>; o que já passou não muda; reset:true descarta as trocas dos dias que ainda não passaram. Com `dia` (YYYY-MM-DD desta semana, de hoje em diante): gera só aquele dia com foco (até 3 músculos) e/ou minutos, e o resto se reorganiza. Escreve.",
+    description: "Gera ou refaz a semana pelo core (a mesma lógica do app). Sem `dia`: refaz a semana; se ela já tem treino feito (ou com simular:true) devolve a prévia (mudanças por dia) + token e só grava com confirmar:<token>; o que já passou não muda; reset:true descarta as trocas dos dias que ainda não passaram. Com `dia` (YYYY-MM-DD desta semana, de hoje em diante, qualquer dia: os dias cadastrados são só referência): gera só aquele dia com foco (até 3 músculos) e/ou minutos, e o resto se reorganiza. Escreve.",
     inputSchema: obj({ date: S.date, dia: S.date, foco: MUSCULOS, minutos: { type: "integer", minimum: 15, maximum: 150 }, reset: { type: "boolean" }, simular: S.simular, confirmar: S.confirmar }),
     run: semanaGerar,
+  },
+  {
+    name: "ciclo_semana_empurrar",
+    description: "\"Hoje não dá, empurra\": os treinos de hoje em diante (ainda não feitos) andam um dia, hoje vira folga; feito não se move; o que passar do domingo volta para o orçamento da semana. Sempre devolve a prévia (andou de → para + mudanças) e um token; só grava com confirmar:<token>. Escreve.",
+    inputSchema: obj({ confirmar: S.confirmar }),
+    run: semanaEmpurrar,
   },
   {
     name: "ciclo_treino_registrar",
