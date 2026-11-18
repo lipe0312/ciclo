@@ -106,6 +106,9 @@ export function trainingDows(daysUsual: readonly string[], target: number): Dow[
   return DOWS.filter((d) => set.has(d));
 }
 
+/** #113 Treinou no dia: série registrada ou "treinei" marcado (vale em qualquer dia, dentro ou fora do cadastro). */
+export const treinou = (ctx: Pick<WeekCtx, "sets" | "attendance">, date: string) => sum(ctx.sets[date]) > 0 || ctx.attendance[date] === "fui";
+
 /** Dia "fechado": já passou, tem série registrada ou presença marcada. Só dias abertos são (re)gerados. */
 export function isClosed(date: string, ctx: WeekCtx): boolean {
   return date < ctx.today || sum(ctx.sets[date]) > 0 || ctx.attendance[date] != null;
@@ -195,15 +198,23 @@ const fixedPlan = (inp: WeekInput, date: string): DayPlan | null => { const p = 
 export function planWeek(inp: WeekInput): WeekPlan {
   // 1ª abertura depois da segunda: os dias que já passaram recebem o plano "de segunda de manhã" (para ver e cobrar a falta)
   if (!inp.prev && inp.today > inp.weekStart) inp = { ...inp, prev: planWeek({ ...inp, today: inp.weekStart, sets: {}, attendance: {}, prev: null }) };
+  // #113 os dias cadastrados são só referência para distribuir a semana, nunca bloqueio
   const base = new Set<string>(trainingDows(inp.profile.daysUsual, inp.profile.daysTarget));
   const days: WeekDay[] = weekDates(inp.weekStart).map((date, i) => {
     const dow = DOWS[i], ov = inp.overrides?.[date], fx = inp.fixed?.[date];
-    // #108 treino salvo (Chat/MCP/à mão) num dia sem treino vira extra com esse plano; antes ficava folga e sumia
-    const kind: DayKind = ov?.kind ?? (base.has(dow) ? "treino" : fx ? "extra" : "folga");
+    // #108/#113 treino salvo (Chat/MCP/gerado/à mão) em qualquer dia vira dia de treino com esse plano; antes ficava folga e sumia
+    let kind: DayKind = ov?.kind ?? (base.has(dow) || fx ? "treino" : "folga");
+    // #113 treinou (série registrada ou "treinei") num dia fora do cadastro: é dia de treino feito, conta presença e volume
+    if (kind === "folga" && treinou(inp, date)) kind = "treino";
     const opts: DayOpts = { ...(ov?.opts ?? {}) };
     return { date, dow, kind, plan: null, gymId: gymFor(inp.profile, dow, opts.gymId), opts, source: fx ? (fx.source === "claude" ? "claude" : "voce") : ov ? "voce" : "auto", warn: [] };
   });
   for (const d of days) if (isClosed(d.date, inp)) d.plan = fixedPlan(inp, d.date) ?? inp.prev?.days.find((x) => x.date === d.date)?.plan ?? null;
+  // #113 "treinei" sem série registrada num dia sem plano: credita o treino extra que o dia teria (só o que faltava, sem dobrar)
+  days.forEach((d, i) => {
+    if (d.plan || inp.attendance[d.date] !== "fui" || sum(inp.sets[d.date]) > 0) return;
+    d.plan = extraSession({ ...dayInputFor(inp, d, baseline(inp, days.slice(0, i))), blocked: prevMuscles(inp, days, i) });
+  });
 
   const open = new Set(days.filter((d) => !isClosed(d.date, inp) && d.kind !== "folga").map((d) => d.date));
   const { groups, split } = decideSplits(inp, days, open);
@@ -470,6 +481,37 @@ export function diffWeeks(a: WeekPlan, b: WeekPlan): DayDiff[] {
     if (lines.length || before !== after) out.push({ date: db.date, before, after, lines });
   }
   return out;
+}
+
+// ---------- #113 empurrar treino ----------
+export interface Empurrao {
+  /** escolhas novas da semana (dias de hoje em diante) */
+  overrides: Record<string, DayOverride>;
+  /** treinos salvos (Chat, gerado, à mão) já nas datas novas */
+  fixed: NonNullable<WeekInput["fixed"]>;
+  /** treinos que andam um dia: de → para; para null = passou do domingo e volta para o orçamento */
+  moves: { de: string; para: string | null; nome: string }[];
+  /** treinos salvos que mudam de data (o servidor move a linha do dia); para null = sai da semana */
+  fixos: { de: string; para: string | null }[];
+  plan: WeekPlan; diff: DayDiff[];
+}
+/** "Hoje não dá": os dias de hoje em diante que ainda não fecharam andam um dia (o 1º vira folga). Dia feito ou
+ *  marcado não se move. O treino que passa do domingo sai da semana e o orçamento se redistribui nos dias que ficam. */
+export function empurrarTreinos(inp: WeekInput, plan: WeekPlan): Empurrao | { error: string } {
+  const abertos = plan.days.filter((d) => d.date >= inp.today && !isClosed(d.date, inp));
+  if (!abertos.some((d) => d.kind !== "folga")) return { error: "não há treino de hoje em diante para empurrar" };
+  const overrides = { ...(inp.overrides ?? {}) }, fixed = { ...(inp.fixed ?? {}) };
+  const moves: Empurrao["moves"] = [], fixos: Empurrao["fixos"] = [];
+  for (let k = abertos.length - 1; k >= 0; k--) {
+    const d = abertos[k], para = abertos[k + 1]?.date ?? null;
+    if (para) overrides[para] = { kind: d.kind, opts: { ...d.opts } };
+    // de trás para a frente: o salvo do dia seguinte já andou, então a data de destino está livre
+    if (fixed[d.date]) { fixos.unshift({ de: d.date, para }); if (para) fixed[para] = fixed[d.date]; delete fixed[d.date]; }
+    if (d.kind !== "folga") moves.unshift({ de: d.date, para, nome: d.plan?.name ?? "Treino" });
+  }
+  overrides[abertos[0].date] = { kind: "folga" };
+  const novo = planWeek({ ...inp, overrides, fixed, prev: plan });
+  return { overrides, fixed, moves, fixos, plan: novo, diff: diffWeeks(plan, novo) };
 }
 
 // ---------- gerar outro treino (#44) ----------

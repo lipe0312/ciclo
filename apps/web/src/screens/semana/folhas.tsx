@@ -5,8 +5,8 @@ import { FOCUS } from "../../lib/store/regras.ts";
 import { SheetHead, closeSheet, openSheet } from "../../lib/folha/index.tsx";
 import { Chip, Icon, Seg } from "../../lib/ui/index.tsx";
 import { DOW_NM, dowIdx } from "../../lib/util.ts";
-import { acaoDia, desfazer, diaDe, getSemana, previaRegenerar, regenerar } from "./estado.ts";
-import type { Dia } from "./estado.ts";
+import { acaoDia, desfazer, diaDe, empurrar, getSemana, previaEmpurrar, previaRegenerar, regenerar } from "./estado.ts";
+import type { Dia, Empurrao } from "./estado.ts";
 
 export const diaCurto = (date: string) => `${DOW_NM[dowIdx(date)]} ${Number(date.slice(8, 10))}`;
 export const aberto = (d: Dia) => ["hoje", "planejado", "folga", "livre"].includes(d.status) && d.date >= today;
@@ -80,6 +80,25 @@ function Regenerar() {
     <div class="row" style="margin-top:14px;gap:8px">
       <button type="button" class="btn" style="flex:1" onClick={closeSheet}>Cancelar</button>
       <button type="button" class="btn pri" style="flex:1" disabled={!reg.diff?.length} onClick={() => regenerar(reg.reset).then((ok) => ok && closeSheet())}>Aplicar</button></div></>;
+}
+
+// ---------- #113 empurrar treino (prévia → confirmar) ----------
+const emp: { previa: Empurrao | null; carregando: boolean } = { previa: null, carregando: false };
+export function abrirEmpurrar() {
+  emp.previa = null; emp.carregando = true; openSheet(() => <Empurrar />);
+  void previaEmpurrar().then((p) => { emp.previa = p; emp.carregando = false; commit(); });
+}
+function Empurrar() {
+  const p = emp.previa;
+  return <><SheetHead kicker="Hoje não dá" title="Empurrar treinos" />
+    <p class="small sub" style="margin:6px 0 12px">Hoje vira folga e cada treino anda um dia. Treino feito não se move; o que passar do domingo volta para o orçamento da semana.</p>
+    <div class="sem-diff" aria-live="polite">{emp.carregando ? <p class="small sub">Calculando…</p>
+      : !p ? <p class="small">Não deu para calcular agora.</p>
+      : p.moves.map((m) => <div key={m.de} class="sem-diff-dia"><p class="small"><b>{m.nome}</b></p>
+        <p class="small sub">{diaCurto(m.de)} → {m.para ? <b>{diaCurto(m.para)}</b> : "sai da semana · volta para o orçamento"}</p></div>)}</div>
+    <div class="row" style="margin-top:14px;gap:8px">
+      <button type="button" class="btn" style="flex:1" onClick={closeSheet}>Cancelar</button>
+      <button type="button" class="btn pri" style="flex:1" disabled={!p?.moves.length} onClick={() => empurrar().then((ok) => ok && closeSheet())}>Empurrar</button></div></>;
 }
 
 // ---------- versões (desfazer) ----------

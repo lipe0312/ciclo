@@ -65,6 +65,20 @@ export const gerarTreino = (date: string) =>
 /** #108 O treino de um dia é sempre o salvo/planejado na semana. Dia sem treino não tem plano (nada é gerado ao abrir). */
 export const planoDoDia = (d: Dia): C.DayPlan | null => (d.kind !== "folga" || d.status === "extra" ? d.plan : null);
 
+/** #113 "Treinei"/"não treinei" vale em qualquer dia até hoje, mesmo fora dos dias cadastrados (a semana se reorganiza). */
+export const marcavel = (d: Dia) => d.date <= today && d.status !== "feito" && d.status !== "extra";
+export const podeNaoTreinei = (d: Dia) => marcavel(d) && (d.status === "hoje" || d.status === "pendente");
+export const marcar = (d: Dia, fui: boolean) => acaoDia(d.date, { action: "falta", resposta: fui ? "fui" : "nao_fui" }, fui ? "Marcado: treinei" : "Marcado: não treinei · semana reorganizada");
+
+/** #113 Empurrar treino: prévia (o que anda e para onde) e aplicar. Hoje vira folga; feito não se move. */
+export interface Empurrao { moves: { de: string; para: string | null; nome: string }[]; diff: C.DayDiff[] }
+export async function previaEmpurrar(): Promise<Empurrao | null> {
+  try { return SERVER ? await api<Empurrao>("POST", "/api/week/empurrar", { today }) : demo.empurrar(false); }
+  catch (e: any) { toast(e?.status ? e.message : "Sem conexão"); return null; }
+}
+export const empurrar = () =>
+  rodar(() => (SERVER ? api("POST", "/api/week/empurrar", { today, apply: true }) : Promise.resolve(demo.empurrar(true))), "Treinos empurrados · hoje é folga");
+
 export async function previaRegenerar(reset: boolean): Promise<C.DayDiff[] | null> {
   try { return SERVER ? (await api<{ diff: C.DayDiff[] }>("POST", "/api/week/regenerate", { date: today, reset })).diff : demo.regenerar(reset, false).diff; }
   catch (e: any) { toast(e?.status ? e.message : "Sem conexão"); return null; }
@@ -174,6 +188,13 @@ const demo = (() => {
       const fixed = { ...(c.fixed ?? {}), [date]: { plan, source: "claude" as const } };
       push(C.planWeek(input(c.overrides, c.plan, fixed)), c.overrides, "ajuste", fixed);
       return { week: ver() };
+    },
+    empurrar(apply: boolean) {
+      const c = cur();
+      const r = C.empurrarTreinos(input(c.overrides, c.plan, c.fixed), c.plan);
+      if ("error" in r) throw Object.assign(new Error(r.error), { status: 409 });
+      if (apply) push(r.plan, r.overrides, "ajuste", r.fixed);
+      return { moves: r.moves, diff: r.diff, week: apply ? ver() : null };
     },
     regenerar(reset: boolean, apply: boolean) {
       const c = cur();

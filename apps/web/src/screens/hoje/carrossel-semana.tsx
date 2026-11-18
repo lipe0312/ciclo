@@ -10,7 +10,7 @@ import { DOW_NM, dowIdx } from "../../lib/util.ts";
 import { garantirSemana, gerarTreino, getSemana, getVazio, planoDoDia } from "../semana/estado.ts";
 import type { Dia } from "../semana/estado.ts";
 import { abrirTrocar, aberto } from "../semana/folhas.tsx";
-import { STATUS, SeloOrigem } from "../semana/index.tsx";
+import { Marcar, STATUS, SeloOrigem } from "../semana/index.tsx";
 
 const GRUPOS: Record<string, string> = { sup: "Superior", inf: "Inferior" };
 const rodando = () => !!S.session && !S.session.finishedAt;
@@ -38,7 +38,9 @@ function CardDia({ d }: { d: Dia }) {
       {livre && <button type="button" class="btn pri" onClick={() => void gerarTreino(d.date)}><Icon id="bolt" />Gerar treino</button>}
       {(p || d.status === "feito") && <a class="btn" href={href("semana", ["dia", d.date])}>Ver</a>}
       {aberto(d) && d.kind !== "folga" && <button type="button" class="btn" onClick={() => abrirTrocar(d)}><Icon id="swap" />Trocar geração</button>}
-    </div></div>;
+    </div>
+    {/* #113 treinei / não treinei em qualquer dia até hoje (mesmo fora dos dias cadastrados) */}
+    <Marcar d={d} /></div>;
 }
 
 export function SemanaCarrossel() {

@@ -141,6 +141,7 @@ async function matriz(env: any, ana: string, bia: string) {
     ["GET /api/week", () => a("GET", `/api/week?date=${D}`)],
     ["PUT /api/week", () => a("PUT", "/api/week", { date: D, version: 1 })],
     ["POST /api/week/regenerate", () => a("POST", "/api/week/regenerate", { date: D, apply: true, reset: true })],
+    ["POST /api/week/empurrar", () => a("POST", "/api/week/empurrar", { today: "2026-11-30" }), 400], // #113 today do aparelho fora do dia atual
     ["POST /api/week/day/:date", () => a("POST", "/api/week/day/2026-11-08", { action: "folga", today: D })],
     // #108 a A já gerou o dia dela: gerar de novo = 409 (o dia da B não conta nem muda)
     ["POST /api/week/day/:date/gerar-treino", () => a("POST", `/api/week/day/${B.livre}/gerar-treino`, { today: D }), 409],
@@ -213,7 +214,7 @@ async function matriz(env: any, ana: string, bia: string) {
     ["ciclo_comida_registrar", { confirmar: B.previa }, true], ["ciclo_comida_corrigir", { id: B.food, fator: 0.5 }, true], ["ciclo_comida_desfazer", {}], ["ciclo_comida_pendentes", {}],
     // #87: editar um registro da B (direto ou no meio de um lote) = não encontrado; os vagos da A não trazem os da B
     ["ciclo_comida_editar", { edicoes: [{ id: B.food, itens: [{ nome: "hackeado", kcal: 1, proteina: 1, fonte: "estimativa" }] }], simular: true }, true], ["ciclo_comida_vagos", { de: "2026-11-01", ate: D }],
-    ["ciclo_semana_ver", { date: D }], ["ciclo_semana_gerar", { date: D, simular: true }], ["ciclo_treino_registrar", { exercicioId: B.ex, series: [{ kg: 1, reps: 1 }] }],
+    ["ciclo_semana_ver", { date: D }], ["ciclo_semana_gerar", { date: D, simular: true }], ["ciclo_semana_empurrar", {}], ["ciclo_semana_empurrar", { confirmar: B.previa }, true], ["ciclo_treino_registrar", { exercicioId: B.ex, series: [{ kg: 1, reps: 1 }] }],
     ["ciclo_treino_trocar", { exercicioId: B.ex, date: D }], ["ciclo_treino_atual_salvar", { treinoAtual: { divisoes: [{ nome: "A", grupos: ["biceps"], exercicios: [{ nome: "Rosca livre", grupo: "biceps" }] }] } }],
     // #95: o treino atual e as academias lidos pelo MCP são só da A; academia da B no gymId = não encontrada
     ["ciclo_treino_atual", {}], ["ciclo_planejar_dia", { date: D, daysLeft: 2, gymId: B.lug }, true], ["ciclo_salvar_treino_do_dia", { date: D, gymId: B.lug, itens: [{ id: B.ex, sets: 2 }], motivo: "t" }, true],
@@ -240,6 +241,12 @@ async function matriz(env: any, ana: string, bia: string) {
     assert.equal(r.status, 200, `${name}: ${r.text}`); assert.equal(!!r.data.result.isError, !!isErr, `${name}: ${r.text}`);
     noLeak(name, r.text);
   }
+  // #113 empurrar válido da A: o day_plan dela muda de data; o da B fica intacto (linha a linha)
+  const planosB = () => JSON.stringify(env.DB.raw.prepare("SELECT date, gym_id, plan, source, created_at FROM day_plan WHERE user_id = ? ORDER BY date").all(B.uid));
+  const antesB = planosB();
+  const emp = await a("POST", "/api/week/empurrar", { today: D, apply: true });
+  assert.ok(emp.status < 300, `POST /api/week/empurrar (A): ${emp.status} ${emp.text}`); noLeak("POST /api/week/empurrar (A)", emp.text);
+  assert.equal(planosB(), antesB, "day_plan da B mudou com o empurrar da A");
   // #30: resumo geral e resource ciclo://contexto da A não trazem nada da B (memória, nota, dor, objetivo)
   const res = await call(env, "POST", "/mcp", { bearer: A.token, body: { jsonrpc: "2.0", id: 2, method: "resources/read", params: { uri: "ciclo://contexto" } } });
   assert.equal(res.status, 200); assert.ok(res.data.result.contents[0].text.includes("MARCA_A")); noLeak("resources/read", res.text);

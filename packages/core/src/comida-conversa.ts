@@ -12,7 +12,7 @@ export type ComidaAprovacao = (typeof COMIDA_APROVACAO)[number];
 export const COMIDA_APROVACAO_NM: Record<ComidaAprovacao, string> = { sempre: "Sempre", so_duvidas: "Só nas dúvidas", nunca: "Nunca" };
 /** Prévia: token de uso único, preso à conta, vale 15 min. */
 export const PREVIA_MS = 15 * 60_000;
-export const PREVIA_TIPOS = ["comida_registrar", "comida_corrigir", "comida_desfazer", "semana_gerar"] as const;
+export const PREVIA_TIPOS = ["comida_registrar", "comida_corrigir", "comida_desfazer", "semana_gerar", "semana_empurrar"] as const;
 export type PreviaTipo = (typeof PREVIA_TIPOS)[number];
 /** No máximo 2 perguntas por vez (o resto vira suposição declarada). */
 export const MAX_DUVIDAS = 2;
