@@ -9,6 +9,10 @@ const listeners = new Set<() => void>();
 export const onQueue = (f: () => void) => { listeners.add(f); return () => listeners.delete(f); };
 const changed = () => { lsSet(QK, queue); listeners.forEach((f) => f()); };
 
+// #114 quem quiser saber que uma escrita deste aparelho foi aceita pelo servidor (o atualizador confere a versão da conta)
+let ouveEscrita: () => void = () => {};
+export const onEscrita = (f: () => void) => { ouveEscrita = f; };
+
 export class HttpError extends Error {
   status: number; data: unknown;
   constructor(msg: string, status: number, data: unknown) { super(msg); this.status = status; this.data = data; }
@@ -26,6 +30,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
   if (r.status === 401 && (data?.code === "entrar" || data?.code === "faceid")) paraEntrar(data.code === "faceid" ? "faceid" : undefined);
   if (r.status === 403 && data?.code === "aceite") paraEntrar("aceite");
   if (!r.ok) throw new HttpError(data?.error || `HTTP ${r.status}`, r.status, data);
+  if (method !== "GET" && method !== "HEAD" && path.startsWith("/api/")) ouveEscrita(); // /auth e /oauth não sobem a versão da conta
   return data as T;
 }
 

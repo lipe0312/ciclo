@@ -148,7 +148,7 @@ export async function loadFood() {
   try {
     await flush();
     const [r, b] = await Promise.all([api<{ entries: any[] }>("GET", `/api/food?from=${addDays(today, -13)}&to=${today}`), api<{ itens: any[] }>("GET", "/api/food-items")]);
-    S.food = r.entries.map(fromServer); FOODBASE.itens = b.itens.flatMap((i) => { const x = fromItem(i); return x ? [x] : []; }); commit();
+    S.food = r.entries.map(fromServer).concat(S.food.filter((f) => f.date < addDays(today, -13))); FOODBASE.itens = b.itens.flatMap((i) => { const x = fromItem(i); return x ? [x] : []; }); commit();
   } catch { /* offline: fica o que há */ }
 }
 let adaptTried = false;
