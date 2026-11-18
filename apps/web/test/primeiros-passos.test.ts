@@ -22,6 +22,9 @@ let estado: Record<string, unknown> = {};
   const method = init.method ?? "GET", body = init.body ? JSON.parse(String(init.body)) : undefined;
   chamadas.push({ method, path, body });
   if (path.startsWith("/api/state")) return Response.json(estado);
+  // a semana só existe depois que os Primeiros passos concluem (antes o servidor responde "sem_perfil")
+  if (path.startsWith("/api/week")) return Response.json(chamadas.some((c) => c.method === "PATCH" && c.path === "/api/account")
+    ? { week: { weekStart: "2026-11-09", days: [], version: 1, versions: [] } } : { week: null, empty: "sem_perfil" });
   return Response.json({ ok: true });
 };
 
@@ -35,6 +38,7 @@ before(async () => {
         export { default as Mais } from "./src/screens/mais/index.tsx";
         export { S, C, rascunhoPP, loadServer } from "./src/lib/store/index.ts";
         export { HttpError, queue } from "./src/lib/api/index.ts";
+        export { garantirSemana, getVazio } from "./src/screens/semana/estado.ts";
         export { h, render } from "preact";`,
       resolveDir: WEB, loader: "ts",
     },
@@ -170,6 +174,8 @@ test("Gerar semana: sem o mínimo, mostra a lista do que falta; com ele, gera se
   assert.ok(!/deve ser|goal\.id/.test(texto(raiz)));
   assert.equal(chamadas.length, 0, "nada vai ao servidor");
 
+  // o app abriu antes de existir semana (a casca carrega a semana no boot): o Hoje guardou "sem semana"
+  await M.garantirSemana(true); assert.ok(M.getVazio(), "sem semana antes de concluir"); chamadas.length = 0;
   Object.assign(M.S.profile.goal, M.C.goalDefaults("bracos_ombros"), { statement: "Ombros largos para o verão (teste)" });
   Object.assign(M.S.profile, { level: 1, daysUsual: ["seg", "qua", "sex"], daysTarget: 3, minutes: 60, places: ["academia"] });
   abrir(9);
@@ -178,7 +184,8 @@ test("Gerar semana: sem o mínimo, mostra a lista do que falta; com ele, gera se
   await clicar("Gerar minha semana e abrir o Hoje");
   assert.equal(await esperarRota("#hoje"), "#hoje");
   const ordem = chamadas.map((c) => `${c.method} ${c.path.replace(/\d{4}-\d{2}-\d{2}/, "D")}`);
-  assert.deepEqual(ordem, ["PATCH /api/profile", "PUT /api/gyms/acad1", "PUT /api/day-plan/D", "PATCH /api/account"]);
+  assert.deepEqual(ordem, ["PATCH /api/profile", "PUT /api/gyms/acad1", "PUT /api/day-plan/D", "PATCH /api/account", "GET /api/week?date=D"]);
+  assert.equal(M.getVazio(), null, "o Hoje não pode abrir vazio depois de gerar a semana (ficava com o 'sem semana' do boot)");
   const p = chamadas[0].body.data;
   assert.equal(p.goal.statement, "Ombros largos para o verão (teste)"); assert.equal(p.meta.checkup, "feito"); assert.equal(p.sex, undefined); assert.equal(p.diet, undefined);
   assert.ok(chamadas[2].body.plan.items.length > 0, "treino de hoje com exercícios");
