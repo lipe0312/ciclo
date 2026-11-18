@@ -115,3 +115,27 @@ test("empurrar pelo MCP: confirmar recusa prévia de outro dia ou de semana que 
   const p3 = await tool(env, a.token, "ciclo_semana_empurrar");
   assert.equal((await tool(env, a.token, "ciclo_semana_empurrar", { confirmar: p3.token })).empurrado, true);
 });
+
+test("presença num dia que já era de treino (ou séries registradas nele) não reorganiza; sem plano ou 'não treinei' sim", async (t) => {
+  t.mock.method(Date, "now", () => Date.parse(`${QUA}T15:00:00Z`));
+  const env = makeEnv();
+  const a = await conta(env, "gabi");
+  const v0 = (await a.c("GET", `/api/week?date=${QUA}`)).data.week.version;
+  // quarta é dia de treino planejado: "treinei" e séries registradas nele não mudam a semana
+  assert.equal((await tool(env, a.token, "ciclo_marcar_presenca", { date: QUA, status: "fui" })).ok, true);
+  const w1 = (await a.c("GET", `/api/week?date=${QUA}`)).data.week;
+  assert.equal(w1.version, v0, "treinei num dia planejado: sem versão nova");
+  assert.equal(dia(w1, QUA).status, "feito");
+  await tool(env, a.token, "ciclo_treino_registrar", { exercicioId: ids()[0], series: [{ kg: 4, reps: 12 }] });
+  assert.equal((await a.c("GET", `/api/week?date=${QUA}`)).data.week.version, v0, "séries no dia planejado: sem versão nova");
+  // segunda (fora do cadastro ter–sex, sem plano): "treinei" reorganiza
+  await tool(env, a.token, "ciclo_marcar_presenca", { date: "2026-11-16", status: "fui" });
+  const w2 = (await a.c("GET", `/api/week?date=${QUA}`)).data.week;
+  assert.ok(w2.version > v0, "treinei num dia sem plano reorganiza");
+  assert.equal(dia(w2, "2026-11-16").status, "feito");
+  // "não treinei" na terça planejada reorganiza; ler de novo não cria outra versão
+  await tool(env, a.token, "ciclo_marcar_presenca", { date: "2026-11-17", status: "nao_fui" });
+  const w3 = (await a.c("GET", `/api/week?date=${QUA}`)).data.week;
+  assert.ok(w3.version > w2.version, "não treinei num dia planejado reorganiza");
+  assert.equal((await a.c("GET", `/api/week?date=${QUA}`)).data.week.version, w3.version, "estável");
+});

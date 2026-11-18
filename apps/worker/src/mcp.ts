@@ -16,7 +16,7 @@ import { TOOLS_REVISAO } from "./mcp-revisao.ts";
 import { revisarTreino } from "./treino-gerado.ts";
 import { TOOLS_EXERCICIO, personalizadoMcp } from "./mcp-exercicio.ts";
 import { listarPersonalizados, mapaPersonalizados } from "./exercicio-personalizado.ts";
-import { aplicarNaSemana } from "./semana.ts";
+import { aplicarNaSemana, getWeek } from "./semana.ts";
 import { S as ST, obj, today } from "./mcp-tipos.ts";
 import type { Args, Tool } from "./mcp-tipos.ts";
 import { TACO_FONTE, tacoHints } from "./taco.ts";
@@ -146,7 +146,8 @@ export const TOOLS: Tool[] = [
       await env.DB.prepare("INSERT INTO attendance (user_id, date, status, reason, source, updated_at) VALUES (?5, ?1, ?2, ?3, 'claude', ?4) ON CONFLICT(user_id, date) DO UPDATE SET status=?2, reason=?3, source='claude', updated_at=?4")
         .bind(d, oneOf(a.status, "status", ["fui", "nao_fui", "folga"] as const), str(a.motivo, "motivo", 200, false), Date.now(), uid).run();
       // #113 a semana se reorganiza a partir da presença (dia desta semana)
-      const naSemana = mondayOf(d) === mondayOf(today()) ? await aplicarNaSemana(env, uid, today()) : false;
+      // só reorganiza quando a presença muda o que a semana sabe (treinou sem plano, faltou num dia planejado)
+      const naSemana = mondayOf(d) === mondayOf(today()) ? !!(await getWeek(env, uid, today())).week : false;
       return { ok: true, naSemana };
     },
   },
