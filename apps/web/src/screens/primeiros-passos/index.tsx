@@ -16,6 +16,7 @@ import { BODY, DAYS_LONG, DIET, GOALS, LEVELS, LIM } from "../../lib/perfil-dado
 import { DEFAULT_GYMS } from "../../lib/store/index.ts";
 import { limparDispensaCheckup } from "../../lib/faixa-checkup/index.tsx";
 import { lsGet, lsSet, setPath } from "../../lib/util.ts";
+import { garantirSemana } from "../semana/estado.ts";
 import { classePulso, pararPulso } from "../../lib/pulso/index.ts";
 
 const KEY = "ciclo:pp";
@@ -257,6 +258,8 @@ async function concluir(setBusy: (b: boolean) => void, setFalta: (f: C.Falta[]) 
       await api("PUT", `/api/day-plan/${today}`, { plan, gymId: S.ui.gymId, source: "core" });
       await api("PATCH", "/api/account", { onboarding: "concluido" });
       rascunhoPP.limpar();
+      // a casca já carregou a semana no boot (sem perfil → "sem semana"); sem recarregar aqui o Hoje abria vazio até o F5
+      await garantirSemana(true);
     }
     S.onboarding = "concluido"; pp.step = 0; pp.semDor = false; savePP(); salvo = ""; commit(); toast("Semana gerada"); go("#hoje");
   } catch (e) { toast(mensagemErro(e)); setBusy(false); }

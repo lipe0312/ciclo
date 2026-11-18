@@ -59,7 +59,9 @@ async function escrever(c, seletor, valor) {
   return r;
 }
 const abrirNoCenario = async (c, tela) => { // #77 até 3 tentativas: a primeira navegação do Chrome recém-aberto às vezes perde o redirecionamento
-  for (let t = 0; t < 3; t++) {
+  for (let t = 0; t < 5; t++) {
+    // o `vite build --watch` do cenário esvazia o dist ao reconstruir: "/" dá 404 (chrome-error) por alguns segundos
+    for (let i = 0; i < 100 && (await fetch(`${BASE}/`).then((r) => r.status, () => 0)) !== 200; i++) await sleep(200);
     await c.abrir(urlAbertura(CENARIO, tela, new URL(BASE).port));
     if (await c.esperar(`location.hash === '#${tela}' && document.querySelector('.pp, .view.on')`)) return;
   }
@@ -170,7 +172,8 @@ async function primeiroAcesso(c) {
     const st = await c.ev("fetch('/api/state?date=' + new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())).then((r) => r.json())");
     ok(st.onboarding === "concluido", "Primeiros passos não foi concluído");
     ok(st.dayPlan?.plan?.items?.length > 0, "o servidor não tem o treino de hoje");
-    ok(!(await c.texto()).includes("Sua Home ainda está vazia"), "o Hoje continua vazio");
+    // sem recarregar: o Hoje tem de sair do começo vazio sozinho (antes ficava "Seu Hoje está vazio" até o F5)
+    ok(await c.esperar("!(document.querySelector('#app')?.innerText ?? '').includes('Seu Hoje está vazio') && (document.querySelector('#app')?.innerText ?? '').includes('O caminho até aqui')", 10000), `o Hoje continua vazio (${(await c.texto()).replace(/\s+/g, " ").slice(0, 160)})`);
   }, c);
   await passo("10. menu ⋯ (Mais): cada item abre a tela que diz", async () => {
     await c.clicar("Mais opções");
@@ -213,11 +216,14 @@ async function boasVindas(c) {
     ok(!(await temCartao(c)), "o cartão voltou sem o cache do aparelho");
   }, c);
   await passo("12. outra conta com o checkup feito: o cartão aparece e o servidor diz 'mostrar'", async () => {
-    const perfil = await c.ev(`fetch('/api/state?date=' + ${HOJE_JS}).then((r) => r.json()).then((j) => j.profile)`);
+    // perfil e academias da 1ª conta (sem academia o servidor responde "sem_academia" e o Hoje fica no começo vazio, que é o certo)
+    const { profile: perfil, gyms } = await c.ev(`fetch('/api/state?date=' + ${HOJE_JS}).then((r) => r.json()).then((j) => ({ profile: j.profile, gyms: j.gyms }))`);
     await c.send("Network.setExtraHTTPHeaders", { headers: { "x-dev-user": "cenario-vazio-serie" } });
     const r = await c.ev(`(async () => { const j = async (m, p, b) => { const r = await fetch(p, { method: m, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }); if (!r.ok) throw new Error(m + ' ' + p + ' → ' + r.status); return r.json(); };
-      await j('PUT', '/api/profile', { data: ${JSON.stringify(perfil)} }); await j('PATCH', '/api/account', { onboarding: 'concluido' }); return (await fetch('/api/account').then((x) => x.json())).account?.email; })()`);
-    ok(String(r).startsWith("cenario-vazio-serie@"), `não trocou de conta (${r})`);
+      await j('PUT', '/api/profile', { data: ${JSON.stringify(perfil)} });
+      for (const g of ${JSON.stringify(gyms ?? [])}) await j('PUT', '/api/gyms/' + encodeURIComponent(g.id), { name: g.name, kind: g.kind, equipment: g.equipment, busyHours: g.busyHours });
+      await j('PATCH', '/api/account', { onboarding: 'concluido' }); return (await fetch('/api/account').then((x) => x.json())).account?.email; })()`);
+    ok(String(r).startsWith("cenario-vazio-serie@"), `não trocou de conta (${r})`); ok((gyms ?? []).length > 0, "a 1ª conta não tem academia para copiar");
     await c.ev("localStorage.clear()"); await c.recarregar(); ok(await homePronta(c), `o Hoje da 2ª conta não carregou (${(await c.texto()).replace(/\s+/g, " ").slice(0, 160)})`);
     igual(await boasVindasServidor(c), "mostrar", "boasVindas no servidor");
     ok(await temCartao(c), "sem o cartão na 2ª conta");
@@ -270,7 +276,7 @@ async function treinoAtual(c) {
   let antes = [];
   await passo("abre o Treino da conta em uso; há o atalho opcional 'Registrar meu treino atual'", async () => {
     await abrirNoCenario(c, "treino");
-    ok(await c.esperar("document.querySelector('#app')?.innerText.includes('Registrar meu treino atual')", 10000), "sem o atalho no Treino");
+    ok(await c.esperar("document.querySelector('#app')?.innerText.includes('Registrar meu treino atual')", 10000), `sem o atalho no Treino (${await c.ev("location.href")}: ${(await c.texto()).replace(/\s+/g, " ").slice(0, 300)} · console: ${c.consola.map((x) => x.texto.slice(0, 200)).join(" | ")})`);
   }, c);
   await passo("sem cadastro, a semana continua sendo gerada (e não usa o crucifixo apoiado no banco)", async () => {
     antes = await diaComPosterior(c);
