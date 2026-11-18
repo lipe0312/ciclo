@@ -41,17 +41,21 @@ export function SeloOrigem({ d, p }: { d: Dia; p: C.DayPlan }) {
 /** #108 Dia sem treino: o botão é Gerar treino (nada é gerado ao abrir a tela). */
 export const semTreino = (d: Dia) => d.status === "livre" || (d.status === "folga" && d.date >= today && !planoDoDia(d));
 
-/** #113 Treinei / Não treinei em qualquer dia até hoje (dentro ou fora do cadastro). */
+/** #113 Treinei / Não treinei em qualquer dia até hoje (dentro ou fora do cadastro). Hoje: "Treinei" é a ação primária;
+ *  nos outros dias, uma linha discreta (botões fantasma, toque ≥ 44 px). */
 export function Marcar({ d }: { d: Dia }) {
   if (!marcavel(d)) return null;
-  return <div class="sem-acts sem-marcar">
-    <button type="button" class="btn" onClick={() => void marcar(d, true)}><Icon id="check" />Treinei</button>
-    {podeNaoTreinei(d) && <button type="button" class="btn" onClick={() => void marcar(d, false)}>Não treinei</button>}
+  const hoje = d.date === today;
+  return <div class={`sem-acts sem-marcar${hoje ? "" : " leve"}`}>
+    {!hoje && <span class="small sub">Treinou?</span>}
+    <button type="button" class={`btn${hoje ? " pri" : " ghost"}`} onClick={() => void marcar(d, true)}><Icon id="check" />Treinei</button>
+    {podeNaoTreinei(d) && <button type="button" class={`btn${hoje ? "" : " ghost"}`} onClick={() => void marcar(d, false)}>Não treinei</button>}
   </div>;
 }
 
 /** #113 Hoje tem treino e não dá: empurra os treinos um dia (prévia antes de confirmar). */
 function HojeNaoDa({ s }: { s: Semana }) {
+  // só com treino hoje ainda não feito: já treinou (feito), folga ou livre não têm o que empurrar
   if (s.days.find((d) => d.date === today)?.status !== "hoje") return null;
   return <Card><div class="row between wrapx" style="gap:8px"><div style="min-width:0"><h2>Hoje não dá?</h2>
     <p class="small sub" style="margin-top:4px">Empurre os treinos: hoje vira folga e cada um anda um dia.</p></div>

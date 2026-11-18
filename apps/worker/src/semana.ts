@@ -8,7 +8,7 @@ import type { Env } from "./env.ts";
 import { HttpError, date, int, oneOf, str } from "./http.ts";
 import { EMPTY_MSG, getProfile, listGyms, parse, weekState } from "./db.ts";
 import type { EmptyReason } from "./db.ts";
-import { today as hojeSP } from "./mcp-tipos.ts";
+import { hojeSP } from "./relogio.ts";
 
 export type Source = "auto" | "regenerar" | "ajuste" | "falta" | "extra" | "desfazer";
 /** O que vai no plan_json de cada versão. */
@@ -300,7 +300,11 @@ export async function empurrar(env: Env, uid: string, b: Record<string, unknown>
   const st = c.latest!.stored!;
   const r = empurrarTreinos(input(c, st, st.plan), st.plan);
   if ("error" in r) throw new HttpError(409, r.error);
-  const previa = { moves: r.moves, diff: r.diff };
+  // a prévia carrega a versão da semana e o que anda: confirmar só aplica exatamente o que foi mostrado
+  const previa = { moves: r.moves, diff: r.diff, versao: c.latest!.version, assinatura: JSON.stringify(r.moves) };
+  const esp = b.esperado as { versao?: unknown; assinatura?: unknown } | undefined;
+  if (esp && (esp.versao !== previa.versao || esp.assinatura !== previa.assinatura))
+    throw new HttpError(409, "a semana mudou desde a prévia: simule de novo e mostre a prévia atualizada");
   if (b.apply !== true) return { ...previa, week: null };
   // do último para o primeiro: o destino de cada um já está livre quando ele anda
   const stmts = [...r.fixos].reverse().flatMap((f) => f.para

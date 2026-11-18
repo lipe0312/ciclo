@@ -72,3 +72,5 @@
 .sem-aviso .sem-acts .btn{flex:none;width:100%;justify-content:center}
 /* #113 Treinei / Não treinei: dois botões lado a lado, toque ≥ 44 px */
 .sem-marcar .btn{flex:1 1 0;min-width:0;white-space:nowrap}
+.sem-marcar.leve{align-items:center;flex-wrap:nowrap;margin-top:4px;gap:4px}
+.sem-marcar.leve .btn{flex:0 0 auto;padding:0 10px}

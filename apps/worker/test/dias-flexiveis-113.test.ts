@@ -92,3 +92,26 @@ test("empurrar pelo MCP: sempre prévia + token; confirmar grava uma vez; token 
   assert.equal(rep.jaConfirmado, true, "repetir não empurra de novo");
   assert.equal((await a.c("GET", `/api/week?date=${QUA}`)).data.week.version, w.version);
 });
+
+test("empurrar pelo MCP: confirmar recusa prévia de outro dia ou de semana que mudou (refaça a prévia)", async (t) => {
+  let agora = Date.parse(`${QUA}T15:00:00Z`);
+  t.mock.method(Date, "now", () => agora);
+  const env = makeEnv();
+  const a = await conta(env, "fabi");
+  await a.c("GET", `/api/week?date=${QUA}`);
+  // a semana mudou depois da prévia (treino salvo na quinta): nada é empurrado
+  const p1 = await tool(env, a.token, "ciclo_semana_empurrar");
+  await tool(env, a.token, "ciclo_salvar_treino_do_dia", { date: QUI, nome: "Quinta nova", motivo: "pedido fictício", itens: ids().map((id) => ({ id, sets: 3 })) });
+  const v1 = (await a.c("GET", `/api/week?date=${QUA}`)).data.week.version;
+  assert.match((await tool(env, a.token, "ciclo_semana_empurrar", { confirmar: p1.token })).erro, /mudou desde a prévia/);
+  assert.equal((await a.c("GET", `/api/week?date=${QUA}`)).data.week.version, v1, "nada gravado");
+  assert.equal(dia((await a.c("GET", `/api/week?date=${QUA}`)).data.week, QUA).kind, "treino");
+  // prévia das 23:59 confirmada às 00:05 (São Paulo, ainda dentro dos 15 min): é de outro dia, recusa
+  agora = Date.parse(`${QUI}T02:59:00Z`);
+  const p2 = await tool(env, a.token, "ciclo_semana_empurrar");
+  agora = Date.parse(`${QUI}T03:05:00Z`);
+  assert.match((await tool(env, a.token, "ciclo_semana_empurrar", { confirmar: p2.token })).erro, /outro dia/);
+  // prévia nova do dia, semana igual: vale
+  const p3 = await tool(env, a.token, "ciclo_semana_empurrar");
+  assert.equal((await tool(env, a.token, "ciclo_semana_empurrar", { confirmar: p3.token })).empurrado, true);
+});

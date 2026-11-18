@@ -241,6 +241,12 @@ async function matriz(env: any, ana: string, bia: string) {
     assert.equal(r.status, 200, `${name}: ${r.text}`); assert.equal(!!r.data.result.isError, !!isErr, `${name}: ${r.text}`);
     noLeak(name, r.text);
   }
+  // #113 empurrar válido da A: o day_plan dela muda de data; o da B fica intacto (linha a linha)
+  const planosB = () => JSON.stringify(env.DB.raw.prepare("SELECT date, gym_id, plan, source, created_at FROM day_plan WHERE user_id = ? ORDER BY date").all(B.uid));
+  const antesB = planosB();
+  const emp = await a("POST", "/api/week/empurrar", { today: D, apply: true });
+  assert.ok(emp.status < 300, `POST /api/week/empurrar (A): ${emp.status} ${emp.text}`); noLeak("POST /api/week/empurrar (A)", emp.text);
+  assert.equal(planosB(), antesB, "day_plan da B mudou com o empurrar da A");
   // #30: resumo geral e resource ciclo://contexto da A não trazem nada da B (memória, nota, dor, objetivo)
   const res = await call(env, "POST", "/mcp", { bearer: A.token, body: { jsonrpc: "2.0", id: 2, method: "resources/read", params: { uri: "ciclo://contexto" } } });
   assert.equal(res.status, 200); assert.ok(res.data.result.contents[0].text.includes("MARCA_A")); noLeak("resources/read", res.text);

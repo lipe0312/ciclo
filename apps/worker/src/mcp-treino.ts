@@ -71,14 +71,17 @@ async function semanaGerar(a: Args, env: Env, uid: string) {
   return { refeita: true, mudancas: r.diff, ...(r.week ? semanaCompacta(r.week as never) : {}) };
 }
 
-/** #113 Empurrar treino: sempre com prévia (o que anda e o diff) + token; só grava com confirmar:<token>. */
+/** #113 Empurrar treino: sempre com prévia (o que anda e o diff) + token; só grava com confirmar:<token>.
+ *  O token vale só no mesmo dia e para a mesma semana da prévia (versão + o que anda); senão, simule de novo. */
+interface PayloadEmpurrar { date: string; versao: number; assinatura: string }
 async function semanaEmpurrar(a: Args, env: Env, uid: string) {
-  if (a.confirmar != null) return confirmar<{ date: string }, unknown>(env, uid, "semana_empurrar", a.confirmar, async () => {
-    const r = await empurrar(env, uid, { today: today(), apply: true });
+  if (a.confirmar != null) return confirmar<PayloadEmpurrar, unknown>(env, uid, "semana_empurrar", a.confirmar, async (p) => {
+    const r = await empurrar(env, uid, { today: p.date, apply: true, esperado: { versao: p.versao, assinatura: p.assinatura } });
     return { empurrado: true, andou: r.moves, ...(r.week ? semanaCompacta(r.week as never) : {}) };
-  });
-  const r = await empurrar(env, uid, { today: today(), apply: false });
-  const token = await criarPrevia(env, uid, "semana_empurrar", { date: today() });
+  }, (p) => { if (p.date !== today()) throw new HttpError(409, "a prévia é de outro dia: simule de novo e mostre a prévia atualizada"); });
+  const hoje = today();
+  const r = await empurrar(env, uid, { today: hoje, apply: false });
+  const token = await criarPrevia(env, uid, "semana_empurrar", { date: hoje, versao: r.versao, assinatura: r.assinatura } satisfies PayloadEmpurrar);
   return {
     previa: true, token, expiraEmMin: 15, andou: r.moves, mudancas: r.diff,
     proximoPasso: "Mostre o que anda (para null = passou do domingo e volta para o orçamento) e só com o sim chame de novo com confirmar:<token>.",
