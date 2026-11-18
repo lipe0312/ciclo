@@ -1,10 +1,11 @@
 // Repositório: todo SQL fica aqui (ou nas rotas), sempre com parâmetros (bind) e SEMPRE filtrado por user_id.
 // O uid vem da autenticação (auth.ts), nunca do corpo da requisição.
-import { DEFAULT_PROFILE, DOWS, MAX_SESSION_MS, entradaTreinoAtual, manterTreinoAtual, assignWeekdays, reassignDays, MUSCLE_IDS, PAIN_REGIONS, applyProfilePatch, completarObjetivo, mensagemPerfil, mondayOf, normalizeProfile, planFingerprint, sessionSummary, weekDates, weeklyTargets } from "@ciclo/core";
+import { DEFAULT_PROFILE, divisoesDe, ehIdPersonalizado, DOWS, MAX_SESSION_MS, entradaTreinoAtual, manterTreinoAtual, assignWeekdays, reassignDays, MUSCLE_IDS, PAIN_REGIONS, applyProfilePatch, completarObjetivo, mensagemPerfil, mondayOf, normalizeProfile, planFingerprint, sessionSummary, weekDates, weeklyTargets } from "@ciclo/core";
 import { HttpError, int, oneOf, str } from "./http.ts";
 import type { DayInput, Group, Mode, MuscleId, Pain, SetLog } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { somarEscrita } from "./limites.ts";
+import { idsPersonalizados } from "./exercicio-personalizado.ts";
 import { COTA_ESCRITAS_DIA } from "@ciclo/core";
 
 export interface Profile {
@@ -53,12 +54,20 @@ export async function saveProfile(env: Env, uid: string, input: unknown, mode: "
   const base = mode === "merge" ? (atual ?? {}) : {};
   // #93 o app manda o perfil inteiro, mas um corpo sem `treinoAtual` (outra tela, sync, cache) não pode apagar o treino cadastrado
   const corpo = mode === "replace" && input && typeof input === "object" && !Array.isArray(input) ? manterTreinoAtual(atual, input as Record<string, unknown>) : input;
-  const r = applyProfilePatch(base, corpo);
+  const r = applyProfilePatch(base, corpo, { personalizados: await personalizadosDoTreino(env, uid, corpo, atual) });
   if (!r.ok) throw new HttpError(400, humano ? mensagemPerfil(r.campos) : r.errors.join("; "), humano ? "perfil_invalido" : undefined);
   const data = { ...completarObjetivo(r.profile), ...extra };
   const versao = await putProfile(env, uid, data);
   await syncGymWeekdays(env, uid, (data as { dayGym?: Record<string, string> }).dayGym ?? {});
   return { data, versao };
+}
+const cusDo = (t: unknown) => divisoesDe(t).flatMap((d) => (Array.isArray(d.exercicios) ? d.exercicios : []))
+  .map((x) => (x as { id?: unknown })?.id).filter(ehIdPersonalizado);
+/** #112 cus_ aceitos no "Meu treino atual": os desta conta + os já salvos nele (apagar o personalizado não trava salvar o perfil). */
+async function personalizadosDoTreino(env: Env, uid: string, corpo: unknown, atual: Record<string, unknown> | null): Promise<Set<string>> {
+  const novo = corpo && typeof corpo === "object" ? (corpo as { treinoAtual?: unknown }).treinoAtual : undefined;
+  if (!cusDo(novo).length) return new Set();
+  return new Set([...(await idsPersonalizados(env, uid)), ...cusDo(atual?.treinoAtual)]);
 }
 /** Impressão do perfil vigente quando o treino foi gerado (a última versão gravada até `at`). Sem histórico → null (não alarma). */
 export async function planProfileFingerprint(env: Env, uid: string, at: number): Promise<string | null> {

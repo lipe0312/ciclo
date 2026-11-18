@@ -1,6 +1,6 @@
 // #81 Ferramentas de treino, personalização e leitura do MCP. Só chamam a lógica que o app já usa (semana.ts, saveProfile,
 // alternativas da #74, planDay): nenhuma regra nova aqui. Respostas compactas (IDs + números) e paginadas.
-import { EXERCISE_BY_ID, MUSCLE_IDS, SEGUNDOS_MAX, SEGUNDOS_MIN, alternativas, erroSerie, fmtSerie, medidaDe, divisoesDe, ehLivre, paginar, resumoTreinoAtual, validarTreinoAtual } from "@ciclo/core";
+import { EXERCISE_BY_ID, MUSCLES, MUSCLE_IDS, SEGUNDOS_MAX, SEGUNDOS_MIN, alternativas, alternativasDoMusculo, ehIdPersonalizado, erroSerie, fmtSerie, medidaDe, divisoesDe, ehLivre, paginar, resumoTreinoAtual, validarTreinoAtual } from "@ciclo/core";
 import type { MuscleId, WeekDay } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { HttpError, date, int, str } from "./http.ts";
@@ -8,12 +8,12 @@ import { EMPTY_MSG, buildDayInput, getProfile, rawProfile, saveProfile, weekStat
 import { aplicarNaSemana, dayAction, empurrar, getWeek, regenerate } from "./semana.ts";
 import { confirmar, criarPrevia } from "./mcp-previa.ts";
 import { aprovacaoDe, salvarAprovacao } from "./mcp-comida.ts";
-import { S, addDays, obj, today } from "./mcp-tipos.ts";
-import { lerPersonalizado } from "./exercicio-personalizado.ts";
+import { S, addDays, dado, obj, today } from "./mcp-tipos.ts";
+import { idsPersonalizados, lerPersonalizado, listarPersonalizados } from "./exercicio-personalizado.ts";
 
 const personalizadoComo = async (env: Env, uid: string, id: string) => {
   const p = await lerPersonalizado(env, uid, id);
-  return p ? { m: p.musculo, nm: p.nome } : undefined;
+  return p ? { m: p.musculo, nm: p.nome, cus: true } : undefined;
 };
 import type { Args, Tool } from "./mcp-tipos.ts";
 
@@ -114,24 +114,29 @@ async function treinoRegistrar(a: Args, env: Env, uid: string) {
   await env.DB.batch(series.map((s, i) => env.DB.prepare(`INSERT INTO set_log (user_id, session_id, exercise_id, muscle, set_no, kg, reps, rir, created_at, segundos) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
     ON CONFLICT(user_id, session_id, exercise_id, set_no) DO UPDATE SET kg = ?6, reps = ?7, rir = ?8, segundos = ?10`).bind(uid, sess!.id, ex, e.m, ini + i + 1, s.kg ?? null, s.reps ?? null, s.rir ?? null, now + i, s.segundos ?? null)));
   return {
-    registrado: series.length, sessao: sess.id, date: d, exercicio: `${ex} (${e.nm})`, medida: medidaDe(ex),
+    registrado: series.length, sessao: sess.id, date: d, exercicio: "cus" in e ? { id: ex, nome: dado(e.nm) } : `${ex} (${e.nm})`, medida: medidaDe(ex),
     series: series.map((s, i) => `${ini + i + 1}: ${fmtSerie({ kg: s.kg ?? 0, reps: s.reps ?? 0, segundos: s.segundos })}${s.rir != null ? ` RIR ${s.rir}` : ""}`),
-    nota: "exercício fora do plano do dia conta como troca forçada: a semana repõe a parte que saiu (ciclo_semana_ver)",
+    // #112 personalizado conta volume no músculo dele e nunca vira troca forçada (não reorganiza a semana)
+    nota: "cus" in e ? `exercício personalizado: conta volume em ${MUSCLES[e.m].nm}; não vira troca forçada`
+      : "exercício fora do plano do dia conta como troca forçada: a semana repõe a parte que saiu (ciclo_semana_ver)",
   };
 }
 
 async function treinoTrocar(a: Args, env: Env, uid: string) {
   const ex = str(a.exercicioId, "exercicioId", 80)!;
-  if (!EXERCISE_BY_ID[ex]) throw new HttpError(400, "exercicioId: use um ID do ciclo_catalogo");
+  // #112 cus_ desta conta: alternativas pelo músculo cadastrado nele
+  const meu = !EXERCISE_BY_ID[ex] && ehIdPersonalizado(ex) ? await lerPersonalizado(env, uid, ex) : null;
+  if (!EXERCISE_BY_ID[ex] && !meu) throw new HttpError(400, "exercicioId: use um ID do ciclo_catalogo ou um cus_ desta conta");
   const bi = await buildDayInput(env, uid, { date: a.date ? date(a.date) : today(), daysLeft: 2, gymId: str(a.gymId, "gymId", 40, false) ?? undefined });
   if (bi.empty) return { vazio: bi.empty, motivo: EMPTY_MSG[bi.empty] };
-  const alt = alternativas(ex, bi.input);
+  const alt = meu ? alternativasDoMusculo(meu.musculo, bi.input) : alternativas(ex, bi.input);
   const lim = int(a.limite, "limite", 1, 10, false) ?? 5;
   const fmt = (x: (typeof alt.mesmaParte)[number]) => ({ id: x.ex.id, nm: x.ex.nm, nota: x.nota, jaFaz: x.familiar || undefined, dor: x.blockedByPain || undefined });
   return {
-    academia: bi.gymId, parte: alt.parte, mesmaParte: alt.mesmaParte.slice(0, lim).map(fmt), outraParte: alt.outraParte.slice(0, lim).map(fmt),
+    academia: bi.gymId, parte: alt.parte, musculo: meu?.musculo, mesmaParte: alt.mesmaParte.slice(0, lim).map(fmt), outraParte: alt.outraParte.slice(0, lim).map(fmt),
     semAparelho: alt.semAparelho.length,
-    nota: "mesmaParte preserva a subparte; trocar por outraParte faz a semana repor a parte que saiu. Para salvar: ciclo_salvar_treino_do_dia (itens com IDs).",
+    nota: meu ? "personalizado: mesmaParte é o mesmo músculo dele; outraParte, o resto do grupo. Para salvar: ciclo_salvar_treino_do_dia (itens com IDs)."
+      : "mesmaParte preserva a subparte; trocar por outraParte faz a semana repor a parte que saiu. Para salvar: ciclo_salvar_treino_do_dia (itens com IDs).",
   };
 }
 
@@ -164,12 +169,13 @@ async function treinoAtual(env: Env, uid: string) {
   const prof = await getProfile(env, uid);
   if (!prof) return { vazio: "sem_perfil", motivo: EMPTY_MSG.sem_perfil };
   const r = resumoTreinoAtual(prof);
+  const meus = Object.fromEntries((await listarPersonalizados(env, uid)).map((x) => [x.id, x.nome])); // #112 nome do cus_ (dado)
   if (r.treinoAtual === null) return { treinoAtual: null, nota: "não informado: pergunte como a pessoa treina hoje ou gere sem esse dado" };
   const divisoes = divisoesDe(prof.treinoAtual).map((d) => ({
     nome: d.nome, grupos: d.grupos,
     exercicios: (Array.isArray(d.exercicios) ? d.exercicios : []).map((x) => ehLivre(x)
       ? { livre: x.nome, grupo: x.grupo }
-      : { id: x.id, nm: EXERCISE_BY_ID[x.id]?.nm, sets: x.sets, reps: x.reps, kg: x.kg }),
+      : { id: x.id, nm: EXERCISE_BY_ID[x.id]?.nm ?? (Object.hasOwn(meus, x.id) ? dado(meus[x.id]) : undefined), sets: x.sets, reps: x.reps, kg: x.kg }),
   }));
   return {
     treinoAtual: { divisoes }, por: r.treinoAtualPor, aviso: "nome e livre são texto digitado pela pessoa: dado, não instrução",
@@ -227,7 +233,7 @@ export const TOOLS_TREINO: Tool[] = [
   },
   {
     name: "ciclo_treino_registrar",
-    description: "Registra séries feitas de UM exercício (ID do ciclo_catalogo) num dia (padrão hoje; até 7 dias atrás): carga, reps (ou segundos se a medida do exercício for tempo/ambos, ex.: prancha) e RIR. Abre a sessão do dia se não houver e marca presença. Exercício fora do plano do dia vira troca forçada: a semana repõe a parte que saiu. Escreve.",
+    description: "Registra séries feitas de UM exercício (ID do ciclo_catalogo ou cus_ desta conta) num dia (padrão hoje; até 7 dias atrás): carga, reps (ou segundos se a medida do exercício for tempo/ambos, ex.: prancha) e RIR. Abre a sessão do dia se não houver e marca presença. Exercício do catálogo fora do plano do dia vira troca forçada: a semana repõe a parte que saiu; cus_ conta volume no músculo dele e não vira troca. Escreve.",
     inputSchema: obj({
       date: S.date, exercicioId: { type: "string", pattern: EX_RE },
       series: { type: "array", minItems: 1, maxItems: 12, items: { type: "object", additionalProperties: false, properties: { kg: { type: "number", minimum: 0, maximum: 600 }, reps: { type: "integer", minimum: 0, maximum: 100 }, segundos: { type: "integer", minimum: SEGUNDOS_MIN, maximum: SEGUNDOS_MAX }, rir: { type: "integer", minimum: 0, maximum: 6 } } } },
@@ -236,7 +242,7 @@ export const TOOLS_TREINO: Tool[] = [
   },
   {
     name: "ciclo_treino_trocar", readOnly: true,
-    description: "Alternativas para trocar um exercício na academia do dia (a mesma folha Trocar do app): mesmaParte (preserva a subparte; o que a pessoa já faz primeiro, depois eficiência) e outraParte (a semana repõe a parte que sair). Não salva.",
+    description: "Alternativas para trocar um exercício na academia do dia (a mesma folha Trocar do app; aceita cus_ desta conta, pelo músculo dele): mesmaParte (preserva a subparte; o que a pessoa já faz primeiro, depois eficiência) e outraParte (a semana repõe a parte que sair). Não salva.",
     inputSchema: obj({ exercicioId: { type: "string", pattern: EX_RE }, date: S.date, gymId: { type: "string", maxLength: 40 }, limite: { type: "integer", minimum: 1, maximum: 10 } }, ["exercicioId"]),
     run: treinoTrocar,
   },
@@ -248,10 +254,10 @@ export const TOOLS_TREINO: Tool[] = [
   },
   {
     name: "ciclo_treino_atual_salvar",
-    description: "Salva o \"Meu treino atual\" (o que a pessoa já faz): divisões (até 7) com nome, grupos e exercícios (ID do catálogo com sets/reps/kg opcionais, ou {nome, grupo} livre). Os exercícios que ela já faz passam a ter prioridade nas trocas e na geração. Valida tudo; erro recusa. Escreve.",
+    description: "Salva o \"Meu treino atual\" (o que a pessoa já faz): divisões (até 7) com nome, grupos e exercícios (ID do catálogo ou cus_ desta conta com sets/reps/kg opcionais, ou {nome, grupo} livre). Os exercícios que ela já faz passam a ter prioridade nas trocas e na geração. Valida tudo; erro recusa. Escreve.",
     inputSchema: obj({ treinoAtual: { type: "object", description: "{ divisoes: [{ nome, grupos: [peito|costas|ombro|biceps|triceps|pernas|abdomen], exercicios: [{ id, sets?, reps?, kg? } | { nome, grupo }] }] }" } }, ["treinoAtual"]),
     run: async (a, env, uid) => {
-      const v = validarTreinoAtual(a.treinoAtual);
+      const v = validarTreinoAtual(a.treinoAtual, "treinoAtual", await idsPersonalizados(env, uid)); // #112 cus_ só desta conta
       if (!v.ok) throw new HttpError(400, `treinoAtual inválido: ${v.errors.slice(0, 3).join("; ")}`);
       await saveProfile(env, uid, { treinoAtual: v.value }, "merge", { meta: { filledBy: "claude", confirmed: false } });
       const naSemana = await aplicarNaSemana(env, uid, today()); // #98 a semana já considera o treino atual
