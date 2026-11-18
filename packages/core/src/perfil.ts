@@ -87,7 +87,9 @@ export const goalPreset = (goalId: string): SubMuscleId[] => [...(GOAL_SUBS[goal
 
 // ---------- validação ----------
 type Err = (msg: string) => void;
-type Rule = (v: unknown, path: string, err: Err) => unknown;
+/** #112 Contexto da conta para validar: os IDs cus_ dela (o "Meu treino atual" aceita só esses fora do catálogo). */
+export interface PerfilCtx { personalizados?: ReadonlySet<string> | "todos" }
+type Rule = (v: unknown, path: string, err: Err, ctx?: PerfilCtx) => unknown;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
 
@@ -173,7 +175,7 @@ const SCHEMA: Record<string, Rule> = {
   places: (v, p, err) => { const r = list(oneOf(PLACES), 2)(v, p, err); return Array.isArray(r) && !r.length ? undefined : r; },
   meta: objectKeys({ filledBy: oneOf(["app", "claude"]), confirmed: bool, checkup: oneOf(["feito", "pulado"]), assistentes: record(slug, yes, 12) }),
   // #74 "Meu treino atual" (opcional; nunca entra no faltaParaGerar): divisões por grupo grande, IDs só do catálogo
-  treinoAtual: (v, p, err) => { const r = validarTreinoAtual(v, p); if (!r.ok) { r.errors.forEach(err); return undefined; } return r.value; },
+  treinoAtual: (v, p, err, ctx) => { const r = validarTreinoAtual(v, p, ctx?.personalizados); if (!r.ok) { r.errors.forEach(err); return undefined; } return r.value; },
 };
 /** `campos`: os campos (de 1º nível) com erro, para a mensagem humana (`mensagemPerfil`); `errors` é o texto técnico (Chat e console). */
 export type Validation<T> = { ok: true; value: T; errors: [] } | { ok: false; errors: string[]; campos: string[] };
@@ -181,7 +183,7 @@ export type Validation<T> = { ok: true; value: T; errors: [] } | { ok: false; er
  * Confere (campo a campo) um perfil inteiro OU parcial (rascunho). Devolve só o que veio, limpo; qualquer erro recusa tudo.
  * #71: campo `null` ou `""` é "não respondido" (fica de fora, sem erro), assim como `places: []` e `goal.id: ""`.
  */
-export function validateProfilePatch(patch: unknown): Validation<Record<string, any>> {
+export function validateProfilePatch(patch: unknown, ctx: PerfilCtx = {}): Validation<Record<string, any>> {
   if (!isObj(patch)) return { ok: false, errors: ["perfil deve ser um objeto"], campos: [] };
   const errors: string[] = [], campos: string[] = [];
   const value: Record<string, any> = {};
@@ -190,7 +192,7 @@ export function validateProfilePatch(patch: unknown): Validation<Record<string, 
     let bad = false;
     const err = (m: string) => { bad = true; if (errors.length < 12) errors.push(m); };
     if (!own(SCHEMA, k)) err(`${nome}: campo desconhecido`);
-    else if (!naoRespondido(patch[k])) { const r = SCHEMA[k](patch[k], k, err); if (r !== undefined) value[k] = r; }
+    else if (!naoRespondido(patch[k])) { const r = SCHEMA[k](patch[k], k, err, ctx); if (r !== undefined) value[k] = r; }
     if (bad && !campos.includes(nome)) campos.push(nome);
   }
   return errors.length ? { ok: false, errors, campos } : { ok: true, value, errors: [] };
@@ -238,8 +240,8 @@ function merge(base: Record<string, any>, patch: Record<string, any>): Record<st
 
 /** Valida o patch, mescla na base e deixa prioridades × subdivisões coerentes. */
 export type Applied = { ok: true; profile: ProfileData; errors: [] } | { ok: false; errors: string[]; campos: string[] };
-export function applyProfilePatch(base: Partial<ProfileData> | Record<string, any>, patch: unknown): Applied {
-  const v = validateProfilePatch(patch);
+export function applyProfilePatch(base: Partial<ProfileData> | Record<string, any>, patch: unknown, ctx: PerfilCtx = {}): Applied {
+  const v = validateProfilePatch(patch, ctx);
   if (!v.ok) return { ok: false, errors: v.errors, campos: v.campos };
   const p = merge(base as Record<string, any>, v.value);
   const hasSubs = own(v.value, "subPriorities"), hasPri = own(v.value, "priorities");
@@ -355,7 +357,7 @@ export function normalizeProfile(raw: unknown): Record<string, any> {
   const out: Record<string, any> = {};
   for (const k of Object.keys(raw)) {
     if (!own(SCHEMA, k) || k === "priorities" || k === "subPriorities" || raw[k] === null) continue;
-    const v = SCHEMA[k](raw[k], k, () => {}) as any;
+    const v = SCHEMA[k](raw[k], k, () => {}, { personalizados: "todos" }) as any; // #112 cus_ salvo já passou pela conta ao gravar
     if (v === undefined) continue;
     if ((MAPS as readonly string[]).includes(k)) for (const mk of Object.keys(v)) if (v[mk] === null) delete v[mk];
     out[k] = v;

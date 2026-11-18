@@ -26,6 +26,12 @@ export async function mapaPersonalizados(env: Env, uid: string, ids: readonly un
   return Object.fromEntries(results.map((r) => [r.id, out(r)]));
 }
 
+/** #112 IDs cus_ DESTA conta (para validar o "Meu treino atual"). */
+export async function idsPersonalizados(env: Env, uid: string): Promise<Set<string>> {
+  const { results } = await env.DB.prepare("SELECT id FROM exercicio_personalizado WHERE user_id = ?1 LIMIT ?2").bind(uid, LIMITE_PERSONALIZADOS).all<{ id: string }>();
+  return new Set(results.map((r) => r.id));
+}
+
 export async function lerPersonalizado(env: Env, uid: string, id: string): Promise<ExercicioPersonalizado | null> {
   if (!ehIdPersonalizado(id)) return null;
   const r = await env.DB.prepare(`SELECT ${COLS} FROM exercicio_personalizado WHERE user_id = ?1 AND id = ?2`).bind(uid, id).first<Row>();
