@@ -1,6 +1,6 @@
 // API JSON do app (sessão própria, #54/#62). Rotas pequenas, um estado agregado por chamada (/api/state)
 // para o celular fazer 1 requisição ao abrir. Toda rota recebe o usuário autenticado (u) e filtra por u.id.
-import { MAX_MCP_TOKENS, estadoToken, tokensAtivos, CARDIO_BY_ID, COTA_MSG, EQUIPMENT_BY_ID, EXERCISE_BY_ID, ehIdPersonalizado, INTENSITIES, MAX_PLACES, MEDIA_MAX_BYTES, MUSCLE_IDS, PROMPTS, SEGUNDOS_MAX, SEGUNDOS_MIN, applyManualEdit, limparPares, checkCardio, erroSerie, classify, planDay, tipoConfere, validatePlace } from "@ciclo/core";
+import { MAX_MCP_TOKENS, MAX_SESSION_MS, estadoToken, tokensAtivos, CARDIO_BY_ID, COTA_MSG, EQUIPMENT_BY_ID, EXERCISE_BY_ID, ehIdPersonalizado, INTENSITIES, MAX_PLACES, MEDIA_MAX_BYTES, MUSCLE_IDS, PROMPTS, SEGUNDOS_MAX, SEGUNDOS_MIN, applyManualEdit, limparPares, checkCardio, erroSerie, classify, planDay, tipoConfere, validatePlace } from "@ciclo/core";
 import type { Action, DayPlan, Intensity, ManualEdit, Mode, MuscleId, Tier } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, id, int, isDate, json, num, oneOf, readJson, str } from "./http.ts";
@@ -319,11 +319,28 @@ on("POST", "/api/sessions", async (req, env, _p, u) => {
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const d = date(b.date), sid = b.id && UUID.test(b.id) ? b.id.toLowerCase() : id(), now = Date.now();
   const startedAt = typeof b.startedAt === "number" && Math.abs(now - b.startedAt) < 6 * 3600e3 ? b.startedAt : now; // aceita início offline recente
+  // #122 uma sessão aberta por dia: outro aparelho, recarregar ou o "Começar" repetido retomam a que está aberta (nunca uma 2ª).
+  // A 2ª sessão do dia só nasce depois que a 1ª terminou ("Treinar de novo").
+  const aberta = "SELECT id, started_at FROM session WHERE user_id = ?1 AND date = ?2 AND finished_at IS NULL AND started_at > ?3 ORDER BY started_at DESC LIMIT 1";
   await env.DB.batch([
-    env.DB.prepare("INSERT OR IGNORE INTO session (user_id, id, date, gym_id, plan, started_at) VALUES (?6, ?1, ?2, ?3, ?4, ?5)").bind(sid, d, str(b.gymId, "gymId", 40, false), JSON.stringify(b.plan ?? {}), startedAt, u.id),
+    env.DB.prepare(`INSERT OR IGNORE INTO session (user_id, id, date, gym_id, plan, started_at) SELECT ?6, ?1, ?2, ?3, ?4, ?5
+      WHERE NOT EXISTS (SELECT 1 FROM session WHERE user_id = ?6 AND date = ?2 AND id <> ?1 AND finished_at IS NULL AND started_at > ?7)`)
+      .bind(sid, d, str(b.gymId, "gymId", 40, false), JSON.stringify(b.plan ?? {}), startedAt, u.id, now - MAX_SESSION_MS),
     env.DB.prepare("INSERT INTO attendance (user_id, date, status, source, updated_at) VALUES (?3, ?1, 'fui', 'inicio', ?2) ON CONFLICT(user_id, date) DO UPDATE SET status='fui', source='inicio', updated_at=?2").bind(d, now, u.id),
   ]);
+  const s = await env.DB.prepare(aberta).bind(u.id, d, now - MAX_SESSION_MS).first<{ id: string; started_at: number }>();
+  if (s && s.id !== sid) return json({ id: s.id, startedAt: s.started_at, retomada: true });
   return json({ id: sid, startedAt }, 201);
+});
+
+// #122 o treino do dia mudou com a sessão aberta: o app aplica na mesma sessão (core) e guarda o plano dela aqui,
+// para outro aparelho retomar igual. Só a sessão aberta da própria conta.
+on("PUT", "/api/sessions/:id/plan", async (req, env, p, u) => {
+  const b = await readJson<{ plan?: unknown }>(req, 48 * 1024);
+  if (!b.plan || typeof b.plan !== "object" || !Array.isArray((b.plan as { items?: unknown }).items)) throw new HttpError(400, "plan: objeto com items");
+  if ((b.plan as { items: unknown[] }).items.length > 40) throw new HttpError(400, "plan: no máximo 40 itens");
+  const r = await env.DB.prepare("UPDATE session SET plan = ?3 WHERE user_id = ?1 AND id = ?2 AND finished_at IS NULL").bind(u.id, p.id, JSON.stringify(b.plan)).run();
+  return json({ ok: true, saved: r.meta.changes > 0 });
 });
 
 on("POST", "/api/sessions/:id/sets", async (req, env, p, u) => {

@@ -151,6 +151,7 @@ async function matriz(env: any, ana: string, bia: string) {
     ["GET /api/sessions", () => a("GET", "/api/sessions")],
     ["DELETE /api/sessions/:id/sets/:exerciseId/:setNo", () => a("DELETE", `/api/sessions/${B.sid}/sets/${B.ex}/1`)],
     ["PUT /api/sessions/:id/rest", () => a("PUT", `/api/sessions/${B.sid}/rest`, { seconds: 30 })],
+    ["PUT /api/sessions/:id/plan", () => a("PUT", `/api/sessions/${B.sid}/plan`, { plan: { name: "x", items: [] } })],
     ["DELETE /api/sessions/:id/rest", () => a("DELETE", `/api/sessions/${B.sid}/rest`)],
     ["GET /api/exercises/:id/history", () => a("GET", `/api/exercises/${B.ex}/history`)],
     ["GET /api/history/last", () => a("GET", `/api/history/last?ids=${B.ex}`)],
@@ -161,7 +162,8 @@ async function matriz(env: any, ana: string, bia: string) {
     ["GET /api/cardio", () => a("GET", "/api/cardio")],
     ["DELETE /api/cardio/:id", () => a("DELETE", `/api/cardio/${B.cardio}`), 404],
     ["POST /api/sessions/:id/finish", () => a("POST", `/api/sessions/${B.sid}/finish`, { feedback: {} })],
-    ["POST /api/sessions", () => a("POST", "/api/sessions", { id: B.sid, date: D, plan: {} }), 201],
+    // #122 a A já tem sessão aberta no dia: retoma a DELA (200), nunca a da B nem uma 2ª
+    ["POST /api/sessions", () => a("POST", "/api/sessions", { id: B.sid, date: D, plan: {} }), 200],
     ["POST /api/pains", () => a("POST", "/api/pains", { region: "ombro_e", intensity: 3 })],
     ["POST /api/pains/:id/resolve", () => a("POST", `/api/pains/${B.pain}/resolve`), 404],
     ["POST /api/inbox", () => a("POST", "/api/inbox", { text: "oi" })],
