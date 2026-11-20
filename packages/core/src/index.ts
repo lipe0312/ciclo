@@ -46,3 +46,4 @@ export * from "./comeco.ts";
 export * from "./treino-gerado.ts";
 export * from "./exercicio-personalizado.ts";
 export * from "./medida.ts";
+export * from "./outro-aparelho.ts";
