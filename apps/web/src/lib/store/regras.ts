@@ -26,6 +26,7 @@ export function dayInput(ui = S.ui, extraPains: any[] = []): C.DayInput {
     equipment: gym ? gym.equipment : [], crowded: ui.crowded, prefs: p.prefs, pinned: { ...p.pinned, ...ui.swapsToday }, avoid: p.avoid,
     pains: [...S.pains, ...extraPains].map((x) => ({ region: x.region, intensity: x.intensity })),
     ...C.entradaTreinoAtual(S.profile), // #74 "Meu treino atual": só prioriza o que a pessoa já faz
+    formato: C.formatoDe(ui.format), // #125 superséries = preferir pares
   };
 }
 export function computePlan(force = false): C.DayPlan {

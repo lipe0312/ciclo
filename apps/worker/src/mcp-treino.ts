@@ -1,6 +1,6 @@
 // #81 Ferramentas de treino, personalização e leitura do MCP. Só chamam a lógica que o app já usa (semana.ts, saveProfile,
 // alternativas da #74, planDay): nenhuma regra nova aqui. Respostas compactas (IDs + números) e paginadas.
-import { EXERCISE_BY_ID, MUSCLES, MUSCLE_IDS, SEGUNDOS_MAX, SEGUNDOS_MIN, alternativas, alternativasDoMusculo, ehIdPersonalizado, erroSerie, fmtSerie, medidaDe, divisoesDe, ehLivre, paginar, resumoTreinoAtual, validarTreinoAtual } from "@ciclo/core";
+import { EXERCISE_BY_ID, MUSCLES, MUSCLE_IDS, SEGUNDOS_MAX, SEGUNDOS_MIN, alternativas, alternativasDoMusculo, topAlternativas, ehIdPersonalizado, erroSerie, fmtSerie, medidaDe, divisoesDe, ehLivre, paginar, resumoTreinoAtual, validarTreinoAtual } from "@ciclo/core";
 import type { MuscleId, WeekDay } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { HttpError, date, int, str } from "./http.ts";
@@ -130,13 +130,13 @@ async function treinoTrocar(a: Args, env: Env, uid: string) {
   const bi = await buildDayInput(env, uid, { date: a.date ? date(a.date) : today(), daysLeft: 2, gymId: str(a.gymId, "gymId", 40, false) ?? undefined });
   if (bi.empty) return { vazio: bi.empty, motivo: EMPTY_MSG[bi.empty] };
   const alt = meu ? alternativasDoMusculo(meu.musculo, bi.input) : alternativas(ex, bi.input);
-  const lim = int(a.limite, "limite", 1, 10, false) ?? 5;
-  const fmt = (x: (typeof alt.mesmaParte)[number]) => ({ id: x.ex.id, nm: x.ex.nm, nota: x.nota, jaFaz: x.familiar || undefined, dor: x.blockedByPain || undefined });
+  // #125 a mesma lista do app (banco fixo, academia do dia, sem dor e sem "nunca"): só o top compacto, sem paginar o catálogo
+  const lim = int(a.limite, "limite", 1, 3, false) ?? 3;
   return {
-    academia: bi.gymId, parte: alt.parte, musculo: meu?.musculo, mesmaParte: alt.mesmaParte.slice(0, lim).map(fmt), outraParte: alt.outraParte.slice(0, lim).map(fmt),
-    semAparelho: alt.semAparelho.length,
-    nota: meu ? "personalizado: mesmaParte é o mesmo músculo dele; outraParte, o resto do grupo. Para salvar: ciclo_salvar_treino_do_dia (itens com IDs)."
-      : "mesmaParte preserva a subparte; trocar por outraParte faz a semana repor a parte que saiu. Para salvar: ciclo_salvar_treino_do_dia (itens com IDs).",
+    academia: bi.gymId, parte: alt.parte, musculo: meu?.musculo,
+    alternativas: topAlternativas(alt, lim).map((x) => ({ id: x.ex.id, nome: x.ex.nm, motivo: x.motivo })),
+    precisaDeAparelho: alt.semAparelho.length || undefined,
+    nota: "na ordem: a 1ª é a melhor troca. Motivo com \"outra parte\" faz a semana repor a parte que saiu. Para salvar: ciclo_salvar_treino_do_dia (itens com IDs).",
   };
 }
 
@@ -242,8 +242,8 @@ export const TOOLS_TREINO: Tool[] = [
   },
   {
     name: "ciclo_treino_trocar", readOnly: true,
-    description: "Alternativas para trocar um exercício na academia do dia (a mesma folha Trocar do app; aceita cus_ desta conta, pelo músculo dele): mesmaParte (preserva a subparte; o que a pessoa já faz primeiro, depois eficiência) e outraParte (a semana repõe a parte que sair). Não salva.",
-    inputSchema: obj({ exercicioId: { type: "string", pattern: EX_RE }, date: S.date, gymId: { type: "string", maxLength: 40 }, limite: { type: "integer", minimum: 1, maximum: 10 } }, ["exercicioId"]),
+    description: "As 3 melhores trocas de um exercício na academia do dia, na ordem, {id, nome, motivo}: a mesma lista do Trocar e do Detalhe no app (banco fixo da mesma porção do músculo, filtrado por aparelho, dor e 'nunca'; aceita cus_ desta conta, pelo músculo dele). Não salva.",
+    inputSchema: obj({ exercicioId: { type: "string", pattern: EX_RE }, date: S.date, gymId: { type: "string", maxLength: 40 }, limite: { type: "integer", minimum: 1, maximum: 3 } }, ["exercicioId"]),
     run: treinoTrocar,
   },
   {

@@ -122,7 +122,7 @@ const demo = (() => {
       profile: { daysUsual: p.daysUsual, daysTarget: p.daysTarget, minutes: p.minutes, priorities: p.priorities, dayGym: p.dayGym,
         gyms: S.gyms.map((g) => ({ id: g.id, equipment: g.equipment })), prefs: p.prefs, pinned: p.pinned, avoid: p.avoid,
         pains: S.pains.map((x) => ({ region: x.region, intensity: x.intensity })), goalId: S.profile.goal?.id ?? null,
-        ...C.entradaTreinoAtual(S.profile) },
+        ...C.entradaTreinoAtual(S.profile), formato: C.formatoDe(S.profile.dynamics) },
       targets: prog().targets, overrides, prev, cardioLog: S.week.cardio, fixed,
     };
   };

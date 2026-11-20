@@ -2,7 +2,7 @@
 // Usado como "connector personalizado" no claude.ai / Desktop / app do celular e, via apps/mcp-local, no Claude Code.
 // Princípio de custo: ferramentas devolvem JSON COMPACTO; o Claude manda só IDs/números e o core valida e hidrata.
 import { faltaHojeVariada } from "@ciclo/core/alimentos-variedade";
-import { ACAO_REVISAR_TREINO, EQUIPMENT, EXERCISES, dataDoPedidoRevisao, MCP_CONTRATO, academiaDoDia, academiasMcp, aparelhosFaltando, resumoTreinoAtual, MUSCLES, MCP_ORCAMENTO_BYTES, MEALS, MUSCLE_IDS, PAIN_REGIONS, contextSummary, textoSugestaoBase, diaryCoverage, hydrate, lastDays, mondayOf, resumirDia, paginar, planDay, podeEscrever, readiness, tamanhoJson, validarSchema, validateItems } from "@ciclo/core";
+import { ACAO_REVISAR_TREINO, EQUIPMENT, EXERCISES, alternativas, topAlternativas, dataDoPedidoRevisao, MCP_CONTRATO, academiaDoDia, academiasMcp, aparelhosFaltando, resumoTreinoAtual, MUSCLES, MCP_ORCAMENTO_BYTES, MEALS, MUSCLE_IDS, PAIN_REGIONS, contextSummary, textoSugestaoBase, diaryCoverage, hydrate, lastDays, mondayOf, resumirDia, paginar, planDay, podeEscrever, readiness, tamanhoJson, validarSchema, validateItems } from "@ciclo/core";
 import type { Schema } from "@ciclo/core";
 import type { CompactItem, Mode, MuscleId } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
@@ -29,8 +29,8 @@ const S = {
   date: ST.date,
   muscles: { type: "array", items: { type: "string", enum: MUSCLE_IDS } },
   compactItems: {
-    type: "array", maxItems: 16, description: "Itens compactos: só IDs do catálogo (ou cus_… criados com ciclo_exercicio_criar) e números.",
-    items: { type: "object", required: ["id", "sets"], properties: { id: { type: "string" }, sets: { type: "integer", minimum: 1, maximum: 8 }, reps: { type: "array", items: { type: "integer" }, minItems: 2, maxItems: 2 }, nm: { type: "string", description: "só para exercício fora do catálogo" }, muscle: { type: "string", enum: MUSCLE_IDS } } },
+    type: "array", maxItems: 16, description: "Itens compactos: só IDs do catálogo (ou cus_… criados com ciclo_exercicio_criar) e números. Supersérie: par \"A1\"/\"A2\" (mesma letra = par; só músculos que não competem: antagonistas, superior × inferior ou ombro lateral × braço; o servidor recusa o resto).",
+    items: { type: "object", required: ["id", "sets"], properties: { id: { type: "string" }, sets: { type: "integer", minimum: 1, maximum: 8 }, reps: { type: "array", items: { type: "integer" }, minItems: 2, maxItems: 2 }, nm: { type: "string", description: "só para exercício fora do catálogo" }, muscle: { type: "string", enum: MUSCLE_IDS }, par: { type: "string", pattern: "^[A-H][12]$" } } },
   },
 };
 const MODES = ["normal", "compensatorio", "expresso"] as const;
@@ -119,7 +119,8 @@ export const TOOLS: Tool[] = [
       });
       if (r.empty) return { vazio: r.empty, motivo: EMPTY_MSG[r.empty] };
       const p = planDay(r.input);
-      return { fonte: "previa", aviso: "prévia: o treino do dia continua o da semana até salvar com ciclo_salvar_treino_do_dia", academia: r.gymId, nome: p.name, porque: p.why, itens: p.items.map((i) => ({ id: i.exerciseId, nm: i.nm, sets: i.sets, reps: i.reps, alts: i.alts })), aquecimento: p.prehab.map((i) => i.exerciseId), fechaSemana: `${p.weekClosePct}%`, sugerirCompensatorio: p.suggestCompensatory };
+      // #125 alts = as 3 primeiras do banco (as mesmas do ciclo_treino_trocar); par quando o formato é supersérie
+      return { fonte: "previa", aviso: "prévia: o treino do dia continua o da semana até salvar com ciclo_salvar_treino_do_dia", academia: r.gymId, nome: p.name, porque: p.why, itens: p.items.map((i) => ({ id: i.exerciseId, nm: i.nm, sets: i.sets, reps: i.reps, par: i.par, alts: topAlternativas(alternativas(i.exerciseId, r.input), 3).map((x) => x.ex.id) })), aquecimento: p.prehab.map((i) => i.exerciseId), fechaSemana: `${p.weekClosePct}%`, sugerirCompensatorio: p.suggestCompensatory };
     },
   },
   {

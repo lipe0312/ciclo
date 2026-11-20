@@ -11,7 +11,7 @@ import { href, parse } from "../../lib/roteador/index.ts";
 import type { Route } from "../../lib/roteador/index.ts";
 import { fmt } from "../../lib/util.ts";
 import { OUTCOME_TXT, REASON_TXT, curIdx, running, startSession } from "./sessao.ts";
-import { openEdit, openSwap } from "./folhas.tsx";
+import { openEdit, openPares, openSwap } from "./folhas.tsx";
 import { Biblioteca, ExImgs } from "./biblioteca.tsx";
 import { Detalhe } from "./detalhe.tsx";
 import { InfoPersonalizado, SeloPersonalizado } from "./personalizado.tsx";
@@ -127,12 +127,12 @@ function CardDia({ it, idx, run }: { it: C.PlanItem; idx: number; run: boolean }
   const logs = S.session?.logs?.[it.exerciseId] ?? [], d = logs.filter((l: { done: boolean }) => l.done).length;
   return <Card cls={skipped ? "skipped" : ""}>
     {cat && <a href={href("treino", ["exercicio", it.exerciseId])} aria-label={`Como fazer: ${it.nm}`}><ExImgs it={cat} /></a>}
-    <div class="row between start" style="margin-top:10px"><h3 style="font-size:17px">{it.nm}</h3>{it.manual && <span class="badge warn">seu · em revisão</span>}{it.personalizado && <SeloPersonalizado />}</div>
+    <div class="row between start" style="margin-top:10px"><h3 style="font-size:17px">{it.nm}</h3>{it.par && <span class="badge acc num" title="supersérie">{it.par}</span>}{it.manual && <span class="badge warn">seu · em revisão</span>}{it.personalizado && <SeloPersonalizado />}</div>
     <p class="meta num small" style="margin-top:2px"><b style="color:var(--txt)">{it.sets} × {it.reps[0]}–{it.reps[1]}</b> · {mName(it.muscle)}{sg.kg ? <> · sugestão <b style="color:var(--txt)">{fmt(sg.kg, 1)} kg × {sg.reps}</b></> : null}</p>
     {sg.note && <p class="tiny sub" style="margin-top:2px">{sg.note}</p>}
     {it.personalizado && <InfoPersonalizado id={it.exerciseId} />}
     {run && <p class="small num" style="margin-top:6px">{skipped ? `Não feito · ${REASON_TXT[String(skipped)] ?? skipped}` : `${d}/${Math.max(it.sets, logs.length)} séries`}</p>}
-    {!run && <div class="acts" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">{it.alts.length > 0 && <button type="button" class="btn" onClick={() => openSwap(idx)}><Icon id="swap" />Trocar</button>}<button type="button" class="btn" onClick={() => openEdit(idx)}><Icon id="edit" />Editar</button></div>}
+    {!run && <div class="acts card-acts">{it.alts.length > 0 && <button type="button" class="btn" onClick={() => openSwap(idx)}><Icon id="swap" />Trocar</button>}<button type="button" class="btn" onClick={() => openEdit(idx)}><Icon id="edit" />Editar</button><button type="button" class="btn" onClick={() => openPares(idx)}><Icon id="cycle" />{it.par ? "Par" : "Fazer junto"}</button></div>}
   </Card>;
 }
 

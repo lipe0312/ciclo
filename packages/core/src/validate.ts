@@ -7,12 +7,15 @@ import { candidates, item, painBlocks, resumirDia } from "./plan-day.ts";
 import { ehIdPersonalizado, tipoPersonalizado } from "./exercicio-personalizado.ts";
 import type { ExercicioPersonalizado } from "./exercicio-personalizado.ts";
 import type { DayInput, DayPlan, PlanItem } from "./plan-day.ts";
+import { normalizarPares, validarPares } from "./superserie.ts";
 
 export type Severity = "erro" | "aviso" | "info";
 export interface Issue { severity: Severity; code: string; msg: string; index?: number }
 
 /** Formato compacto que o Claude devolve (economiza tokens). */
-export interface CompactItem { id: string; sets: number; reps?: [number, number]; nm?: string; muscle?: MuscleId }
+export interface CompactItem { id: string; sets: number; reps?: [number, number]; nm?: string; muscle?: MuscleId;
+  /** #125 supersérie: "A1"/"A2" (mesma letra = par); o servidor recusa par de músculos que competem */
+  par?: string }
 
 /** `personalizados`: os exercícios personalizados DESTA conta (#107). Um `cus_` fora do mapa (de outra conta ou apagado)
  *  é sempre erro, mesmo com nome: o caminho "exercício seu" não vale para eles. */
@@ -36,8 +39,10 @@ export function hydrate(compact: CompactItem[], inp: DayInput, personalizados: R
       return;
     }
     const alts = candidates(ex.m, inp).filter((x) => x.ex.id !== ex.id && !x.blockedByPain).slice(0, 3).map((x) => x.ex.id);
-    items.push(item(ex, c.sets, alts, c.reps ? { reps: c.reps } : {}));
+    items.push(item(ex, c.sets, alts, { ...(c.reps ? { reps: c.reps } : {}), ...(c.par != null ? { par: String(c.par) } : {}) }));
   });
+  // #125 par vindo da IA: cada letra com X1 e X2, e os dois podem parear na academia do dia
+  if (compact.some((c) => c?.par != null)) issues.push(...validarPares(compact.map((c) => ({ exerciseId: String(c?.id ?? ""), par: c?.par == null ? undefined : String(c.par) })), inp.equipment));
   return { items, issues };
 }
 
@@ -77,7 +82,7 @@ export function applyManualEdit(plan: DayPlan, edit: ManualEdit, inp: DayInput):
   const items = plan.items.map((i) => ({ ...i }));
   const cur = items[edit.index];
   if (!cur) return { plan, issues: [{ severity: "erro", code: "indice", msg: "Item não encontrado." }], needsReview: false };
-  if (edit.remove) items.splice(edit.index, 1);
+  if (edit.remove) { items.splice(edit.index, 1); items.splice(0, items.length, ...normalizarPares(items)); } // #125 par sem parceiro some
   else {
     if (edit.exerciseId && edit.exerciseId !== cur.exerciseId) {
       const ex = EXERCISE_BY_ID[edit.exerciseId];

@@ -1,6 +1,6 @@
 // API JSON do app (sessão própria, #54/#62). Rotas pequenas, um estado agregado por chamada (/api/state)
 // para o celular fazer 1 requisição ao abrir. Toda rota recebe o usuário autenticado (u) e filtra por u.id.
-import { MAX_MCP_TOKENS, estadoToken, tokensAtivos, CARDIO_BY_ID, COTA_MSG, EQUIPMENT_BY_ID, EXERCISE_BY_ID, ehIdPersonalizado, INTENSITIES, MAX_PLACES, MEDIA_MAX_BYTES, MUSCLE_IDS, PROMPTS, SEGUNDOS_MAX, SEGUNDOS_MIN, applyManualEdit, checkCardio, erroSerie, classify, planDay, tipoConfere, validatePlace } from "@ciclo/core";
+import { MAX_MCP_TOKENS, estadoToken, tokensAtivos, CARDIO_BY_ID, COTA_MSG, EQUIPMENT_BY_ID, EXERCISE_BY_ID, ehIdPersonalizado, INTENSITIES, MAX_PLACES, MEDIA_MAX_BYTES, MUSCLE_IDS, PROMPTS, SEGUNDOS_MAX, SEGUNDOS_MIN, applyManualEdit, limparPares, checkCardio, erroSerie, classify, planDay, tipoConfere, validatePlace } from "@ciclo/core";
 import type { Action, DayPlan, Intensity, ManualEdit, Mode, MuscleId, Tier } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { HttpError, date, id, int, isDate, json, num, oneOf, readJson, str } from "./http.ts";
@@ -276,6 +276,11 @@ on("POST", "/api/plan-day", async (req, env, _p, u) => {
 on("PUT", "/api/day-plan/:date", async (req, env, p, u) => {
   const b = await readJson<{ plan: DayPlan; gymId?: string; source?: string }>(req, 48 * 1024);
   if (!b.plan || !Array.isArray(b.plan.items) || b.plan.items.length > 20) throw new HttpError(400, "plan inválido");
+  // #125 par (supersérie) vindo do app: o servidor confere com a academia do dia; par inválido é solto, nunca gravado
+  if (b.plan.items.some((i) => i && typeof i === "object" && "par" in i)) {
+    const gyms = await listGyms(env, u.id), gid = str(b.gymId, "gymId", 40, false);
+    b.plan = { ...b.plan, items: limparPares(b.plan.items, (gyms.find((g) => g.id === gid) ?? gyms[0])?.equipment ?? []) };
+  }
   await env.DB.prepare("INSERT INTO day_plan (user_id, date, gym_id, plan, source, created_at) VALUES (?6, ?1, ?2, ?3, ?4, ?5) ON CONFLICT(user_id, date) DO UPDATE SET gym_id=?2, plan=?3, source=?4, created_at=?5")
     .bind(date(p.date), str(b.gymId, "gymId", 40, false), JSON.stringify(b.plan), oneOf(b.source ?? "core", "source", ["core", "claude", "manual"] as const), Date.now(), u.id).run();
   return json({ ok: true });

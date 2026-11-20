@@ -1,6 +1,6 @@
 // Repositório: todo SQL fica aqui (ou nas rotas), sempre com parâmetros (bind) e SEMPRE filtrado por user_id.
 // O uid vem da autenticação (auth.ts), nunca do corpo da requisição.
-import { DEFAULT_PROFILE, divisoesDe, ehIdPersonalizado, DOWS, MAX_SESSION_MS, entradaTreinoAtual, manterTreinoAtual, assignWeekdays, reassignDays, MUSCLE_IDS, PAIN_REGIONS, applyProfilePatch, completarObjetivo, mensagemPerfil, mondayOf, normalizeProfile, planFingerprint, sessionSummary, weekDates, weeklyTargets } from "@ciclo/core";
+import { DEFAULT_PROFILE, divisoesDe, ehIdPersonalizado, DOWS, MAX_SESSION_MS, entradaTreinoAtual, formatoDe, manterTreinoAtual, assignWeekdays, reassignDays, MUSCLE_IDS, PAIN_REGIONS, applyProfilePatch, completarObjetivo, mensagemPerfil, mondayOf, normalizeProfile, planFingerprint, sessionSummary, weekDates, weeklyTargets } from "@ciclo/core";
 import { HttpError, int, oneOf, str } from "./http.ts";
 import type { DayInput, Group, Mode, MuscleId, Pain, SetLog } from "@ciclo/core";
 import type { Env } from "./env.ts";
@@ -291,6 +291,7 @@ export async function buildDayInput(env: Env, uid: string, a: DayArgs): Promise<
       prefs: profile.prefs, pinned: profile.pinned, avoid: profile.avoid,
       pains: week.pains.map((p) => ({ region: p.region, intensity: p.intensity })),
       ...entradaTreinoAtual(profile), // #74 "Meu treino atual"
+      formato: formatoDe(profile.dynamics), // #125 superséries = preferir pares
     },
   };
 }

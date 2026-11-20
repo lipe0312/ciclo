@@ -250,6 +250,11 @@ textarea.input{min-height:84px;resize:vertical}
 .ef-dots{display:inline-flex;gap:3px;align-items:center}
 .ef-dots i{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--sub)}
 .ef-dots i.on{background:var(--txt);border-color:var(--txt)}
+/* #125 ações do card do treino, seção e lista "precisa de aparelho" das alternativas */
+.card-acts{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-3)}
+.alt-sec{margin-top:var(--sp-4)}
+.pares-txt{margin:var(--sp-2) 0}
+.alt-falta{margin:var(--sp-1) 0 0;padding-left:var(--sp-4);display:grid;gap:var(--sp-1)}
 .alt-outra{display:inline-flex;align-items:center;min-height:44px;margin-top:8px;padding:0 2px;border:0;background:none;color:var(--sub);font:inherit;font-size:13px;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .toast{position:fixed;left:50%;bottom:96px;transform:translate(-50%,20px);opacity:0;background:var(--txt);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;font-size:14px;z-index:60;transition:all .2s;pointer-events:none;max-width:calc(100% - 32px)}
 .toast.show{opacity:1;transform:translate(-50%,0)}

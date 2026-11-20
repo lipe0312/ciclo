@@ -37,6 +37,8 @@ export * from "./navegacao.ts";
 export * from "./treino-atual.ts";
 export * from "./treino-atual-lista.ts";
 export * from "./trocar.ts";
+export * from "./alternativas-banco.ts";
+export * from "./superserie.ts";
 export * from "./catalog-eficiencia.ts";
 export * from "./mcp.ts";
 export * from "./comida-conversa.ts";
