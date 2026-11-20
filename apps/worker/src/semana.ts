@@ -1,7 +1,8 @@
 // Semana completa planejada (#24): monta a entrada do core a partir do D1, guarda versões (desfazer) e as escolhas
 // por dia. Todo SQL com bind e filtrado por user_id; o uid vem da autenticação.
 import {
-  EQUIPMENT_BY_ID, MUSCLE_IDS, applyDayAction, diffWeeks, empurrarTreinos, entradaTreinoAtual, mondayOf, planWeek, resumirDia, trocasDoDia, weekDates, weekProgression, weekView, weeklyTargets,
+  EQUIPMENT_BY_ID, MUSCLE_IDS, applyDayAction, diffWeeks, empurrarTreinos, entradaTreinoAtual, mondayOf, planWeek, resumirDia, salvosSubstituidos, treinoDoDia, trocasDoDia,
+  weekDates, weekProgression, weekView, weeklyTargets,
 } from "@ciclo/core";
 import type { CardioEntry, DayAction, DayOpts, DayOverride, DayPlan, Intensity, MuscleId, Progression, Sets, WeekInput, WeekPlan, WeekProfile } from "@ciclo/core";
 import type { Env } from "./env.ts";
@@ -141,9 +142,9 @@ async function generate(env: Env, c: Ctx, overrides: Record<string, DayOverride>
 }
 
 /** Grava uma versão nova (e as escolhas vivas, se mudaram). "auto" só entra se a semana ainda não tem versão. */
-async function persist(env: Env, c: Ctx, s: Stored, source: Source, writeOverrides: boolean): Promise<number> {
+async function persist(env: Env, c: Ctx, s: Stored, source: Source, writeOverrides: boolean, antes: D1PreparedStatement[] = []): Promise<number> {
   const now = Date.now();
-  const stmts = [];
+  const stmts = [...antes];
   if (writeOverrides) {
     stmts.push(env.DB.prepare("DELETE FROM day_override WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3").bind(c.uid, c.dates[0], c.dates[6]));
     for (const [d, o] of Object.entries(s.overrides)) if (c.dates.includes(d))
@@ -198,14 +199,49 @@ async function ready(env: Env, uid: string, today: string): Promise<Ctx> {
   return (await loadCtx(env, uid, today)) as Ctx;
 }
 
+/** #121 Tira do contexto os treinos salvos que a regeração substitui (o algoritmo gera esses dias de novo). */
+function substituir(c: Ctx, datas: string[]): string[] {
+  if (datas.length) c.fixed = Object.fromEntries(Object.entries(c.fixed).filter(([d]) => !datas.includes(d)));
+  return datas;
+}
+/** #121 Apaga o treino salvo dos dias substituídos (só desta conta), no mesmo lote da versão nova da semana. */
+const apagarSalvos = (env: Env, uid: string, datas: string[]) =>
+  datas.map((d) => env.DB.prepare("DELETE FROM day_plan WHERE user_id = ?1 AND date = ?2").bind(uid, d));
+
+/** #121 O treino do dia, da fonte única: a semana (que já traz o salvo pela IA, o gerado e o editado à mão). Semana desta
+ *  conta ainda sem versão (outra semana): o salvo no dia. `null` = sem semana (sem perfil/academia); `plan: null` = folga/livre. */
+export async function lerTreinoDoDia(env: Env, uid: string, d: string, hoje: string): Promise<{ plan: DayPlan | null; source: string; gymId: string | null; createdAt: number } | null> {
+  if (mondayOf(d) === mondayOf(hoje)) {
+    const w = await getWeek(env, uid, hoje);
+    if (!w.week) return null;
+    const dia = w.week.days.find((x) => x.date === d);
+    return { plan: treinoDoDia(w.week, d), source: dia?.source ?? "auto", gymId: dia?.gymId ?? null, createdAt: w.week.versions[0]?.createdAt ?? Date.now() };
+  }
+  const [wk, dp] = await env.DB.batch([
+    env.DB.prepare("SELECT plan_json, created_at FROM week_plan WHERE user_id = ?1 AND week_start = ?2 ORDER BY version DESC LIMIT 1").bind(uid, mondayOf(d)),
+    env.DB.prepare("SELECT plan, gym_id, source, created_at FROM day_plan WHERE user_id = ?1 AND date = ?2").bind(uid, d),
+  ]);
+  const w = (wk.results as { plan_json: string; created_at: number }[])[0];
+  const st = w ? parse<Stored | null>(w.plan_json, null) : null;
+  if (st?.plan) {
+    const dia = st.plan.days.find((x) => x.date === d);
+    return { plan: treinoDoDia(st.plan, d), source: dia?.source ?? "auto", gymId: dia?.gymId ?? null, createdAt: w.created_at };
+  }
+  const r = (dp.results as { plan: string; gym_id: string | null; source: string; created_at: number }[])[0];
+  const plan = r ? parse<DayPlan | null>(r.plan, null) : null;
+  return r && Array.isArray(plan?.items) ? { plan, source: r.source, gymId: r.gym_id, createdAt: r.created_at } : null;
+}
+
 /** Regenerar: devolve o diff; com apply grava. `reset` descarta as trocas dos dias que ainda não passaram. */
 export async function regenerate(env: Env, uid: string, b: Record<string, unknown>) {
   const c = await ready(env, uid, date(b.date));
   const keep = Object.fromEntries(Object.entries(c.overrides).filter(([d]) => !b.reset || d < c.today || !!c.sets[d]));
+  // #121 regerar substitui: o treino salvo (IA ou gerado; à mão só com reset) dos dias abertos sai e o algoritmo gera de novo
+  const fora = substituir(c, salvosSubstituidos({ tipo: "semana" }, c.fixed, c, { manual: !!b.reset }));
   const s = await generate(env, c, keep, true);
   const diff = diffWeeks(c.latest!.stored!.plan, s.plan);
   if (b.apply !== true) return { diff, week: null };
-  await persist(env, c, s, "regenerar", !!b.reset);
+  await persist(env, c, s, "regenerar", !!b.reset, apagarSalvos(env, uid, fora));
   const c2 = (await loadCtx(env, uid, c.today)) as Ctx;
   return { diff, week: view(c2, c2.latest!.stored!, c2.latest!.version) };
 }
@@ -217,18 +253,6 @@ export async function aplicarNaSemana(env: Env, uid: string, today: string): Pro
   if ("empty" in c) return false;
   await persist(env, c, await generate(env, c, c.overrides, !c.latest?.stored?.progression), c.latest ? "ajuste" : "auto", false);
   return true;
-}
-
-/** Desfazer: volta para uma versão anterior (vira uma versão nova "desfazer"; nada se perde). */
-export async function restore(env: Env, uid: string, b: Record<string, unknown>) {
-  const c = await ready(env, uid, date(b.date));
-  const v = int(b.version, "version", 1, 10000)!;
-  const row = await env.DB.prepare("SELECT plan_json FROM week_plan WHERE user_id = ?1 AND week_start = ?2 AND version = ?3").bind(uid, c.weekStart, v).first<{ plan_json: string }>();
-  const s = row && parse<Stored | null>(row.plan_json, null);
-  if (!s?.plan) throw new HttpError(404, "versão não encontrada");
-  await persist(env, c, { ...s, overrides: s.overrides ?? {} }, "desfazer", true);
-  const c2 = (await loadCtx(env, uid, c.today)) as Ctx;
-  return { week: view(c2, c2.latest!.stored!, c2.latest!.version) };
 }
 
 const SPLITS = ["sup", "inf", "full"] as const;
@@ -267,11 +291,11 @@ function geracao(o: Record<string, unknown>): Pick<DayOpts, "ocupados" | "estilo
 
 const ACTIONS = ["gerar", "outro", "mover", "trocar", "folga", "treino", "extra", "manter", "falta"] as const;
 /** Ações num dia: trocar a geração, mover, trocar com outro, folga/treino/extra, manter (sem compensatório) e responder falta. */
-export async function dayAction(env: Env, uid: string, d: string, b: Record<string, unknown>) {
+export async function dayAction(env: Env, uid: string, d: string, b: Record<string, unknown>, o: { manual?: boolean } = {}) {
   const day = date(d);
   const c = await ready(env, uid, date(b.today, "today"));
   const action = oneOf(b.action, "action", ACTIONS);
-  let overrides = c.overrides, source: Source = "ajuste";
+  let overrides = c.overrides, source: Source = "ajuste", fora: string[] = [];
   if (action === "falta") {
     if (!c.dates.includes(day) || day > c.today) throw new HttpError(400, "falta só para dias desta semana até hoje");
     const status = oneOf(b.resposta, "resposta", ["fui", "nao_fui", "folga"] as const);
@@ -287,9 +311,11 @@ export async function dayAction(env: Env, uid: string, d: string, b: Record<stri
     const r = applyDayAction(c.latest!.stored!.plan, c.overrides, a, c);
     if ("error" in r) throw new HttpError(409, r.error);
     overrides = r.overrides;
+    // #121 gerar o dia de novo substitui o treino salvo nele (o da IA sempre; o feito à mão só pelo toque da pessoa no app)
+    if (action === "gerar" || action === "outro") fora = substituir(c, salvosSubstituidos({ tipo: "dia", date: day }, c.fixed, c, { manual: o.manual !== false }));
   }
   const s = await generate(env, c, overrides, false);
-  await persist(env, c, s, source, action !== "falta");
+  await persist(env, c, s, source, action !== "falta", apagarSalvos(env, uid, fora));
   const c2 = (await loadCtx(env, uid, c.today)) as Ctx;
   return { week: view(c2, c2.latest!.stored!, c2.latest!.version) };
 }

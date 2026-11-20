@@ -16,7 +16,7 @@ import { TOOLS_REVISAO } from "./mcp-revisao.ts";
 import { revisarTreino } from "./treino-gerado.ts";
 import { TOOLS_EXERCICIO, personalizadoMcp } from "./mcp-exercicio.ts";
 import { listarPersonalizados, mapaPersonalizados } from "./exercicio-personalizado.ts";
-import { aplicarNaSemana, getWeek } from "./semana.ts";
+import { aplicarNaSemana, getWeek, lerTreinoDoDia } from "./semana.ts";
 import { S as ST, obj, today } from "./mcp-tipos.ts";
 import type { Args, Tool } from "./mcp-tipos.ts";
 import { TACO_FONTE, tacoHints } from "./taco.ts";
@@ -97,10 +97,21 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "ciclo_planejar_dia", readOnly: true,
-    description: "Calcula (não salva) o treino de hoje pela semana flexível, só com o que a academia tem (gymId: a pedida; sem ele, a do dia). modo 'compensatorio' só se o usuário pedir.",
+    description: "O treino do dia. Sem minutes/mode/focus/gymId/crowded: devolve o treino do dia da semana (fonte única: o mesmo que o app abre no Começar). Com algum deles: calcula uma prévia (não salva; só vira o treino do dia com ciclo_salvar_treino_do_dia), só com o que a academia tem. modo 'compensatorio' só se o usuário pedir.",
     inputSchema: obj({ date: S.date, daysLeft: { type: "integer", minimum: 1, maximum: 7 }, minutes: { type: "integer" }, mode: { type: "string", enum: ["normal", "compensatorio", "expresso"] }, focus: S.muscles, gymId: { type: "string", maxLength: 40 }, crowded: { type: "boolean" } }, ["daysLeft"]),
     run: async (a, env, uid) => {
       await academiaDaConta(env, uid, a.gymId);
+      // #121 sem pedido especial: o treino do dia é o da semana (o app, a Semana e o Começar leem o mesmo)
+      if ([a.minutes, a.mode, a.focus, a.gymId, a.crowded].every((v) => v == null || v === false || (Array.isArray(v) && !v.length))) {
+        const t = await lerTreinoDoDia(env, uid, a.date ? date(a.date) : today(), today());
+        if (!t) {
+          const p0 = await getProfile(env, uid);
+          return { vazio: p0 ? "sem_academia" : "sem_perfil", motivo: EMPTY_MSG[p0 ? "sem_academia" : "sem_perfil"] };
+        }
+        if (!t.plan) return { fonte: "semana", semTreino: true, motivo: "dia sem treino na semana (folga/livre); para treinar, gere com ciclo_semana_gerar {dia} ou salve com ciclo_salvar_treino_do_dia" };
+        const p = t.plan;
+        return { fonte: "semana", academia: t.gymId, nome: p.name, porque: p.why, itens: p.items.map((i) => ({ id: i.exerciseId, nm: i.nm, sets: i.sets, reps: i.reps, alts: i.alts })), aquecimento: p.prehab.map((i) => i.exerciseId), fechaSemana: `${p.weekClosePct}%`, sugerirCompensatorio: p.suggestCompensatory };
+      }
       const r = await buildDayInput(env, uid, {
         date: a.date ? date(a.date) : today(), daysLeft: int(a.daysLeft, "daysLeft", 1, 7)!, minutes: int(a.minutes, "minutes", 15, 150, false) ?? undefined,
         mode: a.mode ? oneOf(a.mode, "mode", MODES) as Mode : "normal", focus: Array.isArray(a.focus) ? (a.focus.filter((m) => MUSCLE_IDS.includes(m as MuscleId)) as MuscleId[]) : undefined,
@@ -108,7 +119,7 @@ export const TOOLS: Tool[] = [
       });
       if (r.empty) return { vazio: r.empty, motivo: EMPTY_MSG[r.empty] };
       const p = planDay(r.input);
-      return { academia: r.gymId, nome: p.name, porque: p.why, itens: p.items.map((i) => ({ id: i.exerciseId, nm: i.nm, sets: i.sets, reps: i.reps, alts: i.alts })), aquecimento: p.prehab.map((i) => i.exerciseId), fechaSemana: `${p.weekClosePct}%`, sugerirCompensatorio: p.suggestCompensatory };
+      return { fonte: "previa", aviso: "prévia: o treino do dia continua o da semana até salvar com ciclo_salvar_treino_do_dia", academia: r.gymId, nome: p.name, porque: p.why, itens: p.items.map((i) => ({ id: i.exerciseId, nm: i.nm, sets: i.sets, reps: i.reps, alts: i.alts })), aquecimento: p.prehab.map((i) => i.exerciseId), fechaSemana: `${p.weekClosePct}%`, sugerirCompensatorio: p.suggestCompensatory };
     },
   },
   {

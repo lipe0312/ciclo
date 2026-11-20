@@ -45,6 +45,8 @@ export const S = {
   ui: {
     daysLeft: 1, minutes: 60, gymId: null as string | null, focus: [] as C.MuscleId[], crowded: false, mode: "normal" as C.Mode, format: "tradicional",
     swapsToday: {} as Record<string, string>, locked: false, planSource: undefined as string | undefined, minutesSet: false,
+    /** #121 assinatura do último treino de hoje que veio da fonte única (a semana): mudou lá → o aparelho troca */
+    treinoVisto: null as string | null,
     ckDate: today, ckDraft: null as any, perfilSec: null as string | null, cat: "todos", gymTab: "acad1", bodyView: "frente", promptCat: "Hoje",
     tierOverride: null as string | null, planFp: null as string | null, inboxDraft: "", foodDraft: "", editDraft: null as any, fb: null as any,
   },
@@ -127,9 +129,19 @@ export async function loadServer() {
   S.gymMedia = (st.media ?? []).filter((m: any) => m.gym_id && m.equipment_id).map((m: any) => ({ id: m.id, kind: m.kind, equipmentId: m.equipment_id, gymId: m.gym_id, note: m.note, url: `/api/media/${m.id}` }));
   S.measures = st.measures ?? [];
   S.personalizados = Object.fromEntries(((st.personalizados ?? []) as C.ExercicioPersonalizado[]).map((p) => [p.id, p]));
-  if (st.dayPlan && !S.ui.locked) { S.plan = st.dayPlan.plan; S.ui.locked = st.dayPlan.source !== "core"; S.ui.planSource = st.dayPlan.source; S.ui.planFp = st.dayPlan.profileFp ?? null; }
+  // #121 o treino de hoje é o da semana (fonte única, o mesmo do Hoje e da Semana): mudou lá (IA, regerar, outro aparelho) → troca aqui
+  if (st.dayPlan) adotarTreinoDeHoje(st.dayPlan.plan, st.dayPlan.profileFp ?? null);
   const open = S.week.sessions.find((s: any) => s.date === today && !s.finished_at);
   if (open) await restoreSession(open.id);
+}
+
+/** #121 Adota o treino de hoje da fonte única quando ele mudou desde o último adotado (nunca no meio do treino).
+ *  Igual ao último = nada novo lá: fica o que a pessoa ajustou no aparelho. Devolve se trocou. */
+export function adotarTreinoDeHoje(plan: C.DayPlan | null, fp?: string | null): boolean {
+  if (!C.trocarTreinoLocal({ sessaoAberta: !!S.session && !S.session.finishedAt, doDia: plan, visto: S.ui.treinoVisto })) return false;
+  S.plan = plan; S.ui.locked = true; S.ui.planSource = "semana"; S.ui.treinoVisto = C.assinaturaTreino(plan); S.ui.swapsToday = {};
+  if (fp !== undefined) S.ui.planFp = fp;
+  return true;
 }
 
 /** Sessão aberta no servidor → estado local. Sem cópia local (outro aparelho/dados limpos) monta tudo do servidor; com cópia, só completa

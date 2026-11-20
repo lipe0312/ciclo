@@ -1,5 +1,5 @@
 // Semana: todos os dias já planejados (gerados na segunda), cada um com detalhe, trocar geração, mover/trocar,
-// folga, regenerar com diff e desfazer. Faltas perguntam inline; o compensatório só aparece quando a regra diz.
+// folga e regenerar com diff (#121 substitui, sem desfazer). Faltas perguntam inline; o compensatório só aparece quando a regra diz.
 // Rotas: #semana · #semana/dia/<YYYY-MM-DD>
 import { useEffect } from "preact/hooks";
 import * as C from "@ciclo/core";
@@ -12,7 +12,7 @@ import { DOW_NM, img, longDate } from "../../lib/util.ts";
 import { acaoDia, diaDe, garantirSemana, gerarTreino, getSemana, getVazio, marcar, marcavel, planoDoDia, podeNaoTreinei } from "./estado.ts";
 import type { Dia, Semana } from "./estado.ts";
 import { AvisoFalta } from "./aviso.tsx";
-import { abrirEmpurrar, abrirMover, abrirRegenerar, abrirTrocar, abrirVersoes, aberto, diaCurto } from "./folhas.tsx";
+import { abrirEmpurrar, abrirMover, abrirRegenerar, abrirTrocar, aberto, diaCurto } from "./folhas.tsx";
 import { abrirGerarOutro } from "../treino/gerar.tsx";
 import "./semana.css";
 import { Estado } from "../../lib/estado/index.tsx";
@@ -132,9 +132,8 @@ function Lista({ s }: { s: Semana }) {
         {C.MUSCLE_IDS.map((m) => { const t = s.targets[m] ?? 0, v = s.projected.done[m] ?? 0, f = s.projected.freq[m] ?? 0;
           return <div key={m} class="sem-vol"><span class="small">{mName(m)}{S.profile.priorities.includes(m) ? " ●" : ""}</span>
             <span class="small num"><b>{v}</b>/{t} · <span class={f >= 2 ? "" : "sem-warn"}>{f}×</span></span></div>; })}</Card>
-      <Card><h2>Gerações</h2><p class="small sub" style="margin:4px 0 12px">Versão {s.version}. Toda mudança guarda a anterior.</p>
-        <div class="sem-acts uma"><button type="button" class="btn" onClick={abrirRegenerar}><Icon id="cycle" />Regenerar</button>
-          {s.versions.length > 1 && <button type="button" class="btn" onClick={abrirVersoes}><Icon id="back" />Desfazer</button>}</div></Card>
+      <Card><h2>Gerações</h2><p class="small sub" style="margin:4px 0 12px">Cada dia tem um treino só. Regenerar substitui o atual; para voltar a um treino, peça ao Chat.</p>
+        <div class="sem-acts uma"><button type="button" class="btn" onClick={abrirRegenerar}><Icon id="cycle" />Regenerar</button></div></Card>
     </div></div></>;
 }
 
