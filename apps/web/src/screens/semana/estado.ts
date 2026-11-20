@@ -1,7 +1,7 @@
 // Estado da semana planejada (#24). Servidor: /api/week (versões no D1). Demonstração: o mesmo core roda no navegador
 // com dados fictícios e as versões ficam no localStorage. Hoje lê daqui o treino do dia e os dias que restam.
 import * as C from "@ciclo/core";
-import { S, calc, commit, monday, today } from "../../lib/store/index.ts";
+import { S, adotarTreinoDeHoje, calc, commit, monday, today } from "../../lib/store/index.ts";
 import { SERVER, api } from "../../lib/api/index.ts";
 import { toast } from "../../lib/ui/index.tsx";
 import { lsGet, lsSet } from "../../lib/util.ts";
@@ -62,8 +62,8 @@ export const acaoDia = (date: string, body: { action: string; opts?: C.DayOpts; 
 export const gerarTreino = (date: string) =>
   rodar(() => (SERVER ? api("POST", `/api/week/day/${date}/gerar-treino`, { today }) : demo.gerarTreino(date)), "Treino gerado · revisão da IA pendente");
 
-/** #108 O treino de um dia é sempre o salvo/planejado na semana. Dia sem treino não tem plano (nada é gerado ao abrir). */
-export const planoDoDia = (d: Dia): C.DayPlan | null => (d.kind !== "folga" || d.status === "extra" ? d.plan : null);
+/** #108/#121 O treino de um dia é sempre o da semana (fonte única). Dia sem treino não tem plano (nada é gerado ao abrir). */
+export const planoDoDia = (d: Dia): C.DayPlan | null => C.treinoDoDia({ days: [d] }, d.date);
 
 /** #113 "Treinei"/"não treinei" vale em qualquer dia até hoje, mesmo fora dos dias cadastrados (a semana se reorganiza). */
 export const marcavel = (d: Dia) => d.date <= today && d.status !== "feito" && d.status !== "extra";
@@ -83,24 +83,17 @@ export async function previaRegenerar(reset: boolean): Promise<C.DayDiff[] | nul
   try { return SERVER ? (await api<{ diff: C.DayDiff[] }>("POST", "/api/week/regenerate", { date: today, reset })).diff : demo.regenerar(reset, false).diff; }
   catch (e: any) { toast(e?.status ? e.message : "Sem conexão"); return null; }
 }
+/** Regenerar substitui o treino dos dias que ainda não passaram (#121: não há "voltar versão"; voltar atrás é pedir à IA). */
 export const regenerar = (reset: boolean) =>
   rodar(() => (SERVER ? api("POST", "/api/week/regenerate", { date: today, reset, apply: true }) : Promise.resolve(demo.regenerar(reset, true))), "Semana regenerada");
-export const desfazer = (version: number) =>
-  rodar(() => (SERVER ? api("PUT", "/api/week", { date: today, version }) : Promise.resolve(demo.desfazer(version))), "Versão restaurada");
 
-/** Hoje: dias que restam vêm da semana; o treino de hoje é o da semana (ou o extra), salvo se o Claude/você já fixou outro. */
+/** Hoje: dias que restam vêm da semana; o treino de hoje é SEMPRE o da semana (#121 fonte única: o que a IA salvou, o
+ *  gerado ou o editado). Mudou lá → o Começar abre o novo; no meio do treino nada troca. Dia livre: nada é gerado ao abrir. */
 export function sincronizarHoje() {
   const s = semana; if (!s) return;
   const d = s.days.find((x) => x.date === today); if (!d) return;
   S.ui.daysLeft = Math.max(1, s.days.filter((x) => x.date >= today && (x.status === "hoje" || x.status === "planejado")).length);
-  const ui = S.ui as typeof S.ui & { semanaV?: string };
-  const key = `${s.weekStart}:${s.version}`;
-  if (ui.semanaV === key) return;
-  ui.semanaV = key;
-  if ((S.session && !S.session.finishedAt) || (S.ui.locked && S.ui.planSource !== "semana")) return;
-  const plan = d.status === "hoje" ? d.plan : null; // #108 livre: nada é gerado só porque o app abriu
-  if (!plan?.items.length) return;
-  S.plan = plan; S.ui.locked = true; S.ui.planSource = "semana";
+  if (!adotarTreinoDeHoje(d.status === "hoje" ? C.treinoDoDia(s, today) : null)) return;
   if (d.gymId && S.gyms.some((g) => g.id === d.gymId)) S.ui.gymId = d.gymId;
   if (d.opts.minutes) S.ui.minutes = d.opts.minutes;
   if (d.opts.format) S.ui.format = d.opts.format;
@@ -134,6 +127,8 @@ const demo = (() => {
     };
   };
   const load = () => lsGet<Stored[]>(KEY, []);
+  /** #121 o salvo dos dias substituídos sai (o algoritmo gera esses dias de novo) */
+  const semSalvos = (fixed: C.WeekInput["fixed"], datas: string[]) => (fixed && datas.length ? Object.fromEntries(Object.entries(fixed).filter(([d]) => !datas.includes(d))) : fixed);
   const push = (plan: C.WeekPlan, overrides: Record<string, C.DayOverride>, source: string, fixed = load().at(-1)?.fixed) => {
     const vs = load().concat({ plan, overrides, source, createdAt: Date.now(), fixed }).slice(-20);
     lsSet(KEY, vs); return vs;
@@ -173,12 +168,15 @@ const demo = (() => {
       const c = cur();
       let ov = c.overrides;
       if (b.action === "falta") { S.week.attendance[date] = b.resposta!; }
-      else {
+      let fixed = c.fixed;
+      if (b.action !== "falta") {
         const r = C.applyDayAction(c.plan, c.overrides, { type: b.action, date, opts: b.opts ?? {}, geracao: b.opts ?? {}, to: b.to } as C.DayAction, input(c.overrides, c.plan));
         if ("error" in r) throw Object.assign(new Error(r.error), { status: 409 });
         ov = r.overrides;
+        // #121 gerar o dia de novo substitui o treino salvo nele (como no servidor)
+        if (b.action === "gerar" || b.action === "outro") fixed = semSalvos(fixed, C.salvosSubstituidos({ tipo: "dia", date }, fixed ?? {}, input(ov, c.plan), { manual: true }));
       }
-      push(C.planWeek(input(ov, c.plan)), ov, b.action === "falta" ? "falta" : "ajuste");
+      push(C.planWeek(input(ov, c.plan, fixed)), ov, b.action === "falta" ? "falta" : "ajuste", fixed);
       return { week: ver() };
     },
     semear,
@@ -199,16 +197,11 @@ const demo = (() => {
     regenerar(reset: boolean, apply: boolean) {
       const c = cur();
       const ov = reset ? Object.fromEntries(Object.entries(c.overrides).filter(([d]) => d < today)) : c.overrides;
-      const plan = C.planWeek(input(ov, c.plan));
+      const fixed = semSalvos(c.fixed, C.salvosSubstituidos({ tipo: "semana" }, c.fixed ?? {}, input(ov, c.plan), { manual: reset }));
+      const plan = C.planWeek(input(ov, c.plan, fixed));
       const diff = C.diffWeeks(c.plan, plan);
-      if (apply) push(plan, ov, "regenerar");
+      if (apply) push(plan, ov, "regenerar", fixed);
       return { diff, week: apply ? ver() : null };
-    },
-    desfazer(version: number) {
-      const vs = load(), x = vs[version - 1];
-      if (!x) throw Object.assign(new Error("versão não encontrada"), { status: 404 });
-      push(x.plan, x.overrides, "desfazer", x.fixed);
-      return { week: ver() };
     },
   };
 })();

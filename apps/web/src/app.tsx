@@ -10,7 +10,7 @@ import { Folha, closeSheet, setSheetRerender } from "./lib/folha/index.tsx";
 import { Faixa, hideFaixa, setFaixaRerender, showFaixa } from "./lib/faixa/index.tsx";
 import { MiniBarra } from "./lib/mini-barra/index.tsx";
 import { LembreteDiario } from "./lib/lembrete-diario/index.tsx";
-import { Icon, Toast, toast } from "./lib/ui/index.tsx";
+import { Icon, Toast } from "./lib/ui/index.tsx";
 import { lsGet, lsSet } from "./lib/util.ts";
 import { MAIS, PRINCIPAL } from "./nav.ts";
 import { BotaoCenario } from "./lib/cenario/index.tsx";
@@ -83,7 +83,7 @@ export function App() {
   const stale = planIsStale() && !pendente;
   useEffect(() => {
     if (stale) showFaixa({ id: "treino-desatualizado", tone: "warn", text: "Você mudou o perfil: o treino de hoje está desatualizado.", closable: false,
-      action: { label: "Regenerar", onClick: () => { regeneratePlan(); commit(); toast("Treino regenerado com o perfil de hoje"); } } });
+      action: { label: "Regenerar", onClick: () => { void regeneratePlan().then(commit); } } });
     else hideFaixa("treino-desatualizado");
   }, [stale]);
   const comVoltar = !pendente && !(RAIZ.has(screen) && route.parts.length === 0) && screen !== "hoje";

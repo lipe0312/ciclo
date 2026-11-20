@@ -1,17 +1,15 @@
 // "Gerar outro treino" (#44): folha com até 4 perguntas de toque, todas opcionais. O core refaz o dia pelo orçamento da
-// semana (2× por músculo, sem compensar dobrado); vira uma versão (desfazer volta à anterior, como na Semana).
+// semana (2× por músculo, sem compensar dobrado). #121 Substitui o treino do dia: o anterior não fica como alternativa.
 import { C, S, commit, today } from "../../lib/store/index.ts";
 import { gymById, mName } from "../../lib/store/regras.ts";
 import { SheetHead, closeSheet, openSheet } from "../../lib/folha/index.tsx";
 import { Icon, Seg, Chip, toast } from "../../lib/ui/index.tsx";
-import { acaoDia, desfazer, diaDe, getSemana, garantirSemana } from "../semana/estado.ts";
+import { acaoDia, diaDe, getSemana, garantirSemana } from "../semana/estado.ts";
 import { diaCurto } from "../semana/folhas.tsx";
 import "../semana/semana.css";
 
 interface Rasc { date: string; livres: string[]; estilo: "livre" | "maquina" | null; leve: boolean; adiantar: C.MuscleId | null }
 let rasc: Rasc | null = null;
-/** versão anterior à última geração de hoje (para o "Desfazer" do Treino); some ao recarregar */
-export let anterior: { date: string; version: number } | null = null;
 
 /** Aparelhos que o dia pode usar: os da academia do dia que algum exercício dos grupos do treino precisa. */
 export function aparelhosDoDia(groups: C.Group[], equipment: string[]): C.Equipment[] {
@@ -37,10 +35,9 @@ async function gerar(todos: string[]) {
   if (r.estilo) opts.estilo = r.estilo;
   if (r.leve) opts.leve = true;
   if (r.adiantar) opts.adiantar = r.adiantar;
-  const v0 = s.version;
-  const ok = await acaoDia(r.date, { action: "outro", opts }, "Treino gerado de novo · dá para desfazer");
+  const ok = await acaoDia(r.date, { action: "outro", opts }, "Treino gerado de novo");
   if (!ok) return;
-  if (r.date === today) { anterior = { date: r.date, version: v0 }; aplicarHoje(); }
+  if (r.date === today) aplicarHoje();
   closeSheet(); commit();
 }
 
@@ -57,11 +54,6 @@ export function aplicarHoje() {
     ses.logs = Object.fromEntries(Object.entries(ses.logs).filter(([id]) => ses.plan.items.some((it: C.PlanItem) => it.exerciseId === id)));
   } else { S.plan = plan; S.ui.locked = true; S.ui.planSource = "semana"; }
   S.ui.swapsToday = {};
-}
-
-export async function desfazerGeracao() {
-  const a = anterior; if (!a) return;
-  if (await desfazer(a.version)) { anterior = null; aplicarHoje(); commit(); }
 }
 
 function Gerar() {

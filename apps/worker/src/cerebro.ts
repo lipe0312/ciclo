@@ -15,6 +15,7 @@ import { ciclo_contexto } from "./mcp-contexto.ts";
 import { sha256Hex } from "./auth.ts";
 import { contarJanela } from "./limites.ts";
 import { saveCompact } from "./mcp.ts";
+import { lerTreinoDoDia } from "./semana.ts";
 
 export interface PedidoCaixa { id: string; texto: string; acao: Action; hoje: string }
 export interface RespostaCerebro { response: string; change: unknown; cerebro: ProvedorId }
@@ -30,11 +31,11 @@ async function diasRestantes(env: Env, uid: string, hoje: string) {
   return Math.max(1, Math.min(7, meta - week.sessions.length));
 }
 
-/** Treino do dia: o salvo (Claude, manual ou regra) ou o calculado pela semana flexível. */
+/** Treino do dia: o da semana (#121 fonte única: o mesmo do Hoje, da Semana e do Começar); folga/livre = sem exercícios.
+ *  Sem semana (conta sem perfil/academia): o calculado na hora, que também fica vazio sem perfil. */
 async function treinoDoDia(env: Env, uid: string, hoje: string) {
-  const row = await env.DB.prepare("SELECT plan FROM day_plan WHERE user_id = ?1 AND date = ?2").bind(uid, hoje).first<{ plan: string }>();
-  const salvo = row ? parsePlanoSalvo(row.plan) : null;
-  if (salvo) return salvo;
+  const t = await lerTreinoDoDia(env, uid, hoje, hoje);
+  if (t) return t.plan ? parsePlanoSalvo(JSON.stringify(t.plan)) : { name: "Folga", estMinutes: 0, items: [] };
   const bi = await buildDayInput(env, uid, { date: hoje, daysLeft: await diasRestantes(env, uid, hoje) });
   return bi.empty ? null : planDay(bi.input);
 }

@@ -9,7 +9,7 @@ import { EMPTY_MSG, buildDayInput, cardioOut, closeStaleSessions, countGyms, del
 import { pushEnabled, validEndpoint } from "./push.ts";
 import { newMcpToken } from "./auth.ts";
 import { exigirCotaConta, exigirCotaGlobal, somarBytesR2 } from "./limites.ts";
-import { dayAction, empurrar, getWeek, regenerate, restore } from "./semana.ts";
+import { dayAction, empurrar, getWeek, lerTreinoDoDia, regenerate } from "./semana.ts";
 import { gerarTreinoDoDia } from "./treino-gerado.ts";
 import { registerComida } from "./comida.ts";
 import { lerPersonalizado, listarPersonalizados, registerPersonalizados } from "./exercicio-personalizado.ts";
@@ -47,7 +47,7 @@ on("GET", "/api/state", async (req, env, _p, u) => {
   await closeStaleSessions(env, u.id);
   const [profile, gyms, week, dayPlan, hist, media, meas, personalizados] = await Promise.all([
     rawProfile(env, u.id), listGyms(env, u.id), weekState(env, u.id, today), // #71 sem DEFAULTS: o app não pode ver level/minutos do padrão como resposta
-    env.DB.prepare("SELECT plan, source, gym_id, created_at FROM day_plan WHERE user_id = ?2 AND date = ?1").bind(today, u.id).first<{ plan: string; source: string; gym_id: string; created_at: number }>(),
+    lerTreinoDoDia(env, u.id, today, today), // #121 o treino de hoje sai da semana (fonte única): o mesmo do Hoje, da Semana e do MCP
     // última sessão de cada exercício (para a dupla progressão sugerir a carga)
     env.DB.prepare(`SELECT l.exercise_id, l.kg, l.reps, l.segundos FROM set_log l
       WHERE l.user_id = ?1 AND l.session_id = (SELECT s2.session_id FROM set_log s2 WHERE s2.user_id = ?1 AND s2.exercise_id = l.exercise_id ORDER BY s2.created_at DESC LIMIT 1)
@@ -59,12 +59,12 @@ on("GET", "/api/state", async (req, env, _p, u) => {
   const history: Record<string, { kg: number; reps: number; segundos?: number }[]> = {};
   for (const r of hist.results) (history[r.exercise_id] ??= []).push({ kg: r.kg, reps: r.reps ?? 0, ...(r.segundos ? { segundos: r.segundos } : {}) });
   // Treino desatualizado: impressão do perfil na hora em que o treino foi gerado (o app compara com o perfil de hoje).
-  const profileFp = dayPlan ? await planProfileFingerprint(env, u.id, dayPlan.created_at) : null;
+  const profileFp = dayPlan?.plan ? await planProfileFingerprint(env, u.id, dayPlan.createdAt) : null;
   return json({
     contaVersao, account: await account(env, u), onboarding: onboarding(u),
     profile: profile ?? {}, gyms, week, history, media: media.results, measures: meas.results.reverse(), personalizados,
     features: { ai: !!env.AI, media: !!env.MEDIA },
-    dayPlan: dayPlan ? { ...dayPlan, plan: JSON.parse(dayPlan.plan), profileFp } : null, version: env.APP_VERSION,
+    dayPlan: dayPlan?.plan ? { plan: dayPlan.plan, source: dayPlan.source, gym_id: dayPlan.gymId, created_at: dayPlan.createdAt, profileFp } : null, version: env.APP_VERSION,
   });
 });
 
@@ -300,7 +300,6 @@ on("POST", "/api/plan-edits", async (req, env, _p, u) => {
 
 // ---- semana completa planejada (#24) ----
 on("GET", "/api/week", async (req, env, _p, u) => json(await getWeek(env, u.id, date(new URL(req.url).searchParams.get("date")))));
-on("PUT", "/api/week", async (req, env, _p, u) => json(await restore(env, u.id, await readJson(req, 2 * 1024))));
 on("POST", "/api/week/regenerate", async (req, env, _p, u) => json(await regenerate(env, u.id, await readJson(req, 2 * 1024))));
 // #113 empurrar treino: sem apply devolve a prévia; com apply grava (hoje vira folga, o resto anda um dia)
 on("POST", "/api/week/empurrar", async (req, env, _p, u) => json(await empurrar(env, u.id, await readJson(req, 1024))));

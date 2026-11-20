@@ -96,9 +96,9 @@ test("treino desatualizado: mudar o perfil muda a impressão do treino salvo; o 
   await sleep(5);
   await c("PUT", "/api/profile", full({ minutes: 45 }));
   assert.notEqual(planFingerprint(profileOf(env, "ana")), await fp(), "minutos mudaram: o treino salvo ficou para trás");
-  // regenerar (salvar de novo) alinha de novo
+  // regenerar (#121: pela semana, a fonte única do treino do dia) alinha de novo
   await sleep(5);
-  await c("PUT", `/api/day-plan/${D}`, { plan, gymId: "acad1", source: "core" });
+  assert.equal((await c("POST", "/api/week/regenerate", { date: D, apply: true })).status, 200);
   assert.equal(planFingerprint(profileOf(env, "ana")), await fp());
   // outra conta não enxerga o treino nem a impressão
   assert.equal((await call(env, "GET", `/api/state?date=${D}`, { user: "bia" })).data.dayPlan, null);

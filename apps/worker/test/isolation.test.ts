@@ -140,12 +140,11 @@ async function matriz(env: any, ana: string, bia: string) {
     ["PUT /api/day-plan/:date", () => a("PUT", `/api/day-plan/${D}`, { plan: { items: [] } })],
     ["POST /api/plan-edits", () => a("POST", "/api/plan-edits", { date: D, edit: { index: 0, sets: 3 } }), 422],
     ["GET /api/week", () => a("GET", `/api/week?date=${D}`)],
-    ["PUT /api/week", () => a("PUT", "/api/week", { date: D, version: 1 })],
     ["POST /api/week/regenerate", () => a("POST", "/api/week/regenerate", { date: D, apply: true, reset: true })],
     ["POST /api/week/empurrar", () => a("POST", "/api/week/empurrar", { today: "2026-11-30" }), 400], // #113 today do aparelho fora do dia atual
     ["POST /api/week/day/:date", () => a("POST", "/api/week/day/2026-11-08", { action: "folga", today: D })],
-    // #108 a A já gerou o dia dela: gerar de novo = 409 (o dia da B não conta nem muda)
-    ["POST /api/week/day/:date/gerar-treino", () => a("POST", `/api/week/day/${B.livre}/gerar-treino`, { today: D }), 409],
+    // #108 o dia da B não conta nem muda; #121 o regenerar da A (acima) substituiu o treino que ela tinha gerado, então gerar de novo vale
+    ["POST /api/week/day/:date/gerar-treino", () => a("POST", `/api/week/day/${B.livre}/gerar-treino`, { today: D })],
     ["POST /api/sessions/:id/sets", () => a("POST", `/api/sessions/${B.sid}/sets`, { exerciseId: B.ex, muscle: "ombro", setNo: 1, kg: 1, reps: 1 })],
     ["POST /api/sessions/:id/skip", () => a("POST", `/api/sessions/${B.sid}/skip`, { exerciseId: B.ex, reason: "dor" })],
     ["GET /api/sessions/:id", () => a("GET", `/api/sessions/${B.sid}`), 404],
