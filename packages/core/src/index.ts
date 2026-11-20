@@ -47,3 +47,4 @@ export * from "./treino-gerado.ts";
 export * from "./exercicio-personalizado.ts";
 export * from "./medida.ts";
 export * from "./treino-do-dia.ts";
+export * from "./outro-aparelho.ts";

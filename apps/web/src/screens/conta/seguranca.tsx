@@ -1,5 +1,6 @@
 // #54/#62 Conta → Segurança: aviso de login em aparelho novo ("Fui eu" / "Não fui eu"), aparelhos com último acesso
 // (encerrar cada um), passkeys, códigos de recuperação e "Sair de todos". "Fui eu", adicionar/apagar passkey, ver códigos e sair de todos pedem Face ID.
+import type { ComponentType } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../../lib/api/index.ts";
 import { Icon, toast } from "../../lib/ui/index.tsx";
@@ -18,6 +19,8 @@ export function Seguranca() {
   const [codigos, setCodigos] = useState<string[]>([]);
   const [erro, setErro] = useState("");
   const [busy, setBusy] = useState("");
+  const [Outro, setOutro] = useState<ComponentType | null>(null); // #83: texto de ajuda em chunk à parte (orçamento de JS inicial)
+  useEffect(() => { import("./outro-aparelho.tsx").then((m) => setOutro(() => m.OutroAparelho)).catch(() => {}); }, []);
   const load = async () => setDev(await api<Devices>("GET", "/api/account/devices"));
   useEffect(() => { load().catch(() => setErro("Não deu para carregar os aparelhos.")); }, []);
   const act = async (id: string, f: () => Promise<void>) => {
@@ -76,6 +79,8 @@ export function Seguranca() {
         await comFaceId(() => criarPasskey({})); toast("Passkey criada neste aparelho"); await load(); // #62: pede Face ID recente
       })}><Icon id="plus" />{busy === "nova" ? "Aguardando o Face ID…" : "Adicionar passkey neste aparelho"}</button>
     </section>
+
+    {Outro && <Outro />}
 
     <section class="card conta-sec" aria-labelledby="ct-rc">
       <h2 id="ct-rc">Códigos de recuperação</h2>
