@@ -40,6 +40,8 @@ export interface WeekProfile {
   goalId?: string | null; cardio?: Partial<CardioDose> | null;
   /** #74 "Meu treino atual" (familiares fortes e fracos), iniciante e subparte alvo por músculo: só mudam a escolha do exercício */
   familiar?: string[]; familiarFraco?: string[]; iniciante?: boolean; subAlvo?: DayInput["subAlvo"];
+  /** #125 formato padrão do perfil (dynamics): "superserie" = preferir pares na geração */
+  formato?: Format | null;
 }
 /** O que já aconteceu na semana: séries registradas por dia e presença marcada. */
 export interface WeekCtx {
@@ -128,6 +130,7 @@ function dayInputFor(inp: WeekInput, d: WeekDay, run: { done: Sets; freq: Sets }
     prefs: p.prefs, pinned: p.pinned, avoid: p.avoid, pains: p.pains,
     estilo: d.opts.estilo ?? null, leve: !!d.opts.leve, adiantar: d.opts.adiantar ?? null,
     familiar: p.familiar, familiarFraco: p.familiarFraco, iniciante: p.iniciante, subAlvo: p.subAlvo,
+    formato: d.opts.format ?? p.formato ?? null, // #125
   };
 }
 

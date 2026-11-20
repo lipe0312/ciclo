@@ -14,6 +14,8 @@ import { OUTCOME_TXT, buildSummary, pastOf } from "./sessao.ts";
 
 /** #74 A folha Trocar baixa só quando abre (fora do JS inicial). */
 export const openSwap = (idx: number) => { void import("./troca.tsx").then(({ Swap }) => openSheet(() => <Swap idx={idx} />)); };
+/** #125 "Fazer junto com…" (supersérie à mão): baixa só quando abre. */
+export const openPares = (idx: number) => { void import("./pares.tsx").then(({ Pares }) => openSheet(() => <Pares idx={idx} />)); };
 
 const editOf = (d: any) => ({ index: d.index, sets: d.sets, reps: d.reps, ...(d.exerciseId === "__proprio" ? { exerciseId: "proprio_" + (d.nm || "x").toLowerCase().replace(/\W+/g, "_"), nm: d.nm || "Exercício meu" } : { exerciseId: d.exerciseId }) });
 export function openEdit(idx: number) {

@@ -1,7 +1,7 @@
 // Semana completa planejada (#24): monta a entrada do core a partir do D1, guarda versões (desfazer) e as escolhas
 // por dia. Todo SQL com bind e filtrado por user_id; o uid vem da autenticação.
 import {
-  EQUIPMENT_BY_ID, MUSCLE_IDS, applyDayAction, diffWeeks, empurrarTreinos, entradaTreinoAtual, mondayOf, planWeek, resumirDia, trocasDoDia, weekDates, weekProgression, weekView, weeklyTargets,
+  EQUIPMENT_BY_ID, MUSCLE_IDS, applyDayAction, diffWeeks, empurrarTreinos, entradaTreinoAtual, formatoDe, mondayOf, planWeek, resumirDia, trocasDoDia, weekDates, weekProgression, weekView, weeklyTargets,
 } from "@ciclo/core";
 import type { CardioEntry, DayAction, DayOpts, DayOverride, DayPlan, Intensity, MuscleId, Progression, Sets, WeekInput, WeekPlan, WeekProfile } from "@ciclo/core";
 import type { Env } from "./env.ts";
@@ -68,6 +68,7 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
       pains: week.pains.map((x) => ({ region: x.region, intensity: x.intensity })),
       goalId: typeof (p.goal as { id?: unknown } | undefined)?.id === "string" ? (p.goal as { id: string }).id : null,
       ...entradaTreinoAtual(p), // #74 "Meu treino atual": só prioriza; sem cadastro, igual a antes
+      formato: formatoDe(p.dynamics), // #125 superséries = preferir pares
     },
     base: weeklyTargets(([0, 1, 2, 3].includes(p.level) ? p.level : 1) as 0 | 1 | 2 | 3, (p.priorities ?? []).filter((m) => MUSCLE_IDS.includes(m))),
     sets: setsBy,

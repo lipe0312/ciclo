@@ -61,9 +61,9 @@ test("ciclo_treino_trocar aceita cus_ da conta (alternativas pelo músculo dele)
   const a = await conta(env, "ana"), b = await conta(env, "bia");
   const r = await tool(env, a.token, "ciclo_treino_trocar", { exercicioId: a.ids[1] });
   assert.equal(r.musculo, "pant", JSON.stringify(r));
-  assert.ok(r.mesmaParte.length > 0);
+  assert.ok(r.alternativas.length > 0); // #125 top 3 compacto
   const catalogo = await tool(env, a.token, "ciclo_catalogo", { muscle: "pant" });
-  assert.ok(JSON.stringify(catalogo).includes(r.mesmaParte[0].id), "alternativa de panturrilha do catálogo");
+  assert.ok(JSON.stringify(catalogo).includes(r.alternativas[0].id), "alternativa de panturrilha do catálogo");
   assert.match((await tool(env, b.token, "ciclo_treino_trocar", { exercicioId: a.ids[1] })).erro, /cus_ desta conta/);
 });
 

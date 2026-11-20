@@ -78,7 +78,7 @@ test("escopo ler: ciclo_treino_atual, ciclo_estado e ciclo_contexto funcionam; t
   const t = list.data.result.tools.find((x: any) => x.name === "ciclo_treino_atual");
   assert.equal(t.annotations.readOnlyHint, true);
   const init = await call(env, "POST", "/mcp", { bearer: l.token, body: { jsonrpc: "2.0", id: 1, method: "initialize", params: {} } });
-  assert.match(init.data.result.instructions, /Contrato v1\.2\.1/);
+  assert.match(init.data.result.instructions, /Contrato v1\.3\.0/);
   assert.match(init.data.result.instructions, /leia o treino atual \(ciclo_treino_atual/);
   assert.match(init.data.result.instructions, /pediu outra academia → leia os aparelhos dela/);
 });
@@ -131,7 +131,7 @@ test("academia sem leg press: montar o dia ali nunca traz leg press; salvar com 
   }
   // a troca sugerida resolve: alternativa da mesma parte que dá na casa, e aí salva
   const troca = await tool(env, a.token, "ciclo_treino_trocar", { exercicioId: comLeg.id, date: D, gymId: "casa" });
-  const alt = troca.mesmaParte[0]?.id ?? troca.outraParte[0].id;
+  const alt = troca.alternativas[0].id; // #125 top 3 compacto, na ordem
   assert.ok(!usaLeg(alt));
   assert.equal((await tool(env, a.token, "ciclo_salvar_treino_do_dia", { date: D, gymId: "casa", itens: [{ id: halter.id, sets: 3 }, { id: alt, sets: 3 }], motivo: "teste" })).salvo, true);
 });

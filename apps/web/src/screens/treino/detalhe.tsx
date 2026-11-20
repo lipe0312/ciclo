@@ -1,6 +1,7 @@
 // Detalhe do exercício: 2 imagens, passo a passo, músculos no mapa, aparelho, faixa de reps, dicas, erros,
 // alternativas e a mídia do SEU aparelho (quando houver).
 import * as C from "@ciclo/core";
+import { useEffect, useState } from "preact/hooks";
 import { S, calc } from "../../lib/store/index.ts";
 import { Card, Icon } from "../../lib/ui/index.tsx";
 import { Carrossel } from "../../lib/carrossel/index.tsx";
@@ -22,7 +23,7 @@ export function Detalhe({ id }: { id: string }) {
   if (!it) return <Estado tipo="vazio" titulo="Exercício não encontrado" acao={{ label: "Ver exercícios", href: "#treino/exercicios" }} />;
   const src = C.imageSrc(it);
   const primary = it.subMuscles?.length ? it.subMuscles : it.type === "forca" ? DEFAULT_SUB[it.m] : [];
-  const alts = it.type === "forca" ? C.EXERCISES.filter((e) => e.m === it.m && e.id !== it.id).slice(0, 4) : C.CARDIO.filter((c) => c.id !== it.id).slice(0, 4);
+  const alts = it.type === "cardio" ? C.CARDIO.filter((c) => c.id !== it.id).slice(0, 4) : [];
   return <>
     <p class="kicker">{it.type === "forca" ? `${C.MUSCLES[it.m].nm} · ${it.kind}` : "Cardio"}</p><h1 style="margin:2px 0 14px">{it.nm}</h1>
     <div class="grid dash"><div class="stack">
@@ -38,7 +39,17 @@ export function Detalhe({ id }: { id: string }) {
     </div><div class="stack">
       {primary.length > 0 && <Card><h2>Músculos</h2><MapaMusculos primary={primary} secondary={it.secondary} size="sm" /></Card>}
       {it.type === "forca" && <Card><h2>Seu aparelho</h2><MediaBox exId={it.id} grande /></Card>}
+      {it.type === "forca" && <AlternativasLazy id={it.id} />}
       {alts.length > 0 && <Card><h2>Alternativas</h2>{alts.map((a) => <a key={a.id} class="alt altlink" href={href("treino", ["exercicio", a.id])}>
-        {a.images.length ? <img src={img(C.imageSrc(a))} alt="" loading="lazy" width={56} height={56} /> : <span class="mbox"><Icon id="dumb" /></span>}<div><h3>{a.nm}</h3>{a.type === "forca" && <p class="tiny sub">{a.r.join("–")} reps · {a.kind}</p>}</div><Icon id="arrow" /></a>)}</Card>}
+        {a.images.length ? <img src={img(C.imageSrc(a))} alt="" loading="lazy" width={56} height={56} /> : <span class="mbox"><Icon id="dumb" /></span>}<div><h3>{a.nm}</h3></div><Icon id="arrow" /></a>)}</Card>}
     </div></div></>;
+}
+
+/** #125 Alternativas de força: a mesma lista da folha Trocar (C.alternativas). Baixa ao abrir: o banco fica fora do JS inicial. */
+type ModAlt = typeof import("./alternativas.tsx");
+let modAlt: ModAlt | null = null;
+function AlternativasLazy({ id }: { id: string }) {
+  const [, forca] = useState(0);
+  useEffect(() => { if (!modAlt) void import("./alternativas.tsx").then((m) => { modAlt = m; forca((n) => n + 1); }); }, []);
+  return modAlt ? <modAlt.AlternativasDetalhe id={id} /> : null;
 }

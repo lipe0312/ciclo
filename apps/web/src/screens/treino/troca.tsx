@@ -1,4 +1,5 @@
-// #74 Folha Trocar: só a mesma subparte, ordenada por eficiência; "outra parte do músculo" com aviso (a semana repõe).
+// #74 Folha Trocar: só a mesma subparte; "outra parte do músculo" com aviso (a semana repõe).
+// #125 a lista é a do banco fixo (C.alternativas), a mesma do Detalhe e do ciclo_treino_trocar, com o motivo de cada troca.
 import { useState } from "preact/hooks";
 import { C, S, commit } from "../../lib/store/index.ts";
 import { EXB, activePlan, dayInput, gymById, mName, profileChanged } from "../../lib/store/regras.ts";
@@ -22,7 +23,7 @@ function AltItem({ a, idx, outra }: { a: C.Alternativa; idx: number; outra?: boo
   const e = a.ex, parte = C.partePrincipal(e);
   return <div class="alt" style={a.blockedByPain ? "opacity:.5" : ""}>
     <img src={img(e.id)} alt="" loading="lazy" width={56} height={56} />
-    <div><h3>{e.nm}</h3>
+    <div><h3>{e.nm}</h3><p class="tiny sub">{a.motivo}</p>
       <p class="tiny sub alt-meta">{a.familiar && <span class="badge ok">você já faz</span>}<Bolinhas n={a.nota} />{parte ? <span>{C.parteCurta(parte)}</span> : null}<span>{e.r.join("–")} reps</span>{S.media[e.id] ? <span>você tem vídeo</span> : null}{a.blockedByPain ? <span>força região com dor</span> : null}</p></div>
     {a.blockedByPain ? <span class="badge bad">dor</span> : outra
       ? <button type="button" class="btn sm" onClick={() => pickSwap(idx, e.id, "hoje", true)}>Só hoje</button>
@@ -37,12 +38,12 @@ export function Swap({ idx }: { idx: number }) {
   const alt = C.alternativas(it.exerciseId, dayInput());
   const parteNm = alt.parte ? C.SUB_MUSCLES[alt.parte].nm : mName(it.muscle);
   return <><SheetHead kicker={`Trocar · ${parteNm}`} title={it.nm} />
-    <p class="small sub" style="margin:8px 0 6px">Mesma parte do músculo ({parteNm.toLowerCase()}): primeiro o que você já faz, depois os que mais trabalham essa parte. Aparelho disponível, dor e academia cheia já contam.</p>
+    <p class="small sub" style="margin:8px 0 6px">Mesma parte do músculo ({parteNm.toLowerCase()}), da melhor troca para baixo; o que você já faz sobe. Só aparelho de {gym.name}; dor e "nunca" já contam.</p>
     {alt.mesmaParte.length ? alt.mesmaParte.map((a) => <AltItem key={a.ex.id} a={a} idx={idx} />) : <p class="small" style="margin:10px 0">Sem outra opção para {parteNm.toLowerCase()} com os aparelhos de {gym.name}.</p>}
     {alt.outraParte.length > 0 && (!outra
       ? <button type="button" class="link44 alt-outra" aria-expanded={false} onClick={() => setOutra(true)}>Trocar por outra parte do músculo</button>
       : <><div class="note warn" role="note" style="margin-top:12px"><Icon id="warn" /><span>Isso não trabalha {parteNm.toLowerCase()}. A semana vai repor essa parte em outro dia.</span></div>
         {alt.outraParte.map((a) => <AltItem key={a.ex.id} a={a} idx={idx} outra />)}</>)}
-    {alt.semAparelho.length > 0 && <p class="tiny sub" style="margin-top:10px">Sem aparelho em {gym.name}: {alt.semAparelho.map((e) => e.nm).join(", ")}</p>}</>;
+    {alt.semAparelho.length > 0 && <><h3 class="kicker" style="margin-top:14px">Precisa de aparelho</h3><p class="tiny sub" style="margin-top:4px">Não tem em {gym.name}: {alt.semAparelho.map((e) => e.nm).join(", ")}</p></>}</>;
 }
 

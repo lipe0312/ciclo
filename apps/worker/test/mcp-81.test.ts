@@ -192,7 +192,7 @@ test("treino: semana ver/gerar (prévia quando já treinou), registrar série, t
   assert.equal((await tool(env, a.token, "ciclo_semana_gerar", { confirmar: ref.token })).refeita, true);
   assert.equal((await tool(env, a.token, "ciclo_semana_gerar", { confirmar: ref.token })).jaConfirmado, true);
   const tr = await tool(env, a.token, "ciclo_treino_trocar", { exercicioId: ex });
-  assert.ok(Array.isArray(tr.mesmaParte) && Array.isArray(tr.outraParte)); assert.ok(tr.mesmaParte.length + tr.outraParte.length > 0);
+  assert.ok(Array.isArray(tr.alternativas) && tr.alternativas.length > 0 && tr.alternativas.length <= 3); // #125 top 3 compacto
   const ta = await tool(env, a.token, "ciclo_treino_atual_salvar", { treinoAtual: { divisoes: [{ nome: "Treino A", grupos: ["ombro"], exercicios: [{ id: ex, sets: 3 }, { nome: "Elevação na máquina", grupo: "ombro" }] }] } });
   assert.equal(ta.salvo, true);
   assert.match((await tool(env, a.token, "ciclo_treino_atual_salvar", { treinoAtual: { divisoes: "x" } })).erro, /treinoAtual inválido/);

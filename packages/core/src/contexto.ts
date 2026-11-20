@@ -8,8 +8,9 @@
 import { EXERCISE_BY_ID, MUSCLES, MUSCLE_IDS } from "./catalog.ts";
 import type { MuscleId } from "./catalog.ts";
 import { DEFAULT_PROFILE } from "./perfil.ts";
-import { candidates, painBlocks } from "./plan-day.ts";
-import type { Pain, Pref } from "./plan-day.ts";
+import { painBlocks } from "./plan-day.ts";
+import { alternativas, topAlternativas } from "./trocar.ts";
+import type { Pain } from "./plan-day.ts";
 import { foodAverages, dayTotals } from "./comida.ts";
 import type { FoodEntry, Meal } from "./comida.ts";
 import { epley } from "./loads.ts";
@@ -98,8 +99,9 @@ function fatiaTroca(e: EstadoContexto, comDor: boolean): Record<string, unknown>
   const itens = (e.dia?.itens ?? []).filter((i) => hasEx(i.exerciseId)).slice(0, MAX_ITENS);
   const noDia = new Set(itens.map((i) => i.exerciseId));
   const ex = hasEx(e.exercicioId) ? EXERCISE_BY_ID[e.exercicioId] : null;
-  const ctx = { equipment: e.aparelhos, crowded: !!e.academiaCheia, prefs: p.prefs as Partial<Record<MuscleId, Pref>>, pains: e.dores, pinned: p.pinned, avoid: p.avoid };
-  const alts = (id: string) => candidates(EXERCISE_BY_ID[id].m, ctx).filter((c) => !c.blockedByPain && c.ex.id !== id && !noDia.has(c.ex.id)).slice(0, ALTERNATIVAS).map((c) => c.ex.id);
+  const ctx = { equipment: e.aparelhos, crowded: !!e.academiaCheia, pains: e.dores, avoid: p.avoid };
+  // #125 a mesma lista do Trocar e do ciclo_treino_trocar (banco fixo, academia do dia), sem o que já está no dia
+  const alts = (id: string) => topAlternativas(alternativas(id, ctx), 99).filter((a) => !noDia.has(a.ex.id)).slice(0, ALTERNATIVAS).map((a) => a.ex.id);
   const alvo = ex ? [ex.id] : itens.map((i) => i.exerciseId);
   const out: Record<string, unknown> = {
     dia: { itens: itens.map((i) => ({ id: i.exerciseId, sets: i.sets, ...medidaInfo(i.exerciseId) })) },

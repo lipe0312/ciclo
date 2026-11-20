@@ -4,6 +4,8 @@
 
 import { EXERCISES, EXERCISE_BY_ID, EQUIPMENT_BY_ID, MUSCLES, MUSCLE_IDS, REGION_BY_ID, SUB_MUSCLES } from "./catalog.ts";
 import type { Exercise, Group, Joint, Kind, MuscleId, SubMuscleId } from "./catalog.ts";
+import { parearItens } from "./superserie.ts";
+import type { Format } from "./semana.ts";
 
 
 export type Mode = "normal" | "compensatorio" | "expresso";
@@ -44,6 +46,8 @@ export interface DayInput {
   subAlvo?: Partial<Record<MuscleId, SubMuscleId>>;
   /** #74 troca forçada: subparte que ficou sem estímulo e quantas séries repor (nunca passa do que falta na semana). */
   repor?: Partial<Record<MuscleId, { sub: SubMuscleId; sets: number }>>;
+  /** #125 formato do dia: "superserie" = preferir pares (podeParear), nunca pela posição. */
+  formato?: Format | null;
 }
 
 export interface PlanItem {
@@ -54,6 +58,8 @@ export interface PlanItem {
   personalizado?: boolean;
   /** repetições em reserva pedidas (só no "mais leve hoje": 3); sem o campo vale o padrão de sobrar 1–2 */
   rir?: number;
+  /** #125 supersérie: "A1"/"A2" (mesma letra = par). Só entre músculos que não competem (superserie.ts). */
+  par?: string;
 }
 export interface DayPlan {
   name: string; mode: Mode; groups: Group[]; items: PlanItem[]; prehab: PlanItem[];
@@ -254,11 +260,13 @@ export function planDay(inp: DayInput): DayPlan {
     } else items.push(item(first, a.sets, alts([first.id])));
   }
   if (inp.leve) for (const i of items) i.rir = LEVE_RIR;
-  const nonPrehabItems = items.filter((i) => !i.prehab);
+  let nonPrehabItems = items.filter((i) => !i.prehab);
   nonPrehabItems.sort((a, b) => {
     const r = prioRank(a.muscle) - prioRank(b.muscle);
     return r !== 0 ? r : (EXERCISE_BY_ID[b.exerciseId]?.fat ?? 1) - (EXERCISE_BY_ID[a.exerciseId]?.fat ?? 1);
   });
+  // #125 superséries: pares pelo músculo (antagonistas, superior × inferior, ombro lateral × braço), nunca pela posição
+  if (inp.formato === "superserie") nonPrehabItems = parearItens(nonPrehabItems, inp.equipment);
 
   // 7. resumo
   const perMuscle: Partial<Record<MuscleId, number>> = {};
@@ -284,6 +292,7 @@ export function planDay(inp: DayInput): DayPlan {
   else why.push(daysLeft === 1 ? `Último dia da semana: segue o próximo treino (${name.toLowerCase()}).` : `Restam ${daysLeft} dias: hoje ${name.toLowerCase()}, o volume que falta é dividido entre os dias do mesmo grupo.`);
   if (inp.crowded) why.push("Academia cheia: preferi halteres e aparelhos que costumam estar livres.");
   if (inp.estilo) why.push(inp.estilo === "livre" ? "Você pediu mais peso livre hoje." : "Você pediu mais máquina hoje.");
+  if (nonPrehabItems.some((i) => i.par)) why.push("Superséries: pares A1 + A2 de músculos que não competem.");
   if (inp.leve) why.push(`Mais leve hoje: menos séries e sobrando ${LEVE_RIR} repetições; todo músculo continua no dia, então a semana não perde o 2×.`);
   if (inp.adiantar && alloc.some((a) => a.m === inp.adiantar)) why.push(`Adiantando ${MUSCLES[inp.adiantar].nm.toLowerCase()}: séries que seriam de outro dia, sem passar do que falta na semana.`);
   if (dropped.length) why.push(`Não coube no tempo: ${dropped.map((m) => MUSCLES[m].nm).join(", ")}.`);
