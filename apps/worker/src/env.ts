@@ -26,6 +26,7 @@ export interface Env {
   OPENAI_MODEL?: string;       // #66: opcional (padrão gpt-4.1-mini).
   ANTHROPIC_API_KEY?: string;  // #80: OPCIONAL. Chave do dono para estimar porções com o Haiku (2º provedor, depois do Workers AI). Sem ela, desligado.
   ANTHROPIC_MAX_USD?: string;  // #80: teto de gasto mensal em US$ (0 < teto ≤ 100), contado no D1 (cerebro_gasto). Sem ele, desligado.
+  KEK_V1?: string;             // #88: chave-mestra (KEK) do cofre de chaves de API, 32 bytes em base64 (`wrangler secret put KEK_V1`). Sem ela, cadastrar chave fica desligado. Rotação: KEK_V2… (ADR-0015).
   VAPID_SUBJECT?: string;      // opcional: mailto:… ou https://… exigido por alguns serviços de push (padrão: mailto:ciclo@example.com)
 }
 
