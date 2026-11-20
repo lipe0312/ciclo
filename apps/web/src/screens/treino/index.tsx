@@ -17,7 +17,7 @@ import { Detalhe } from "./detalhe.tsx";
 import { InfoPersonalizado, SeloPersonalizado } from "./personalizado.tsx";
 import { Historico } from "./historico.tsx";
 import { Cardio, cardioName } from "./cardio.tsx";
-import { abrirGerarOutro, anterior, desfazerGeracao } from "./gerar.tsx";
+import { abrirGerarOutro } from "./gerar.tsx";
 import { diaDe, garantirSemana } from "../semana/estado.ts";
 import { Relogio, Timeline, useTick } from "./timeline.tsx";
 import { AbasTreino } from "../../lib/abas-treino/index.tsx";
@@ -92,8 +92,7 @@ function Hoje() {
       <p class="small sub num" style="margin-top:4px">{plan.setsTotal} séries · ~{plan.estMinutes} min · dupla progressão, sobrar 1–2 reps</p></div>
       {run ? <a class="btn pri lg" href={href("treino", ["ativo", String(curIdx())])}><Icon id="play" />Continuar<span class="num"> · <Relogio /></span></a>
         : <button type="button" class="btn pri lg" onClick={startSession} disabled={!plan.items.length}><Icon id="play" />Começar</button>}</div>
-    <div class="row wrapx" style="gap:8px;margin-bottom:12px"><button type="button" class="btn" onClick={() => abrirGerarOutro()}><Icon id="cycle" />Gerar outro treino</button>
-      {anterior?.date === today && <button type="button" class="btn ghost" onClick={desfazerGeracao}><Icon id="back" />Desfazer</button>}</div>
+    <div class="row wrapx" style="gap:8px;margin-bottom:12px"><button type="button" class="btn" onClick={() => abrirGerarOutro()}><Icon id="cycle" />Gerar outro treino</button></div>
     {plan.leve && <p class="small" style="margin-bottom:12px"><span class="badge warn">mais leve hoje</span> <span class="sub">sobrando 3 repetições em cada série.</span></p>}
     {!run && <div class="note" style="margin-bottom:12px"><Icon id="info" /><span>Ao começar, o dia conta como <b>fui</b> e o treino abre em tela cheia: dá para sair, ver a comida ou falar com o Chat e voltar ao mesmo ponto. Esqueceu de terminar? Fecha sozinho em <b>2 h</b> com o que foi registrado.</span></div>}
     <div class="grid dash"><div class="stack">

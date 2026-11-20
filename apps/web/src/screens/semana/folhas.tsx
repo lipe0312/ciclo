@@ -1,11 +1,11 @@
-// Folhas da Semana: trocar a geração de um dia, mover/trocar dias, regenerar com diff e versões (desfazer).
+// Folhas da Semana: trocar a geração de um dia, mover/trocar dias e regenerar com diff. #121 Regerar substitui (sem desfazer).
 import type * as C from "@ciclo/core";
 import { S, calc, commit, today } from "../../lib/store/index.ts";
 import { FOCUS } from "../../lib/store/regras.ts";
 import { SheetHead, closeSheet, openSheet } from "../../lib/folha/index.tsx";
 import { Chip, Icon, Seg } from "../../lib/ui/index.tsx";
 import { DOW_NM, dowIdx } from "../../lib/util.ts";
-import { acaoDia, desfazer, diaDe, empurrar, getSemana, previaEmpurrar, previaRegenerar, regenerar } from "./estado.ts";
+import { acaoDia, diaDe, empurrar, getSemana, previaEmpurrar, previaRegenerar, regenerar } from "./estado.ts";
 import type { Dia, Empurrao } from "./estado.ts";
 
 export const diaCurto = (date: string) => `${DOW_NM[dowIdx(date)]} ${Number(date.slice(8, 10))}`;
@@ -28,7 +28,7 @@ function Trocar() {
     return o;
   };
   return <><SheetHead kicker={`Trocar a geração · ${diaCurto(r.date)}`} title={d.plan?.name ?? "Dia de treino"} />
-    <p class="small sub" style="margin:6px 0 14px">O resto da semana se reorganiza pelo orçamento de séries. A versão anterior fica salva para desfazer.</p>
+    <p class="small sub" style="margin:6px 0 14px">O resto da semana se reorganiza pelo orçamento de séries. O treino novo substitui o deste dia.</p>
     <div class="stack">
       <div><span class="f">Divisão</span><Seg opts={[[null, "Automática"], ["sup", "Superior"], ["inf", "Inferior"], ["full", "Corpo inteiro"]]} value={r.split ?? null}
         onPick={(v) => up({ split: v as C.Split | null, focus: null })} label="Divisão" /></div>
@@ -71,7 +71,7 @@ async function prever() { reg.carregando = true; commit(); reg.diff = await prev
 export function abrirRegenerar() { reg.reset = false; reg.diff = null; openSheet(() => <Regenerar />); prever(); }
 function Regenerar() {
   return <><SheetHead kicker="Regenerar a semana" title="O que muda" />
-    <p class="small sub" style="margin:6px 0 12px">Monta de novo os dias que ainda não passaram com o perfil, as dores e o volume de agora.</p>
+    <p class="small sub" style="margin:6px 0 12px">Monta de novo os dias que ainda não passaram com o perfil, as dores e o volume de agora. Substitui os treinos desses dias, inclusive os da IA.</p>
     <Seg opts={[[false, "Manter minhas trocas"], [true, "Descartar minhas trocas"]]} value={reg.reset} onPick={(v) => { reg.reset = v; prever(); }} label="Trocas" />
     <div class="sem-diff" aria-live="polite">{reg.carregando ? <p class="small sub">Calculando…</p>
       : !reg.diff ? null : !reg.diff.length ? <p class="small">Nada muda: a semana já está atualizada.</p>
@@ -99,21 +99,4 @@ function Empurrar() {
     <div class="row" style="margin-top:14px;gap:8px">
       <button type="button" class="btn" style="flex:1" onClick={closeSheet}>Cancelar</button>
       <button type="button" class="btn pri" style="flex:1" disabled={!p?.moves.length} onClick={() => empurrar().then((ok) => ok && closeSheet())}>Empurrar</button></div></>;
-}
-
-// ---------- versões (desfazer) ----------
-const ORIGEM: Record<string, string> = { auto: "gerada na segunda", regenerar: "regenerada", ajuste: "troca de dia", falta: "falta respondida", extra: "treino extra", desfazer: "desfeita" };
-const hora = (t: number) => new Intl.DateTimeFormat("pt-BR", { weekday: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(t));
-const ver = { todas: false };
-export function abrirVersoes() { ver.todas = false; openSheet(() => <Versoes />); }
-function Versoes() {
-  const s = getSemana(); if (!s) return null;
-  const lista = ver.todas ? s.versions : s.versions.slice(0, 5);
-  return <><SheetHead kicker="Versões da semana" title="Desfazer" />
-    <p class="small sub" style="margin:6px 0 12px">Cada mudança guarda a geração anterior. Voltar cria uma versão nova; nada se perde.</p>
-    {lista.map((v) => <div key={v.version} class="sem-opt" style="cursor:default">
-      <b class="num">v{v.version}</b><span class="small sub">{ORIGEM[v.source] ?? v.source} · {hora(v.createdAt)}</span>
-      {v.version === s.version ? <span class="badge acc">atual</span>
-        : <button type="button" class="btn" onClick={() => desfazer(v.version).then((ok) => ok && closeSheet())}>Voltar</button>}</div>)}
-    {!ver.todas && s.versions.length > 5 && <button type="button" class="btn ghost full" style="margin-top:8px" onClick={() => { ver.todas = true; commit(); }}>Ver mais ({s.versions.length - 5})</button>}</>;
 }

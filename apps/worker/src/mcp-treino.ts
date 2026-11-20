@@ -5,7 +5,7 @@ import type { MuscleId, WeekDay } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { HttpError, date, int, str } from "./http.ts";
 import { EMPTY_MSG, buildDayInput, getProfile, rawProfile, saveProfile, weekState } from "./db.ts";
-import { aplicarNaSemana, dayAction, empurrar, getWeek, regenerate } from "./semana.ts";
+import { aplicarNaSemana, dayAction, empurrar, getWeek, lerTreinoDoDia, regenerate } from "./semana.ts";
 import { confirmar, criarPrevia } from "./mcp-previa.ts";
 import { aprovacaoDe, salvarAprovacao } from "./mcp-comida.ts";
 import { S, addDays, dado, obj, today } from "./mcp-tipos.ts";
@@ -51,7 +51,7 @@ async function semanaGerar(a: Args, env: Env, uid: string) {
     const opts: Record<string, unknown> = {};
     if (Array.isArray(a.foco) && a.foco.length) opts.focus = a.foco;
     if (a.minutos != null) opts.minutes = a.minutos;
-    const r = await dayAction(env, uid, date(a.dia, "dia"), { action: "gerar", today: hoje, opts });
+    const r = await dayAction(env, uid, date(a.dia, "dia"), { action: "gerar", today: hoje, opts }, { manual: false }); // #121 a IA não apaga edição manual
     return { gerado: true, dia: a.dia, ...semanaCompacta(r.week as never) };
   }
   const reset = a.reset === true;
@@ -100,10 +100,10 @@ async function treinoRegistrar(a: Args, env: Env, uid: string) {
   const now = Date.now();
   let sess = await env.DB.prepare("SELECT id FROM session WHERE user_id = ?1 AND date = ?2 AND (finished_at IS NULL OR closed_by = 'auto') ORDER BY started_at DESC LIMIT 1").bind(uid, d).first<{ id: string }>();
   if (!sess) {
-    const plan = await env.DB.prepare("SELECT plan, gym_id FROM day_plan WHERE user_id = ?1 AND date = ?2").bind(uid, d).first<{ plan: string; gym_id: string | null }>();
+    const plan = await lerTreinoDoDia(env, uid, d, today()); // #121 a sessão nasce com o treino do dia da fonte única
     const sid = crypto.randomUUID();
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO session (user_id, id, date, gym_id, plan, started_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(uid, sid, d, plan?.gym_id ?? null, plan?.plan ?? "{}", now),
+      env.DB.prepare("INSERT INTO session (user_id, id, date, gym_id, plan, started_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(uid, sid, d, plan?.gymId ?? null, plan?.plan ? JSON.stringify(plan.plan) : "{}", now),
       env.DB.prepare("INSERT INTO attendance (user_id, date, status, source, updated_at) VALUES (?1, ?2, 'fui', 'claude', ?3) ON CONFLICT(user_id, date) DO UPDATE SET status = 'fui', source = 'claude', updated_at = ?3").bind(uid, d, now),
     ]);
     sess = { id: sid };

@@ -1,12 +1,13 @@
 // #45 ciclo_contexto: busca só o que a fatia do pedido precisa (todo SQL com bind e filtrado por user_id) e entrega ao core
 // (contexto()), que monta a fatia enxuta. Notas, texto de comida, contexto da dor e pedidos não são lidos; o treino do dia
-// (day_plan) é lido, mas o core só aproveita IDs do catálogo e séries (o nome do treino, texto livre, é descartado).
+// (#121 o da semana, fonte única) é lido, mas o core só aproveita IDs do catálogo e séries (o nome, texto livre, é descartado).
 import { MEMORIA, MUSCLE_IDS, PEDIDOS, academiaDoDia, academiasMcp, contexto, foodAverages, mondayOf, resumoClaude, weeklyTargets } from "@ciclo/core";
 import type { EstadoContexto, EstadoResumo, FoodEntry, Meal, MuscleId, Pedido } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { EMPTY_MSG, getProfile, listGyms, parse, weekState } from "./db.ts";
 import { date, int, oneOf, str } from "./http.ts";
 import { healthOfWeek } from "./diario.ts";
+import { lerTreinoDoDia } from "./semana.ts";
 
 const addDays = (iso: string, n: number) => new Date(Date.parse(iso + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 const DOW = ["dom", "seg", "ter", "qua", "qui", "sex", "sab"];
@@ -38,7 +39,7 @@ export async function ciclo_contexto(a: Args, env: Env, uid: string, today: stri
   const [gyms, week, plan, food, series, medidas] = await Promise.all([
     precisa.treino ? listGyms(env, uid) : Promise.resolve([]),
     precisa.semana ? weekState(env, uid, d) : Promise.resolve(null),
-    precisa.treino ? env.DB.prepare("SELECT plan, gym_id FROM day_plan WHERE user_id = ?1 AND date = ?2").bind(uid, d).first<{ plan: string; gym_id: string | null }>() : Promise.resolve(null),
+    precisa.treino ? lerTreinoDoDia(env, uid, d, today) : Promise.resolve(null), // #121 o treino do dia da fonte única (a semana)
     precisa.comida ? env.DB.prepare("SELECT date, meal, kcal, protein FROM food_log WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date, created_at LIMIT 400").bind(uid, addDays(d, -6), d)
       .all<{ date: string; meal: Meal | null; kcal: number | null; protein: number | null }>() : Promise.resolve(null),
     precisa.revisao ? env.DB.prepare(`SELECT s.date, l.exercise_id, l.muscle, l.kg, l.reps FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
@@ -48,9 +49,9 @@ export async function ciclo_contexto(a: Args, env: Env, uid: string, today: stri
       .all<{ date: string; arm_cm: number | null; waist_cm: number | null }>() : Promise.resolve(null),
   ]);
 
-  const wanted = gymId ?? plan?.gym_id ?? (profile.dayGym as Record<string, string> | undefined)?.[DOW[new Date(d + "T12:00:00Z").getUTCDay()]];
+  const wanted = gymId ?? plan?.gymId ?? (profile.dayGym as Record<string, string> | undefined)?.[DOW[new Date(d + "T12:00:00Z").getUTCDay()]];
   const gym = gyms.find((g) => g.id === wanted) ?? gyms[0];
-  const dia = plan ? parse<{ name?: string; items?: { exerciseId: string; sets: number }[] }>(plan.plan, {}) : null;
+  const dia = plan?.plan ?? null;
   const diet = (profile.diet ?? {}) as { kcal?: number; protein?: number };
   const e: EstadoContexto = {
     data: d, perfil: profile,
@@ -68,7 +69,7 @@ export async function ciclo_contexto(a: Args, env: Env, uid: string, today: stri
     medidas: medidas?.results.map((m) => ({ date: m.date, armCm: m.arm_cm, waistCm: m.waist_cm })),
   };
   // #95 as academias com os aparelhos (IDs) e a do dia, para montar "na academia tal" sem errar a máquina
-  const [academias, planoGym] = precisa.treino ? [gyms, plan?.gym_id] : await Promise.all([
+  const [academias, planoGym] = precisa.treino ? [gyms, plan?.gymId] : await Promise.all([
     listGyms(env, uid),
     env.DB.prepare("SELECT gym_id FROM day_plan WHERE user_id = ?1 AND date = ?2").bind(uid, d).first<{ gym_id: string | null }>().then((r) => r?.gym_id),
   ]);

@@ -3,6 +3,7 @@
 import { C, S, calc, commit, perfilSync, today } from "./index.ts";
 import { SERVER, api, flush, send } from "../api/index.ts";
 import { DOW, TZ, addDays, dowIdx, lsGet, lsSet, uid } from "../util.ts";
+import { regenerar } from "../../screens/semana/estado.ts";
 
 export const mName = (m: string) => (C.MUSCLES as Record<string, C.Muscle>)[m]?.nm ?? m;
 export const EXB = C.EXERCISE_BY_ID;
@@ -65,12 +66,12 @@ export function profileChanged(sync = true) {
 export function ensureBaseline() { if (!S.plan || !S.ui.planFp) { if (!(S.session && !S.session.finishedAt)) computePlan(); } }
 /** Treino guardado foi gerado com um perfil diferente do de hoje (e não há treino em andamento). */
 export const planIsStale = () => !!S.plan && S.ui.locked && !(S.session && !S.session.finishedAt) && C.isFingerprintStale(S.ui.planFp, S.profile);
-/** "Regenerar": refaz o treino com o perfil de hoje e (no servidor) troca o treino guardado. */
-export function regeneratePlan() {
-  S.ui.locked = false; S.ui.planSource = undefined;
-  const plan = computePlan(true);
-  if (SERVER) send("PUT", `/api/day-plan/${today}`, { plan, gymId: S.ui.gymId, source: "core" }).catch(() => {});
-  return plan;
+/** "Regenerar" (perfil mudou): #121 refaz pela semana, a fonte única, e o treino de hoje passa a ser o novo dela
+ *  (antes recalculava só no aparelho e o Começar ficava diferente do Hoje/Semana). */
+export async function regeneratePlan() {
+  const ok = await regenerar(false);
+  if (ok) S.ui.planFp = C.planFingerprint(S.profile); // a semana nova foi feita com o perfil de hoje
+  return ok;
 }
 let gymTimer: ReturnType<typeof setTimeout> | undefined;
 export function gymChanged(g: { id: string; name: string; equipment: string[]; busyHours: string[] }) {

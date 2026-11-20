@@ -1,4 +1,4 @@
-// Rotas da semana (#24) no Worker real sobre D1 em memória: gera na segunda, versões/desfazer, falta, extra,
+// Rotas da semana (#24) no Worker real sobre D1 em memória: gera na segunda, versões (sem voltar: #121), falta, extra,
 // validação da entrada e isolamento entre contas (falha se a query de day_override/week_plan perder o user_id).
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -18,7 +18,7 @@ async function conta(env: unknown, user: string) {
 }
 const groups = (d: any) => [...new Set((d.plan?.items ?? []).map((i: any) => MUSCLES[i.muscle as keyof typeof MUSCLES].group))].sort().join();
 
-test("semana: nasce inteira na segunda (v1), trocar geração vira v2, regenerar mostra diff, desfazer volta", async () => {
+test("semana: nasce inteira na segunda (v1), trocar geração vira v2, regenerar mostra diff; não há voltar versão (#121)", async () => {
   const env = makeEnv();
   const a = await conta(env, "ana");
   const g = await a("GET", `/api/week?date=${SEG}`);
@@ -47,13 +47,9 @@ test("semana: nasce inteira na segunda (v1), trocar geração vira v2, regenerar
   assert.equal(dry.data.week, null);
   assert.ok(dry.data.diff.some((x: any) => x.date === "2026-11-14"), "o diff mostra o sábado voltando a folga");
 
-  const back = await a("PUT", "/api/week", { date: SEG, version: 1 });
-  assert.equal(back.status, 200, back.text);
-  assert.equal(back.data.week.version, 4);
-  assert.equal(back.data.week.days[3].kind, "treino");
-  assert.equal(back.data.week.days[3].source, "auto");
-  assert.ok(back.data.week.versions.some((v: any) => v.source === "desfazer"));
-  assert.equal((await a("PUT", "/api/week", { date: SEG, version: 99 })).status, 404);
+  // #121 voltar a uma geração antiga não existe (só a IA gera de novo): a rota sumiu e a semana continua na última
+  assert.equal((await a("PUT", "/api/week", { date: SEG, version: 1 })).status, 404);
+  assert.equal((await a("GET", `/api/week?date=${SEG}`)).data.week.version, 3);
 });
 
 test("falta: terça sem treino aparece como pendente; 'não fui' reorganiza (quinta vira inferior)", async () => {
@@ -110,7 +106,6 @@ test("entrada validada: data, ação, foco e academia (SQL só com bind)", async
     ["POST", `/api/week/day/${QUI}`, { action: "gerar", today: SEG, opts: { focus: ["x'; DROP TABLE day_override;--"] } }],
     ["POST", `/api/week/day/${QUI}`, { action: "gerar", today: SEG, opts: { gymId: "de-outra-conta" } }],
     ["POST", `/api/week/day/${QUI}`, { action: "gerar", today: SEG, opts: { minutes: 9999 } }],
-    ["PUT", "/api/week", { date: SEG, version: "1 OR 1=1" }],
   ];
   for (const [m, p, b] of bad) assert.equal((await a(m, p, b)).status, 400, `${m} ${p} ${JSON.stringify(b)}`);
   assert.equal((await a("GET", `/api/week?date=${SEG}`)).data.week.version, 1, "nada mudou");
@@ -144,7 +139,7 @@ const rowsOf = (env: any, uid: string) => JSON.stringify({
   ov: env.DB.raw.prepare("SELECT date, kind, opts, updated_at FROM day_override WHERE user_id = ? ORDER BY date").all(uid),
 });
 
-test("isolamento de escrita: trocas, desfazer e a poda (> 20 versões) da A não apagam day_override nem week_plan da B", async () => {
+test("isolamento de escrita: trocas, regenerar e a poda (> 20 versões) da A não apagam day_override nem week_plan da B", async () => {
   const env = makeEnv();
   const b = await conta(env, "bia");
   await b("GET", `/api/week?date=${SEG}`);
@@ -156,7 +151,7 @@ test("isolamento de escrita: trocas, desfazer e a poda (> 20 versões) da A não
   const a = await conta(env, "ana");
   await a("GET", `/api/week?date=${SEG}`);
   assert.equal((await a("POST", `/api/week/day/${TER}`, { action: "gerar", today: SEG, opts: { split: "full" } })).status, 200);
-  assert.equal((await a("PUT", "/api/week", { date: SEG, version: 1 })).status, 200);
+  assert.equal((await a("POST", "/api/week/regenerate", { date: SEG, apply: true, reset: true })).status, 200);
   assert.equal(rowsOf(env, ub), antes, "escrita da A mexeu nas linhas da B");
   for (let k = 0; k < 22; k++) {
     const r = await a("POST", "/api/week/day/2026-11-14", { action: k % 2 ? "folga" : "treino", today: SEG });
@@ -209,7 +204,7 @@ test("isolamento de leitura: dados da B (séries, cargas, frequência, semanas a
   assert.equal(await semanaA(junto), sozinha, "a semana da A mudou com os dados da B");
 });
 
-test("gerar outro treino (#44): ocupados/estilo/leve/adiantar viram versão, validam a entrada e desfazer volta; cardio planejado e futsal que abate", async () => {
+test("gerar outro treino (#44): ocupados/estilo/leve/adiantar viram versão e validam a entrada (sem voltar à anterior); cardio planejado e futsal que abate", async () => {
   const env = makeEnv();
   const a = await conta(env, "ana");
   const w0 = (await a("GET", `/api/week?date=${SEG}`)).data.week;
@@ -228,10 +223,9 @@ test("gerar outro treino (#44): ocupados/estilo/leve/adiantar viram versão, val
   for (const bad of [{ ocupados: ["nao_existe"] }, { ocupados: "x" }, { estilo: "robo" }, { adiantar: "orelha" }])
     assert.equal((await a("POST", `/api/week/day/${SEG}`, { action: "outro", today: SEG, opts: bad })).status, 400, JSON.stringify(bad));
 
-  const volta = await a("PUT", "/api/week", { date: SEG, version: 1 });
-  assert.equal(volta.status, 200, volta.text);
-  assert.deepEqual(volta.data.week.days[0].plan.items.map((i: any) => i.exerciseId), antes.items.map((i: any) => i.exerciseId));
-  assert.equal(volta.data.week.days[0].plan.leve, undefined);
+  // #121 "Gerar outro" substitui: não há como abrir de novo a geração anterior
+  assert.equal((await a("PUT", "/api/week", { date: SEG, version: 1 })).status, 404);
+  assert.equal((await a("GET", `/api/week?date=${SEG}`)).data.week.days[0].plan.leve, true);
 
   const f = await a("POST", "/api/cardio", { date: SEG, type: "Futsal", minutes: 60, intensity: "moderado" });
   assert.equal(f.status, 201, f.text);
