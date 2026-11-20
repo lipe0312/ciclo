@@ -2,7 +2,7 @@
 // Telas leem `S` direto e chamam `commit()` depois de mudar algo. Campos novos do /api/state são tolerados.
 import { useEffect, useState } from "preact/hooks";
 import * as C from "@ciclo/core";
-import { SERVER, api, queue } from "../api/index.ts";
+import { SERVER, api, queue, send } from "../api/index.ts";
 import { marcarVersao } from "../atualizar/index.ts";
 import { addDays, clone, isoDate, lsGet, lsSet } from "../util.ts";
 
@@ -47,6 +47,8 @@ export const S = {
     swapsToday: {} as Record<string, string>, locked: false, planSource: undefined as string | undefined, minutesSet: false,
     /** #121 assinatura do último treino de hoje que veio da fonte única (a semana): mudou lá → o aparelho troca */
     treinoVisto: null as string | null,
+    /** #122 aviso na sessão quando o treino do dia mudou no meio dela (o que entrou, saiu ou ficou como "trocado") */
+    avisoSessao: null as string | null,
     ckDate: today, ckDraft: null as any, perfilSec: null as string | null, cat: "todos", gymTab: "acad1", bodyView: "frente", promptCat: "Hoje",
     tierOverride: null as string | null, planFp: null as string | null, inboxDraft: "", foodDraft: "", editDraft: null as any, fb: null as any,
   },
@@ -104,6 +106,7 @@ export function mesclarRascunho(a: Record<string, unknown>, b: Record<string, un
 export const perfilSync = { pendente: false };
 
 export async function loadServer() {
+  void import("@ciclo/core/sessao-dia").catch(() => {}); // #122 fica no cache do aparelho para o Começar funcionar sem sinal
   const st = await api("GET", `/api/state?date=${today}`);
   marcarVersao(st.contaVersao); // #114 a versão da conta que estes dados refletem (lida no servidor antes deles)
   // #62/#71: conta nova = vazia. O perfil é o rascunho salvo sobre o vazio (+ o que veio do cadastro); nada do DEFAULT_PROFILE por baixo.
@@ -130,9 +133,20 @@ export async function loadServer() {
   S.measures = st.measures ?? [];
   S.personalizados = Object.fromEntries(((st.personalizados ?? []) as C.ExercicioPersonalizado[]).map((p) => [p.id, p]));
   // #121 o treino de hoje é o da semana (fonte única, o mesmo do Hoje e da Semana): mudou lá (IA, regerar, outro aparelho) → troca aqui
+  // #122 recarregar/outro aparelho retomam a sessão aberta (a deste aparelho ou a do servidor); nunca abrem outra.
+  // Antes de adotar o treino de hoje: com sessão aberta ele não troca o do aparelho, e sim entra na sessão (abaixo).
+  const local = S.session && S.session.date === today ? S.session : null;
+  const id = local && !local.finishedAt ? local.id : S.week.sessions.some((x: any) => x.date === today && !x.finished_at)
+    ? (await import("@ciclo/core/sessao-dia")).sessaoAberta(S.week.sessions, today, Date.now())?.id : null;
+  if (id) await restoreSession(id);
   if (st.dayPlan) adotarTreinoDeHoje(st.dayPlan.plan, st.dayPlan.profileFp ?? null);
-  const open = S.week.sessions.find((s: any) => s.date === today && !s.finished_at);
-  if (open) await restoreSession(open.id);
+  // já começado: a mudança do treino do dia (IA, regerar, outro aparelho) entra na MESMA sessão, sem perder séries
+  if (st.dayPlan) await seguirTreinoDoDiaNaSessao(st.dayPlan.plan).catch(() => false);
+}
+
+/** #122 Com a sessão aberta, a mudança do treino do dia entra nela (screens/treino/seguir.ts, baixado só com sessão aberta). */
+export async function seguirTreinoDoDiaNaSessao(plan: C.DayPlan | null | undefined): Promise<boolean> {
+  return !!S.session && !S.session.finishedAt && !!plan && (await import("../../screens/treino/seguir.ts")).seguir(plan);
 }
 
 /** #121 Adota o treino de hoje da fonte única quando ele mudou desde o último adotado (nunca no meio do treino).
@@ -146,12 +160,18 @@ export function adotarTreinoDeHoje(plan: C.DayPlan | null, fp?: string | null): 
 
 /** Sessão aberta no servidor → estado local. Sem cópia local (outro aparelho/dados limpos) monta tudo do servidor; com cópia, só completa
  *  o que faltar (o que está no aparelho e ainda não foi concluído vence; o descanso local também). */
-async function restoreSession(id: string) {
+export async function restoreSession(id: string) {
   let r: any = null;
   try { r = await api("GET", `/api/sessions/${encodeURIComponent(id)}`); } catch { /* offline: segue com a cópia local */ }
   const local = S.session && S.session.id === id ? S.session : null;
   if (!r) { if (!local) S.session = null; return; }
-  if (r.finishedAt) { if (local && !local.finishedAt) { local.finishedAt = r.finishedAt; local.closedBy = r.closedBy ?? "auto"; local.rest = null; } return; }
+  // #122 terminada (aqui ou lá) fica terminada: cronômetro parado e sem descanso; o fim que ficou na fila vai de novo
+  const t = (await import("@ciclo/core/sessao-dia")).terminadaVence(local, r);
+  if (t.terminada) {
+    if (t.sessao) S.session = t.sessao;
+    if (t.reenviarFim) void send("POST", `/api/sessions/${encodeURIComponent(id)}/finish`, { feedback: local?.feedback ?? {} }).catch(() => {}); // o servidor também apaga o descanso
+    return;
+  }
   const logs = C.mergeSessionSets(local?.logs ?? {}, r.sets ?? []);
   const skipped = { ...Object.fromEntries((r.skips ?? []).map((k: any) => [k.exerciseId, k.reason])), ...(local?.skipped ?? {}) };
   const rest = local?.rest ?? (r.rest && r.rest.until > Date.now() ? { until: r.rest.until, fired: false } : null);

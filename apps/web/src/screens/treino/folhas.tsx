@@ -71,6 +71,8 @@ function Skip({ idx }: { idx: number }) {
 export function openFinish() { S.ui.fb = S.ui.fb ?? { pump: {}, effort: 2, joint: false }; openSheet(() => <Finish />); }
 async function doFinish() {
   const s = S.session; s.finishedAt = Date.now(); s.closedBy = "usuario"; s.feedback = S.ui.fb; s.rest = null;
+  // #122 terminada não volta a contar: a lista do dia sabe disso já (o "Treinar de novo" abre a 2ª, não retoma esta)
+  for (const w of S.week.sessions) if (w.id === s.id) w.finished_at = s.finishedAt;
   s.summary = buildSummary(s.finishedAt); // antes de atualizar o histórico: compara com a "última vez" de verdade
   for (const it of s.plan.items) {
     const done = (s.logs[it.exerciseId] ?? []).filter((l: any) => l.done).map((l: any) => ({ kg: Number(String(l.kg).replace(",", ".")) || 0, reps: Number(l.reps) }));
