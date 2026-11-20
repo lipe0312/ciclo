@@ -95,3 +95,9 @@ export function validarPares(items: readonly ComPar[], aparelhos: readonly strin
   }
   return out;
 }
+
+/** Plano gravado pelo app (PUT do dia): par inválido ou de músculos que competem é solto; o resto fica como veio. */
+export function limparPares<T extends ComPar>(items: readonly T[], aparelhos: readonly string[]): T[] {
+  const ruins = new Set(validarPares(items, aparelhos).map((x) => items[x.index ?? -1]?.par?.[0]));
+  return normalizarPares(items.map((i) => (i.par != null && (!/^[A-H][12]$/.test(String(i.par)) || ruins.has(i.par[0])) ? semPar(i) : i)));
+}

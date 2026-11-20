@@ -44,6 +44,6 @@ export function Swap({ idx }: { idx: number }) {
       ? <button type="button" class="link44 alt-outra" aria-expanded={false} onClick={() => setOutra(true)}>Trocar por outra parte do músculo</button>
       : <><div class="note warn" role="note" style="margin-top:12px"><Icon id="warn" /><span>Isso não trabalha {parteNm.toLowerCase()}. A semana vai repor essa parte em outro dia.</span></div>
         {alt.outraParte.map((a) => <AltItem key={a.ex.id} a={a} idx={idx} outra />)}</>)}
-    {alt.semAparelho.length > 0 && <><h3 class="kicker" style="margin-top:14px">Precisa de aparelho</h3><p class="tiny sub" style="margin-top:4px">Não tem em {gym.name}: {alt.semAparelho.map((e) => e.nm).join(", ")}</p></>}</>;
+    {alt.semAparelho.length > 0 && <><h3 class="kicker alt-sec">Precisa de aparelho · não tem em {gym.name}</h3><ul class="small sub alt-falta">{alt.semAparelho.map((e) => <li key={e.id}>{e.nm}</li>)}</ul></>}</>;
 }
 

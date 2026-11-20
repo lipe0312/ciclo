@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   BANCO_ALTERNATIVAS, EQUIPMENT, EXERCISES, EXERCISE_BY_ID, alternativas, desparear, hydrate, idsAlternativas, partePrincipal,
-  parear, parearItens, planDay, podeParear, motivoSemPar, topAlternativas, validarPares, weeklyTargets,
+  limparPares, parear, parearItens, planDay, podeParear, motivoSemPar, topAlternativas, validarPares, weeklyTargets,
 } from "../src/index.ts";
 import type { DayInput, MuscleId, PlanItem } from "../src/index.ts";
 
@@ -179,4 +179,11 @@ test("superserie: a geração pareia por músculo (podeParear), nunca pela posi�
 test("parearItens: sem par possível, nada muda", () => {
   const items = [it("Dumbbell_Bicep_Curl"), it("Hammer_Curls")];
   assert.deepEqual(parearItens(items, ALL).map((i) => i.par ?? null), [null, null]);
+});
+
+test("limparPares: plano vindo do app perde o par inválido (mesmo motor, incompleto, letra fora do padrão) e mantém o válido", () => {
+  const items = [it("Dumbbell_Bicep_Curl", 3, { par: "A1" }), it("Triceps_Pushdown", 3, { par: "A2" }), it("Hammer_Curls", 3, { par: "B1" }),
+    it("EZ-Bar_Curl", 3, { par: "B2" }), it("Side_Lateral_Raise", 3, { par: "C1" }), it("Leg_Extensions", 3, { par: "<x>" as string })];
+  assert.deepEqual(limparPares(items, ALL).map((i) => i.par ?? null), ["A1", "A2", null, null, null, null]);
+  assert.deepEqual(limparPares(items, ["halteres"]).map((i) => i.par ?? null), [null, null, null, null, null, null], "sem polia o par A cai");
 });

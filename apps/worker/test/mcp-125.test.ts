@@ -58,3 +58,17 @@ test("salvar treino com par: bíceps × tríceps salva com A1/A2; bíceps × bí
   // formato fora do padrão é recusado pelo schema
   assert.match((await tool(env, a.token, "ciclo_salvar_treino_do_dia", { date: D2, gymId: "acad1", motivo: "t", itens: [{ id: "Dumbbell_Bicep_Curl", sets: 3, par: "Z9" }] })).erro ?? "", /par/);
 });
+
+test("PUT /api/day-plan: par do app é conferido no servidor (válido fica, de músculos que competem é solto)", async () => {
+  const env = makeEnv();
+  const a = await conta(env, "ana");
+  const it = (id: string, par: string) => ({ exerciseId: id, nm: "x", muscle: "biceps", kind: "livre", sets: 3, reps: [8, 12], rest: 60, alts: [], par });
+  const plan = { name: "Fictício", items: [it("Dumbbell_Bicep_Curl", "A1"), it("Triceps_Pushdown", "A2"), it("Hammer_Curls", "B1"), it("EZ-Bar_Curl", "B2")] };
+  assert.equal((await a.c("PUT", `/api/day-plan/${D}`, { plan, gymId: "acad1", source: "manual" })).status, 200);
+  const salvo = JSON.parse((env.DB.raw.prepare("SELECT plan FROM day_plan WHERE date = ?1").get(D) as { plan: string }).plan);
+  assert.deepEqual(salvo.items.map((i: any) => i.par ?? null), ["A1", "A2", null, null]);
+  // na casa (sem polia) o par A também cai
+  assert.equal((await a.c("PUT", `/api/day-plan/${D}`, { plan, gymId: "casa", source: "manual" })).status, 200);
+  const casa = JSON.parse((env.DB.raw.prepare("SELECT plan FROM day_plan WHERE date = ?1").get(D) as { plan: string }).plan);
+  assert.ok(casa.items.every((i: any) => i.par == null));
+});

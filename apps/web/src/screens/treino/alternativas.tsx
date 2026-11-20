@@ -20,7 +20,7 @@ export function AlternativasDetalhe({ id }: { id: string }) {
         {(a.familiar || a.blockedByPain) && <p class="tiny sub alt-meta">{a.familiar && <span class="badge ok">você já faz</span>}{a.blockedByPain && <span class="badge bad">força região com dor</span>}</p>}</div>
       <Icon id="arrow" /></a>)}
     {!alt.mesmaParte.length && <p class="small" style="margin-top:8px">Nenhuma da mesma parte com os aparelhos{gym ? ` de ${gym.name}` : ""}.</p>}
-    {alt.semAparelho.length > 0 && <><h3 class="kicker" style="margin-top:14px">Precisa de aparelho</h3>
-      <ul class="small sub" style="margin:6px 0 0;padding-left:18px;display:grid;gap:4px">{alt.semAparelho.map((e) => <li key={e.id}>{e.nm} <span class="tiny">({e.eq.filter((q) => !tem.has(q)).map((q) => C.EQUIPMENT_BY_ID[q]?.nm ?? q).join(", ")})</span></li>)}</ul></>}
+    {alt.semAparelho.length > 0 && <><h3 class="kicker alt-sec">Precisa de aparelho</h3>
+      <ul class="small sub alt-falta">{alt.semAparelho.map((e) => <li key={e.id}>{e.nm} <span class="tiny">({e.eq.filter((q) => !tem.has(q)).map((q) => C.EQUIPMENT_BY_ID[q]?.nm ?? q).join(", ")})</span></li>)}</ul></>}
   </Card>;
 }
