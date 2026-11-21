@@ -84,7 +84,11 @@ export interface WeekDay {
   /** #74 subparte que entrou neste dia para repor uma troca forçada de um dia anterior, com o porquê */
   repoe?: Reposicao[];
 }
-export interface WeekPlan { weekStart: string; targets: Record<MuscleId, number>; days: WeekDay[] }
+export interface WeekPlan {
+  weekStart: string; targets: Record<MuscleId, number>; days: WeekDay[];
+  /** #105 avisos do gerador da semana (músculo fora e por quê, ponto de partida por sexo, encaminhamento de saúde) */
+  avisos?: string[];
+}
 
 export interface CompOffer {
   date: string; muscles: MuscleId[];
@@ -252,7 +256,7 @@ function decideSplits(inp: WeekInput, days: WeekDay[], open: Set<string>) {
 /** #82 Dias de treino da semana pelo perfil (referência da divisão, como em trainingDows). */
 const diasDaSemana = (p: WeekProfile) => trainingDows(p.daysUsual, p.daysTarget).length;
 /** #82 A divisão que a semana segue: compatível com os dias e a frequência do método, ou incompatível com "Manter". */
-function divisaoSeguida(inp: WeekInput): { d: Divisao; inicio: number } | null {
+export function divisaoSeguida(inp: WeekInput): { d: Divisao; inicio: number } | null {
   const p = inp.profile, d = detectarDivisao(p.treinoAtual);
   return d && divisaoInfo(p, d)?.seguindo ? { d, inicio: inicioDoCiclo(d, diasDaSemana(p), inp.weekStart) } : null;
 }
