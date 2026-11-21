@@ -14,6 +14,10 @@ import { OUTCOME_TXT, buildSummary, pastOf } from "./sessao.ts";
 
 /** #74 A folha Trocar baixa só quando abre (fora do JS inicial). */
 export const openSwap = (idx: number) => { void import("./troca.tsx").then(({ Swap }) => openSheet(() => <Swap idx={idx} />)); };
+/** #123 Menu ⋯ (cancelar treino, retirar o de hoje, corrigir séries) e Corrigir treino: baixam só quando abrem. */
+export const abrirMenuTreino = () => { void import("./menu.tsx").then((m) => m.abrirMenuTreino()); };
+export const abrirCorrigir = (id: string) => { void import("./corrigir.tsx").then((m) => m.abrirCorrigir(id)); };
+export const BotaoMenu = () => <button type="button" class="iconbtn" aria-label="Mais opções do treino" onClick={abrirMenuTreino}><Icon id="more" /></button>;
 /** #125 "Fazer junto com…" (supersérie à mão): baixa só quando abre. */
 export const openPares = (idx: number) => { void import("./pares.tsx").then(({ Pares }) => openSheet(() => <Pares idx={idx} />)); };
 
@@ -71,6 +75,7 @@ function Skip({ idx }: { idx: number }) {
 export function openFinish() { S.ui.fb = S.ui.fb ?? { pump: {}, effort: 2, joint: false }; openSheet(() => <Finish />); }
 async function doFinish() {
   const s = S.session; s.finishedAt = Date.now(); s.closedBy = "usuario"; s.feedback = S.ui.fb; s.rest = null;
+  S.week.attendance[s.date] = "fui"; // #123 só o Terminar marca o dia como feito
   // #122 terminada não volta a contar: a lista do dia sabe disso já (o "Treinar de novo" abre a 2ª, não retoma esta)
   for (const w of S.week.sessions) if (w.id === s.id) w.finished_at = s.finishedAt;
   s.summary = buildSummary(s.finishedAt); // antes de atualizar o histórico: compara com a "última vez" de verdade
@@ -81,6 +86,7 @@ async function doFinish() {
   const joint = S.ui.fb.joint; S.ui.fb = null; closeSheet();
   go(joint ? "#corpo" : "#treino"); commit(); toast("Treino salvo");
   await send("POST", `/api/sessions/${s.id}/finish`, { feedback: s.feedback }).catch(() => {});
+  if (SERVER) void import("../semana/estado.ts").then((m) => m.garantirSemana(true)).catch(() => {}); // o dia vira "feito" na semana
 }
 function Finish() {
   const s = S.session; if (!s || !S.ui.fb) return null;

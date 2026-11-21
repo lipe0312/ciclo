@@ -69,7 +69,17 @@ export const planoDoDia = (d: Dia): C.DayPlan | null => C.treinoDoDia({ days: [d
 /** #113 "Treinei"/"não treinei" vale em qualquer dia até hoje, mesmo fora dos dias cadastrados (a semana se reorganiza). */
 export const marcavel = (d: Dia) => d.date <= today && d.status !== "feito" && d.status !== "extra";
 export const podeNaoTreinei = (d: Dia) => marcavel(d) && (d.status === "hoje" || d.status === "pendente");
-export const marcar = (d: Dia, fui: boolean) => acaoDia(d.date, { action: "falta", resposta: fui ? "fui" : "nao_fui" }, fui ? "Marcado: treinei" : "Marcado: não treinei · semana reorganizada");
+export const marcar = (d: Dia, fui: boolean) => acaoDia(d.date, { action: "falta", resposta: fui ? "fui" : "nao_fui" }, fui ? "Marcado: treinei" : "Marcado: não treinei · semana reorganizada")
+  .then((ok) => { if (ok) { if (fui) S.week.attendance[d.date] = "fui"; else S.week.attendance[d.date] = "nao_fui"; } return ok; });
+/** #123 Marcou "Treinei" sem querer: trocar para Não volta o dia a pendente (o check-in vira não). Série registrada segura o dia. */
+export const podeDesmarcar = (d: Dia) => d.date <= today && (d.status === "feito" || d.status === "extra") && S.week.attendance[d.date] === "fui";
+export async function desmarcar(d: Dia) {
+  const ok = await acaoDia(d.date, { action: "falta", resposta: "nao_fui" }, "Marcado: não treinei · o dia voltou a pendente");
+  if (!ok) return;
+  delete S.week.attendance[d.date];
+  const st = diaDe(d.date)?.status;
+  if (st === "feito" || st === "extra") toast("Há séries registradas nesse dia: corrija ou cancele pelo treino");
+}
 
 /** #113 Empurrar treino: prévia (o que anda e para onde) e aplicar. Hoje vira folga; feito não se move. */
 export interface Empurrao { moves: { de: string; para: string | null; nome: string }[]; diff: C.DayDiff[] }

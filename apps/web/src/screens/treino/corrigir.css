@@ -1,0 +1,7 @@
+/* #123 Menu ⋯ do Treino e Corrigir treino (séries de um treino já feito). 390 px primeiro; toques ≥ 44 px. */
+.menu-treino{display:grid;gap:8px;margin-top:10px}
+.corr-ex{padding:10px 0;border-top:1px solid var(--borda)}
+.corr-ex .btn.sm{min-height:44px}
+.corr-serie{display:grid;grid-template-columns:20px minmax(0,1fr) auto minmax(0,1fr) 44px;align-items:center;gap:6px;margin-top:6px}
+.corr-serie .input{min-height:44px;padding:6px 8px;text-align:center}
+.corr-serie:has(> .input:only-of-type){grid-template-columns:20px minmax(0,1fr) 44px}
