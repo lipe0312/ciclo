@@ -1,5 +1,5 @@
 /* #134 Chat (estilo dos apps de IA). Só tokens de app.css; celular primeiro (390 px); toques de 44 px. */
-.ch{display:flex;flex-direction:column;gap:var(--sp-3);min-width:0;max-width:760px;margin:0 auto}
+.ch{--nav-h:61px;display:flex;flex-direction:column;gap:var(--sp-3);min-width:0;max-width:760px;margin:0 auto}
 .ch-topo{display:flex;align-items:center;gap:var(--sp-2);min-width:0}
 .ch-topo h1{margin:0;flex:none}
 .ch-ia{display:inline-flex;align-items:center;gap:4px;min-height:var(--alvo);padding:0 12px;border-radius:var(--r-chip);border:1px solid var(--borda);background:var(--sup);color:var(--sub);font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -44,13 +44,14 @@ button.ch-ia{cursor:pointer}
 @keyframes ch-pulsa{0%,100%{opacity:.3;transform:translateY(0)}50%{opacity:1;transform:translateY(-2px)}}
 .ch-vazio{display:grid;gap:var(--sp-2);margin:auto 0 0;padding-top:var(--sp-5)}
 .ch-vazio h2{margin:0}
+.ch-config{justify-self:start}
 .ch-sugestoes{margin-top:var(--sp-2)}
 /* espaço para o composer fixo não cobrir a última mensagem */
 .ch-fim{height:calc(var(--ch-comp,96px) + var(--sp-3));flex:none}
 
 /* composer fixo: acima da barra inferior no celular; acima do teclado quando ele abre */
-.ch-composer{position:fixed;left:0;right:0;bottom:calc(61px + env(safe-area-inset-bottom));z-index:21;display:grid;gap:6px;padding:var(--sp-2) var(--sp-4);background:var(--bg);border-top:1px solid var(--borda)}
-.ch-composer.teclado{bottom:var(--teclado)}
+.ch-composer{position:fixed;left:0;right:0;bottom:calc(var(--nav-h) + env(safe-area-inset-bottom));z-index:21;display:grid;gap:6px;padding:var(--sp-2) var(--sp-4);background:var(--bg);border-top:1px solid var(--borda)}
+.ch-composer[data-teclado]{bottom:var(--teclado)}
 .ch-linha{display:flex;align-items:flex-end;gap:6px;min-width:0}
 .ch-btn{width:var(--alvo);height:var(--alvo);flex:none;display:grid;place-items:center;border-radius:50%;border:1px solid var(--borda-ctrl);background:var(--sup);color:var(--txt);cursor:pointer}
 .ch-btn .i{width:20px;height:20px}
@@ -60,13 +61,14 @@ button.ch-ia{cursor:pointer}
 .ch-mic .micwrap{display:contents}
 .ch-mic .mic{width:var(--alvo);height:var(--alvo)}
 .ch-mic .mic svg{width:20px;height:20px}
-.ch-rotina{display:flex;align-items:center;gap:8px;min-height:var(--alvo);color:var(--sub)}
+.ch-rotina{display:flex;align-items:center;gap:8px;min-height:var(--alvo);color:var(--txt);font-size:13px}
 .ch-rotina input{width:20px;height:20px;accent-color:var(--acc-bg)}
 .ch-anexo{gap:4px}
-.ch-anexo .chip{min-height:36px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch-anexo .chip{min-height:var(--alvo);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ch-voz{margin:0}
 
-/* menu ⋯ e seletor */
+/* menu de conversas e seletor */
+.ch-mais{display:inline-flex;align-items:center;gap:6px;min-height:var(--alvo)}
 .ch-nova{margin-top:var(--sp-3)}
 .ch-sec{margin:var(--sp-4) 0 var(--sp-2)}
 .ch-conversas{list-style:none;margin:0 0 var(--sp-2);padding:0;display:grid}
@@ -82,6 +84,6 @@ button.ch-ia{cursor:pointer}
   .ch{min-height:calc(100dvh - 190px)}
   .ch-thread{flex:1}
   .ch-composer{position:sticky;bottom:0;left:auto;right:auto;margin:0 calc(-1 * var(--sp-4));padding-bottom:var(--sp-4);border-top:0}
-  .ch-composer.teclado{bottom:0}
+  .ch-composer[data-teclado]{bottom:0}
   .ch-fim{height:var(--sp-3)}
 }

@@ -117,13 +117,14 @@ export default function Chat({ route }: { route: Route }) {
       {topo && (e.caminho.chaves.length > 1
         ? <button type="button" class="ch-ia" onClick={() => abrirSeletor(e)} aria-label={`IA desta conversa: ${topo}. Trocar`}>{topo}<Icon id="arrow" cls="ch-seta" /></button>
         : <span class="ch-ia">{topo}</span>)}
-      <button type="button" class="iconbtn ch-mais" aria-label="Mais opções do Chat" onClick={abrirMenu}><Icon id="more" /></button>
+      <button type="button" class="btn ghost sm ch-mais" aria-label="Conversas e opções do Chat" onClick={abrirMenu}><Icon id="chat" />Conversas</button>
     </header>
     <FaixaPedidos ia={e.caminho.conector} />
     <div class="ch-thread" aria-live="polite">
       {!chat.msgs.length && <div class="ch-vazio">
         <h2>Como posso ajudar?</h2>
         <p class="small sub">{SAUDACAO[e.modo]}</p>
+        {e.modo === "nenhum" && (() => { const s = CH.mensagemSemIa(e.ia); return <a class="btn sm pri ch-config" href={s.href}><Icon id="key" />{s.botao}</a>; })()}
         <div class="chips ch-sugestoes">{CH.SUGESTOES_CHAT.map((t) => <button key={t} type="button" class="chip" onClick={() => { S.ui.inboxDraft = t; commit(); setFoco((n) => n + 1); }}>{t}</button>)}</div>
       </div>}
       {chat.msgs.map((m) => <Balao key={m.id} m={m} e={e} />)}

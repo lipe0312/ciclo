@@ -19,19 +19,35 @@ function crescer(el: HTMLTextAreaElement | null) {
   el.style.height = `${Math.min(el.scrollHeight + 2, lh * LINHAS + 22)}px`;
 }
 
-/** Teclado aberto: quanto o visualViewport encolheu embaixo. O composer fica logo acima dele. */
+/**
+ * Teclado aberto: quanto o visualViewport encolheu embaixo. Só com o campo focado e acima de 80 px (barra de endereço e
+ * zoom mexem uns pixels): o composer sobe para cima do teclado. Também publica a altura da barra inferior (--nav-h) e a do
+ * composer (--ch-comp) no .ch, para a última mensagem nunca ficar embaixo dele.
+ */
 function useTeclado(ref: { current: HTMLElement | null }) {
   useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const raiz = el.parentElement;
     const vv = (globalThis as { visualViewport?: VisualViewport }).visualViewport;
-    if (!vv) return;
     const f = () => {
-      const kb = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
-      const el = ref.current; if (!el) return;
-      el.classList.toggle("teclado", kb > 80);
-      el.style.setProperty("--teclado", `${kb}px`);
+      const focado = !!document.activeElement && !!el.contains?.(document.activeElement);
+      const kb = vv ? Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) : 0;
+      const aberto = focado && kb >= 80;
+      if (aberto) el.setAttribute("data-teclado", ""); else el.removeAttribute("data-teclado");
+      el.style.setProperty("--teclado", `${aberto ? kb : 0}px`);
+      const nav = document.querySelector?.(".bottom")?.getBoundingClientRect().height;
+      if (raiz && nav) raiz.style.setProperty("--nav-h", `${Math.round(nav)}px`);
     };
-    vv.addEventListener("resize", f); vv.addEventListener("scroll", f); f();
-    return () => { vv.removeEventListener("resize", f); vv.removeEventListener("scroll", f); };
+    const medir = () => { const h = el.getBoundingClientRect?.().height; if (raiz && h) raiz.style.setProperty("--ch-comp", `${Math.round(h)}px`); };
+    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(medir) : null;
+    ro?.observe(el); medir();
+    vv?.addEventListener("resize", f); vv?.addEventListener("scroll", f);
+    el.addEventListener("focusin", f); el.addEventListener("focusout", f); f();
+    return () => {
+      ro?.disconnect();
+      vv?.removeEventListener("resize", f); vv?.removeEventListener("scroll", f);
+      el.removeEventListener("focusin", f); el.removeEventListener("focusout", f);
+    };
   }, []);
 }
 
@@ -42,7 +58,7 @@ export function Composer({ envio, foco }: { envio: Envio; foco: number }) {
   const [voz, setVoz] = useState("");
   const draft = S.ui.inboxDraft ?? "";
   useTeclado(form);
-  useEffect(() => { crescer(campo.current); }, [draft]);
+  useEffect(() => { crescer(campo.current); }); // a cada desenho: digitar não re-renderiza, então o "antes" do envio não é confiável
   useEffect(() => { if (foco) campo.current?.focus(); }, [foco]);
   const set = (v: string) => { S.ui.inboxDraft = v; commit(); };
   const mandar = () => { if (!chat.pensando) void enviar(envio); };

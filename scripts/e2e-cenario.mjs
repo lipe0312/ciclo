@@ -444,7 +444,7 @@ async function chat(c) {
     }, c);
   }
   for (const [rotina, nome, link] of [["claude", "Claude", true], ["chatgpt", "ChatGPT", false]]) {
-    await passo(`estado só conector (${nome}): vira pedido na faixa e o mini prompt ${link ? "abre com o texto" : "vem para copiar"}`, async () => {
+    await passo(`estado só conector (${nome}): vira pedido na faixa e o mini prompt ${link ? "abre com o prompt fixo" : "vem para copiar"}`, async () => {
       await abrirChat(`ia=conector&rotina=${rotina}`);
       await enviarTexto("quero treinar ombro hoje");
       // o demo guarda os pedidos do passo anterior no aparelho: a faixa conta todos

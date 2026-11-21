@@ -104,7 +104,7 @@ test("estado só conector com IA que aceita texto na URL: vira pedido, faixa '1 
   const a = botao("Abrir no Claude");
   const url = a.getAttribute("href")!;
   assert.ok(url.startsWith("https://claude.ai/new?q="), url);
-  assert.ok(decodeURIComponent(url).includes(M.C.MINI_PROMPT));
+  assert.equal(decodeURIComponent(url.split("?q=")[1]), M.C.MINI_PROMPT, "texto livre na URL");
   assert.equal(a.getAttribute("rel"), "noopener noreferrer");
 });
 
@@ -118,11 +118,17 @@ test("estado só conector com IA sem texto na URL: bloco com o prompt + Copiar, 
   assert.ok(!els("a").some((x) => /^https?:/.test(x.getAttribute("href") ?? "")), "link externo para IA sem prompt na URL");
 });
 
-test("mini prompt: texto sensível não vai na URL nem no bloco", async () => {
+test("mini prompt: texto livre (saúde, acento) não vai na URL; sugestão fixa vai", async () => {
   await abrir("?demo&ia=conector&rotina=claude");
-  await enviar("meu exame de sangue saiu, ajusta a dieta");
-  assert.ok(!els("a").some((x) => /^https?:/.test(x.getAttribute("href") ?? "")), "texto sensível foi para a URL");
-  assert.equal(texto(raiz.porClasse("ch-prompt")[0]), M.C.MINI_PROMPT);
+  await enviar("tomo medicação e o joelho dói");
+  const hrefs = () => els("a").map((x) => x.getAttribute("href") ?? "").filter((h) => /^https?:/.test(h)).map((h) => decodeURIComponent(h));
+  assert.deepEqual(hrefs(), [`https://claude.ai/new?q=${M.C.MINI_PROMPT}`]);
+  await abrir("?demo&ia=conector&rotina=chatgpt");
+  await enviar("tomo medicação e o joelho dói");
+  assert.equal(texto(raiz.porClasse("ch-prompt")[0]), M.C.MINI_PROMPT, "texto livre no bloco");
+  await abrir("?demo&ia=conector&rotina=claude");
+  await enviar("O que treino hoje?");
+  assert.ok(hrefs()[0].endsWith('Pedido: "O que treino hoje?"'));
 });
 
 for (const [ia, nome] of [["gemini", "Gemini"], ["deepseek", "DeepSeek"]] as const) {
