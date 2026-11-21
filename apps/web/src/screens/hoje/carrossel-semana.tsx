@@ -10,7 +10,7 @@ import { DOW_NM, dowIdx } from "../../lib/util.ts";
 import { garantirSemana, gerarTreino, getSemana, getVazio, planoDoDia } from "../semana/estado.ts";
 import type { Dia } from "../semana/estado.ts";
 import { abrirTrocar, aberto } from "../semana/folhas.tsx";
-import { Marcar, STATUS, SeloOrigem } from "../semana/index.tsx";
+import { Marcar, STATUS, SeloOrigem } from "../semana/comum.tsx";
 
 const GRUPOS: Record<string, string> = { sup: "Superior", inf: "Inferior" };
 const rodando = () => !!S.session && !S.session.finishedAt;
