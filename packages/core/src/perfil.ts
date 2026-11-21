@@ -10,6 +10,8 @@ import type { PriorityGroupId } from "./prioridades.ts";
 import { DOWS } from "./semana.ts";
 import { validarTreinoAtual } from "./treino-atual.ts";
 import type { TreinoAtual } from "./treino-atual.ts";
+import { validarPerfilIa } from "./ia.ts";
+import type { PerfilIa } from "./ia.ts";
 export const GOAL_IDS = ["bracos_ombros", "massa_geral", "definir", "recompor", "forca", "constancia", "shape_v", "perder_barriga", "saude", "retorno"] as const;
 export const PLACES = ["academia", "casa"] as const;
 export type PlaceChoice = (typeof PLACES)[number];
@@ -43,7 +45,7 @@ export const DEFAULT_PROFILE = {
   meta: { filledBy: "app" as "app" | "claude", confirmed: true } as { filledBy: "app" | "claude"; confirmed: boolean; checkup?: "feito" | "pulado"; assistentes?: Record<string, boolean> },
 };
 /** `treinoAtual` (#74) é opcional e não tem padrão: sem cadastro, o gerador funciona igual. */
-export type ProfileData = typeof DEFAULT_PROFILE & { treinoAtual?: TreinoAtual };
+export type ProfileData = typeof DEFAULT_PROFILE & { treinoAtual?: TreinoAtual; /** #133 Sua IA */ ia?: PerfilIa };
 
 // ---------- prioridades ----------
 export interface Check { ok: boolean; errors: string[] }
@@ -175,6 +177,8 @@ const SCHEMA: Record<string, Rule> = {
   places: (v, p, err) => { const r = list(oneOf(PLACES), 2)(v, p, err); return Array.isArray(r) && !r.length ? undefined : r; },
   meta: objectKeys({ filledBy: oneOf(["app", "claude"]), confirmed: bool, checkup: oneOf(["feito", "pulado"]), assistentes: record(slug, yes, 12) }),
   // #74 "Meu treino atual" (opcional; nunca entra no faltaParaGerar): divisões por grupo grande, IDs só do catálogo
+  // #133 Sua IA (opcional; nunca entra no faltaParaGerar): qual IA, como usa e a principal. Substitui inteiro no merge.
+  ia: (v, p, err) => { const r = validarPerfilIa(v); if (!r.ok) { r.erros.forEach(err); return undefined; } return r.valor; },
   treinoAtual: (v, p, err, ctx) => { const r = validarTreinoAtual(v, p, ctx?.personalizados); if (!r.ok) { r.errors.forEach(err); return undefined; } return r.value; },
 };
 /** `campos`: os campos (de 1º nível) com erro, para a mensagem humana (`mensagemPerfil`); `errors` é o texto técnico (Chat e console). */
@@ -208,7 +212,7 @@ export const PERFIL_ROTULO: Record<string, string> = {
   pinned: "exercícios fixos", avoid: "exercícios que você evita", dynamics: "formato do treino", crowdedStrategy: "academia cheia",
   mobility: "mobilidade", dayGym: "lugar de cada dia", diet: "comida", autonomy: "o que o Chat muda sozinho", tone: "tom do Chat",
   reviewTime: "horário da revisão", tiers: "modelos do Chat", places: "academia, casa ou os dois", meta: "dados do perfil",
-  treinoAtual: "meu treino atual",
+  treinoAtual: "meu treino atual", ia: "sua IA",
 };
 const juntar = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}`);
 const maiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -403,7 +407,8 @@ export function perfilVazio(): PerfilApp {
 }
 
 /** Os passos dos Primeiros passos, na ordem da tela. */
-export const PASSOS_PP = ["objetivo", "musculos", "experiencia", "rotina", "onde", "dores", "corpo", "comovoce", "comida", "resumo"] as const;
+// #133 + "ia" (Qual IA você usa?) e "iaacesso" (Como você usa?) no fim, antes do resumo
+export const PASSOS_PP = ["objetivo", "musculos", "experiencia", "rotina", "onde", "dores", "corpo", "comovoce", "comida", "ia", "iaacesso", "resumo"] as const;
 export type PassoPP = (typeof PASSOS_PP)[number];
 const temValor = (v: unknown) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && !v.length);
 const so = (p: Record<string, any>, ks: string[]) => Object.fromEntries(ks.filter((k) => temValor(p[k])).map((k) => [k, structuredClone(p[k])]));
@@ -427,6 +432,8 @@ export function patchDoPasso(passo: string, perfil: Partial<PerfilApp> | Record<
     case "corpo": return so(p, ["sex", "age", "heightCm", "weightKg"]);
     case "comovoce": return so(p, ["bodyType"]);
     case "comida": { const m = isObj(p.diet) ? p.diet.mode : null; return temValor(m) ? { diet: { mode: m } } : {}; }
+    // #133 as 2 telas de IA salvam o perfil de IA inteiro (é pequeno e substitui no merge)
+    case "ia": case "iaacesso": return isObj(p.ia) ? { ia: structuredClone(p.ia) } : {};
     default: return {};
   }
 }

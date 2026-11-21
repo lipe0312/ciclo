@@ -5,11 +5,20 @@
 // Um provedor novo entra adicionando-o em PROVEDORES_IA e nos mapas abaixo (HOST, listar, classificar, parâmetros).
 // NUNCA: devolver, logar ou pôr em mensagem de erro a chave em claro.
 
-export type ProvedorIa = "anthropic" | "openai" | "gemini";
-export const PROVEDORES_IA: readonly ProvedorIa[] = ["anthropic", "openai", "gemini"];
+// #133 + openrouter (compatível com a OpenAI, tem modelos grátis) e deepseek: host fixo, sem URL digitada (sem SSRF).
+export type ProvedorIa = "anthropic" | "openai" | "gemini" | "openrouter" | "deepseek";
+export const PROVEDORES_IA: readonly ProvedorIa[] = ["anthropic", "openai", "gemini", "openrouter", "deepseek"];
 /** Nome curto na tela (a marca do fornecedor só aparece aqui, no cadastro da chave). */
-export const NOME_PROVEDOR: Record<ProvedorIa, string> = { anthropic: "Anthropic", openai: "OpenAI", gemini: "Google Gemini" };
-export const HOST_PROVEDOR: Record<ProvedorIa, string> = { anthropic: "api.anthropic.com", openai: "api.openai.com", gemini: "generativelanguage.googleapis.com" };
+export const NOME_PROVEDOR: Record<ProvedorIa, string> = { anthropic: "Anthropic", openai: "OpenAI", gemini: "Google Gemini", openrouter: "OpenRouter", deepseek: "DeepSeek" };
+export const HOST_PROVEDOR: Record<ProvedorIa, string> = {
+  anthropic: "api.anthropic.com", openai: "api.openai.com", gemini: "generativelanguage.googleapis.com", openrouter: "openrouter.ai", deepseek: "api.deepseek.com",
+};
+/** #133 Nível grátis: o provedor pode usar o conteúdo para melhorar produtos. Ao cadastrar, a tela mostra em 1 frase com "Entendi". */
+export function avisoChaveGratis(p: ProvedorIa): string | null {
+  if (p === "gemini") return "No nível grátis do Gemini, o Google pode usar o que você envia para melhorar os produtos dele. Treino e comida são dados de saúde: use a chave grátis só se estiver de acordo.";
+  if (p === "openrouter") return "Nos modelos grátis do OpenRouter, quem roda o modelo pode guardar e usar o que você envia. Treino e comida são dados de saúde: use só se estiver de acordo.";
+  return null;
+}
 
 export type Esforco = "baixo" | "medio" | "alto";
 export const ESFORCOS: readonly Esforco[] = ["baixo", "medio", "alto"];
@@ -25,8 +34,10 @@ export const CHAVE_TIMEOUT_MS = 15_000;
 const SO_CHAVE = /^[A-Za-z0-9_-]+$/;
 const FORMATO: Record<ProvedorIa, (k: string) => boolean> = {
   anthropic: (k) => k.startsWith("sk-ant-") && k.length >= 40,
-  openai: (k) => k.startsWith("sk-") && !k.startsWith("sk-ant-") && k.length >= 20,
+  openai: (k) => k.startsWith("sk-") && !k.startsWith("sk-ant-") && !k.startsWith("sk-or-") && k.length >= 20,
   gemini: (k) => /^AIza[0-9A-Za-z_-]{35}$/.test(k),
+  openrouter: (k) => k.startsWith("sk-or-") && k.length >= 30,
+  deepseek: (k) => k.startsWith("sk-") && !k.startsWith("sk-ant-") && !k.startsWith("sk-or-") && !k.startsWith("sk-proj-") && k.length >= 20,
 };
 export const ehProvedorIa = (v: unknown): v is ProvedorIa => typeof v === "string" && (PROVEDORES_IA as readonly string[]).includes(v);
 
@@ -128,7 +139,7 @@ export async function decifrarChave(kek: Kek, e: Pick<Envelope, "ciphertext" | "
 }
 
 // ---------- saída para o provedor ----------
-/** Só https e só os três hosts (sem subdomínio, sem gateway): o Worker não chama mais nada com a chave. */
+/** Só https e só os hosts da allowlist (sem subdomínio, sem gateway): o Worker não chama mais nada com a chave. */
 export function hostPermitido(url: string): boolean {
   try { const u = new URL(url); return u.protocol === "https:" && Object.values(HOST_PROVEDOR).includes(u.hostname) && !u.username && !u.password && !u.port; } catch { return false; }
 }
@@ -137,7 +148,15 @@ export function hostPermitido(url: string): boolean {
 export function pedidoListarModelos(p: ProvedorIa, chave: string): { url: string; headers: Record<string, string> } {
   if (p === "anthropic") return { url: "https://api.anthropic.com/v1/models?limit=100", headers: { "x-api-key": chave, "anthropic-version": "2023-06-01" } };
   if (p === "openai") return { url: "https://api.openai.com/v1/models", headers: { Authorization: `Bearer ${chave}` } };
+  if (p === "deepseek") return { url: "https://api.deepseek.com/models", headers: { Authorization: `Bearer ${chave}` } };
+  if (p === "openrouter") return { url: "https://openrouter.ai/api/v1/models", headers: { Authorization: `Bearer ${chave}` } };
   return { url: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", headers: { "x-goog-api-key": chave } };
+}
+/** #133 Validar a chave: no OpenRouter a lista de modelos é pública (não prova a chave), então antes vem o endpoint
+ *  da própria chave, que exige autenticação. Nos outros, listar os modelos já autentica. A chave vai só em cabeçalho. */
+export function pedidosValidar(p: ProvedorIa, chave: string): { url: string; headers: Record<string, string> }[] {
+  const lista = pedidoListarModelos(p, chave);
+  return p === "openrouter" ? [{ url: "https://openrouter.ai/api/v1/key", headers: { Authorization: `Bearer ${chave}` } }, lista] : [lista];
 }
 /** IDs dos modelos na resposta (formato de cada provedor); qualquer outra coisa → lista vazia. */
 export function lerListaModelos(p: ProvedorIa, j: unknown): string[] {
@@ -156,12 +175,16 @@ export function mensagemErroProvedor(status: number): { code: string; msg: strin
 }
 
 // ---------- modelos (allowlist) e esforço ----------
-type Raciocinio = "adaptive" | "effort" | "budget" | "openai" | "nenhum" | "gemini-budget" | "gemini-level";
+type Raciocinio = "adaptive" | "effort" | "budget" | "openai" | "nenhum" | "gemini-budget" | "gemini-level" | "compat" | "compat-pensa";
 export interface ModeloIa { id: string; familia: string; ordem: number; raciocinio: Raciocinio }
 
 const ANT = /^claude-(haiku|sonnet|opus)-(\d)(?:-(\d{1,2}))?(?:-\d{8})?$/;
 const OAI = /^(gpt-5(?:\.\d)?(?:-mini|-nano)?|o3|o3-mini|o4-mini|gpt-4\.1(?:-mini|-nano)?|gpt-4o(?:-mini)?)(?:-\d{4}-\d{2}-\d{2})?$/;
 const GEM = /^gemini-(2\.5|3(?:\.\d)?)-(pro|flash|flash-lite)(?:-preview(?:-[a-z0-9-]{1,30})?)?$/;
+const DSK = /^deepseek-(chat|reasoner)$/;
+/** OpenRouter: "fornecedor/modelo[:free]", só de fornecedores conhecidos (sem roteadores automáticos nem imagem). */
+const ORT = /^(anthropic|openai|google|deepseek|meta-llama|mistralai|qwen|moonshotai|x-ai|z-ai|nvidia|microsoft)\/[a-z0-9][a-z0-9.-]{0,60}(:free)?$/;
+const ORT_FORA = /(image|vision-only|embed|tts|whisper|audio|guard|moderation)/;
 const FAMILIA_ANT: Record<string, [string, number]> = { haiku: ["Haiku", 0], sonnet: ["Sonnet", 1], opus: ["Opus", 2] };
 
 /** Classifica um ID da lista da própria chave; fora da allowlist (embeddings, imagem, áudio, legados) → null. */
@@ -180,6 +203,15 @@ export function classificarModelo(p: ProvedorIa, id: string): ModeloIa | null {
     const pensa = /^(gpt-5|o\d)/.test(m[1]);
     return { id, familia: m[1].startsWith("o") ? "o-series" : m[1].startsWith("gpt-5") ? "GPT-5" : "GPT-4", ordem: /nano/.test(id) ? 0 : /mini/.test(id) ? 1 : 2, raciocinio: pensa ? "openai" : "nenhum" };
   }
+  if (p === "deepseek") {
+    const m = DSK.exec(id); if (!m) return null;
+    return m[1] === "reasoner" ? { id, familia: "Reasoner", ordem: 2, raciocinio: "compat-pensa" } : { id, familia: "Chat", ordem: 1, raciocinio: "compat" };
+  }
+  if (p === "openrouter") {
+    if (!ORT.test(id) || ORT_FORA.test(id)) return null;
+    const gratis = id.endsWith(":free");
+    return { id, familia: gratis ? "Grátis" : "Pago", ordem: gratis ? 0 : 1, raciocinio: "compat" };
+  }
   const m = GEM.exec(id); if (!m) return null;
   return { id, familia: m[2] === "pro" ? "Pro" : m[2] === "flash" ? "Flash" : "Flash-Lite", ordem: m[2] === "flash-lite" ? 0 : m[2] === "flash" ? 1 : 2, raciocinio: m[1] === "2.5" ? "gemini-budget" : "gemini-level" };
 }
@@ -197,6 +229,7 @@ export function filtrarModelos(p: ProvedorIa, ids: unknown[]): ModeloIa[] {
 export function modeloPadrao(p: ProvedorIa, ids: string[]): string | null {
   const ms = filtrarModelos(p, ids);
   if (!ms.length) return null;
+  if (p === "openrouter") return ms[0].id; // #133 o grátis primeiro (ordem 0): ninguém paga sem escolher
   const meio = ms.find((m) => m.ordem === 1) ?? ms[Math.floor((ms.length - 1) / 2)];
   return meio.id;
 }
@@ -223,6 +256,10 @@ export function parametrosModelo(p: ProvedorIa, modelo: string, esforco: Esforco
     if (m.raciocinio === "openai") return { model: modelo, max_completion_tokens: maxSaida + ORCAMENTO_RACIOCINIO[e], reasoning_effort: ESF_API[e] };
     return { model: modelo, max_completion_tokens: maxSaida, temperature: 0.3 };
   }
+  if (p === "openrouter" || p === "deepseek") {
+    if (m.raciocinio === "compat-pensa") return { model: modelo, max_tokens: maxSaida + ORCAMENTO_RACIOCINIO[e] }; // o reasoner pensa sozinho; sem temperatura
+    return { model: modelo, max_tokens: maxSaida, temperature: 0.3 };
+  }
   if (m.raciocinio === "gemini-budget") return { generationConfig: { maxOutputTokens: maxSaida + ORCAMENTO_GEMINI[e], thinkingConfig: { thinkingBudget: ORCAMENTO_GEMINI[e] } } };
   const nivel = m.familia === "Pro" ? (e === "baixo" ? "low" : "high") : ESF_API[e];
   return { generationConfig: { maxOutputTokens: maxSaida + ORCAMENTO_GEMINI[e], thinkingConfig: { thinkingLevel: nivel } } };
@@ -242,6 +279,8 @@ const PRECOS: [ProvedorIa, string, number, number][] = [
 ];
 export const PRECO_IA_DESCONHECIDO = { in: 15, out: 75 };
 export function precoModelo(p: ProvedorIa, modelo: string): { in: number; out: number } {
+  if (p === "openrouter") return modelo.endsWith(":free") ? { in: 0, out: 0 } : PRECO_IA_DESCONHECIDO; // pago no OpenRouter: lado seguro
+  if (p === "deepseek") return PRECO_IA_DESCONHECIDO; // preço muda por horário e versão: lado seguro (conferir)
   const r = PRECOS.filter(([q, pre]) => q === p && modelo.startsWith(pre)).sort((a, b) => b[1].length - a[1].length)[0];
   if (!r || (r[1] === "gpt-5" && /^gpt-5\.\d/.test(modelo))) return PRECO_IA_DESCONHECIDO; // gpt-5.x: preço novo → lado seguro
   return { in: r[2], out: r[3] };
