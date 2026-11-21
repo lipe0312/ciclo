@@ -12,6 +12,7 @@ import { longDate } from "../../lib/util.ts";
 import { href } from "../../lib/roteador/index.ts";
 import { FaixaCheckup, estadoDoCheckup } from "../../lib/faixa-checkup/index.tsx";
 import { AvisoFalta } from "../semana/aviso.tsx";
+import { AvisoSemAcademia } from "../semana/aviso-sem-academia.tsx";
 import { garantirSemana, getSemana, getVazio } from "../semana/estado.ts";
 import { SemanaCarrossel } from "./carrossel-semana.tsx";
 import { ClaudeCard, ComidaPainel } from "./comida-claude.tsx";
@@ -78,7 +79,7 @@ export default function Hoje() {
   // quem pulou o checkup vê o "Complete o perfil" (adiável) no lugar da faixa, enquanto faltar algo
   const falta = checkup === "pulado" ? C.faltaParaGerar(S.profile) : [];
   const perfil = v && C.cartaoCompletePerfil({ falta: falta.length, adiadoEm: perfilAdiadoEm(v), hoje: today }) === "mostrar";
-  const topo = <>{!falta.length && <FaixaCheckup />}<AvisoFalta /></>;
+  const topo = <>{!falta.length && <FaixaCheckup />}<AvisoFalta />{getSemana() && <AvisoSemAcademia />}</>;
   // #63 sem treino (o servidor não gerou a semana; demonstração `?demo&vazio`): só o começo guiado, sem treino aleatório
   if (hojeVazio()) return <>{cab}<AvisoFalta /><ComecoVazio falta={C.faltaParaGerar(S.profile)} /></>;
   if (!v) return <>{cab}{topo}{H.erro

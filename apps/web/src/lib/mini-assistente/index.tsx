@@ -2,6 +2,7 @@
 // Cada tela só passa os passos; aqui ficam a barra, o Voltar/Continuar, o "Fazer manual" (quem prefere o formulário atual) e o estado
 // "visto" por tela, guardado no perfil (meta.assistentes), então vale em todos os aparelhos. Nunca bloqueia: sempre dá para sair.
 import { useState } from "preact/hooks";
+import type { ComponentChildren } from "preact";
 import { S, commit } from "../store/index.ts";
 import { profileChanged } from "../store/regras.ts";
 import { Icon, toast } from "../ui/index.tsx";
@@ -10,8 +11,11 @@ export interface PassoMini {
   id: string; title: string; sub?: string;
   /** o "Continuar" só liga quando é verdadeiro (padrão: sempre) */
   ok?: boolean;
-  /** a tela do passo; o estado das respostas fica com quem chama */
-  Tela: () => any;
+  /** passo opcional: o botão diz "Pular" em vez de "Continuar" enquanto não há resposta */
+  pular?: boolean;
+  /** a tela do passo (o estado das respostas fica com quem chama). #79 é chamada como função, nunca como <Componente />:
+   *  uma função nova a cada render viraria outro componente e o Preact remontaria o <input> (o teclado fecha a cada letra). */
+  tela: () => ComponentChildren;
 }
 
 /** O assistente desta tela já foi visto (concluído ou dispensado com "Fazer manual")? */
@@ -31,7 +35,7 @@ export function MiniAssistente({ tela, passos, concluir = "Concluir", onFim, onM
   onManual: () => void;
 }) {
   const [i, setI] = useState(0), [busy, setBusy] = useState(false);
-  const n = passos.length, step = Math.min(i, n - 1), P = passos[step], Tela = P.Tela, ultimo = step === n - 1;
+  const n = passos.length, step = Math.min(i, n - 1), P = passos[step], ultimo = step === n - 1;
   const pct = Math.round(((step + 1) / n) * 100);
   const manual = () => { marcarAssistente(tela); onManual(); };
   const fim = async () => {
@@ -46,9 +50,9 @@ export function MiniAssistente({ tela, passos, concluir = "Concluir", onFim, onM
       <button type="button" class="btn ghost" disabled={busy} onClick={manual}>Fazer manual</button></div>
     <div class="pp-bar" role="progressbar" aria-label="Progresso do assistente" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><i style={`width:${pct}%`} /></div>
     <h1 class="pp-q">{P.title}</h1>{P.sub && <p class="sub pp-sub">{P.sub}</p>}
-    <div class="pp-body"><Tela /></div>
+    <div class="pp-body">{P.tela()}</div>
     <div class="pp-cta">{ultimo
       ? <button type="button" class="btn pri lg full" disabled={busy || P.ok === false} onClick={fim}><Icon id="check" />{busy ? "Salvando…" : concluir}</button>
-      : <button type="button" class="btn pri lg full" disabled={P.ok === false} onClick={() => setI(step + 1)}>Continuar<Icon id="arrow" /></button>}</div>
+      : <button type="button" class="btn pri lg full" disabled={P.ok === false} onClick={() => setI(step + 1)}>{P.pular ? "Pular" : "Continuar"}<Icon id="arrow" /></button>}</div>
   </div>;
 }

@@ -19,6 +19,7 @@ import { Historico } from "./historico.tsx";
 import { Cardio, cardioName } from "./cardio.tsx";
 import { abrirGerarOutro } from "./gerar.tsx";
 import { diaDe, garantirSemana } from "../semana/estado.ts";
+import { AvisoSemAcademia } from "../semana/aviso-sem-academia.tsx";
 import { Relogio, useTick } from "./relogio.tsx";
 import { AbasTreino } from "../../lib/abas-treino/index.tsx";
 
@@ -98,8 +99,10 @@ function Hoje() {
       <button type="button" class="btn" style="margin-top:12px" onClick={() => { S.session = null; commit(); }}>Treinar de novo hoje</button></>;
   }
   const pend = S.edits.filter((e) => e.review === "pendente");
+  const lugar = S.gyms.length ? gymById(s?.gymId ?? S.ui.gymId)?.name : "peso corporal";
   return <>
-    <div class="row between wrapx start" style="margin-bottom:12px"><div><p class="kicker">Treino de hoje · {gymById(s?.gymId ?? S.ui.gymId)?.name}</p><h1>{plan.name}</h1>
+    <AvisoSemAcademia />
+    <div class="row between wrapx start" style="margin-bottom:12px"><div><p class="kicker">Treino de hoje · {lugar}</p><h1>{plan.name}</h1>
       <p class="small sub num" style="margin-top:4px">{plan.setsTotal} séries · ~{plan.estMinutes} min · dupla progressão, sobrar 1–2 reps</p></div>
       {run ? <a class="btn pri lg" href={href("treino", ["ativo", String(curIdx())])}><Icon id="play" />Continuar<span class="num"> · <Relogio /></span></a>
         : <button type="button" class="btn pri lg" onClick={startSession} disabled={!plan.items.length}><Icon id="play" />Começar</button>}</div>
@@ -110,7 +113,7 @@ function Hoje() {
       {plan.prehab.length > 0 && <Card><p class="kicker">Aquecimento · fortalecimento pela dor marcada</p>{plan.prehab.map((p) => <div class="row" key={p.exerciseId} style="margin-top:8px"><img class="thumb" style="width:48px;height:48px" src={`/img/ex/${encodeURIComponent(p.exerciseId)}.webp`} alt="" loading="lazy" /><div><b>{p.nm}</b><p class="small sub">2 × {p.reps[0]}–{p.reps[1]}, leve</p></div></div>)}</Card>}
       {plan.items.length ? plan.items.map((it, i) => <CardDia key={it.exerciseId + i} it={it} idx={i} run={run} />) : <Card><p class="sub">Nada para hoje com esses aparelhos.</p></Card>}</div>
       <div class="stack"><CardioHoje /><MeuTreinoAtual /><Card><h2>Como foi montado</h2><ul class="small" style="padding-left:18px;margin:10px 0 0;display:grid;gap:6px">{plan.why.map((w, i) => <li key={i}>{w}</li>)}
-        <li>Só aparelhos de {gymById(S.ui.gymId)?.name}; trocas já vêm calculadas (sem gastar o Chat).</li></ul></Card>
+        <li>Só aparelhos de {lugar}; trocas já vêm calculadas (sem gastar o Chat).</li></ul></Card>
         <Card><h2>Mídia da sua academia</h2><p class="small sub" style="margin-top:4px">Grave 10–15 s mostrando a regulagem (pino, banco, pegada). Fica ligada ao exercício e ao aparelho; aparece nas próximas vezes e nas trocas.</p></Card>
         <Card><h2>Descanso com a tela bloqueada</h2><AvisoPush /></Card>
         {pend.length > 0 && <Card><h2>Edições em revisão</h2>{pend.map((e) => <div key={e.id}><p class="small" style="margin-top:6px">{e.label}</p>{e.issues.map((x: any, i: number) => <p key={i} class="tiny" style={`color:var(--${x.severity === "erro" ? "bad" : "warn"})`}>{x.msg}</p>)}</div>)}</Card>}

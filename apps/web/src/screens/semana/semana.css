@@ -74,3 +74,9 @@
 .sem-marcar .btn{flex:1 1 0;min-width:0;white-space:nowrap}
 .sem-marcar.leve{align-items:center;flex-wrap:nowrap;margin-top:4px;gap:4px}
 .sem-marcar.leve .btn{flex:0 0 auto;padding:0 10px}
+/* #79 faixa "sem academia": discreta, não bloqueia; ações quebram linha no celular */
+.sem-academia{align-items:flex-start;border-left:4px solid var(--acc);margin-bottom:12px}
+.sem-academia>svg{flex:none;margin-top:2px}
+.sem-academia-t{flex:1;min-width:0}
+.sem-academia-a{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.sem-academia .iconbtn{margin:-4px -4px 0 0}

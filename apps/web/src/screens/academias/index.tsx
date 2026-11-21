@@ -1,6 +1,6 @@
 // Academias (Mais → Academias): lugares onde você treina (academia, casa, hotel), cada um com tipo, endereço e ponto no mapa;
 // criar/editar pelo passo a passo, apagar com confirmação (reatribuindo os dias) e a página de cada aparelho com a sua mídia.
-// Rotas: #academias · #academias/novo · #academias/<id> · #academias/<id>/editar · #academias/<id>/aparelho/<aparelho>
+// Rotas: #academias · #academias/novo · #academias/<id> · #academias/<id>/editar · #academias/<id>/local (#79: só o mapa) · #academias/<id>/aparelho/<aparelho>
 import { C, S, commit } from "../../lib/store/index.ts";
 import type { Gym } from "../../lib/store/index.ts";
 import { Icon, toast } from "../../lib/ui/index.tsx";
@@ -47,6 +47,12 @@ function Apagar({ g }: { g: Gym }) {
 }
 const abrirApagar = (g: Gym) => { destino = null; apagando = false; openSheet(() => <Apagar g={g} />); };
 
+/** #79 Sem ponto: "Definir local no mapa"; com ponto: "Mudar local". Abre direto o passo do mapa da edição. */
+function BotaoLocal({ g, temPonto, sm }: { g: Gym; temPonto: boolean; sm?: boolean }) {
+  return <a class={`btn ${sm ? "sm" : ""} ${temPonto ? "ghost" : ""}`} href={href("academias", [g.id, "local"])} aria-label={`${temPonto ? "Mudar local" : "Definir local no mapa"}: ${g.name}`}>
+    <Icon id="target" />{temPonto ? "Mudar local" : "Definir local no mapa"}</a>;
+}
+
 // ---------- lista ----------
 function Lista() {
   return <>
@@ -61,7 +67,9 @@ function Lista() {
           <span class="lug-card-t"><b>{g.name}</b><span class="tiny sub">{kindNm(g.kind)} · {g.equipment.length} aparelho(s){d ? ` · ${d}` : ""}</span>
             <span class="tiny sub">{g.address || (ponto ? "Ponto marcado no mapa" : "Sem endereço")}</span></span>
           <Icon id="arrow" /></a>
-        {ponto && <a class="btn sm ghost" href={linkMapa(ponto)} target="_blank" rel="noopener noreferrer" aria-label={`Abrir ${g.name} no mapa (nova aba)`}><Icon id="target" />Mapa</a>}
+        <div class="lug-card-a">
+          {ponto && <a class="btn sm ghost" href={linkMapa(ponto)} target="_blank" rel="noopener noreferrer" aria-label={`Abrir ${g.name} no mapa (nova aba)`}><Icon id="target" />Mapa</a>}
+          <BotaoLocal g={g} temPonto={!!ponto} sm /></div>
       </li>;
     })}</ul>
   </>;
@@ -80,8 +88,10 @@ function Lugar({ g }: { g: Gym }) {
     <div class="grid dash" style="margin-top:14px"><div class="stack">
       <div class="card"><h2>No mapa</h2>
         {ponto ? <><div style="margin-top:10px"><Mapa ponto={ponto} rotulo={`Mapa com a localização de ${g.name}`} /></div>
-          <a class="btn sm" style="margin-top:10px" href={linkMapa(ponto)} target="_blank" rel="noopener noreferrer"><Icon id="target" />Abrir no OpenStreetMap</a></>
-          : <p class="small sub" style="margin-top:6px">Sem ponto marcado. <a class="link44" href={href("academias", [g.id, "editar"])}>Marcar no mapa</a></p>}</div>
+          <div class="row wrapx" style="gap:8px;margin-top:10px"><a class="btn sm" href={linkMapa(ponto)} target="_blank" rel="noopener noreferrer"><Icon id="target" />Abrir no OpenStreetMap</a>
+            <BotaoLocal g={g} temPonto sm /></div></>
+          : <><p class="small sub" style="margin-top:6px">Sem ponto marcado no mapa.</p>
+            <div style="margin-top:10px"><BotaoLocal g={g} temPonto={false} /></div></>}</div>
       <div class="card"><h2>Rotina</h2>
         <dl class="refs"><div><dt>Dias</dt><dd>{d || "—"}</dd></div><div><dt>Lota</dt><dd>{g.busyHours.length ? g.busyHours.map((h) => h.replace("-", "–") + "h").join(", ") : "—"}</dd></div></dl></div>
     </div><div class="stack">
@@ -100,6 +110,7 @@ export default function Academias({ route }: { route?: Route }) {
   if (a) {
     const g = S.gyms.find((x) => x.id === a);
     if (!g) return <Estado tipo="vazio" titulo="Lugar não encontrado" acao={{ label: "Ver lugares", href: href("academias") }} />;
+    if (b === "local") return <PassoAPasso key={`${g.id}-local`} inicial={g} so="mapa" onDone={() => go(href("academias", [g.id]))} onCancel={() => go(href("academias", [g.id]))} />;
     if (b === "editar") return <PassoAPasso key={g.id} inicial={g} onDone={() => go(href("academias", [g.id]))} onCancel={() => go(href("academias", [g.id]))} />;
     if (b === "aparelho" && c) return <PaginaAparelho gym={g} eqId={c} />;
     return <Lugar g={g} />;

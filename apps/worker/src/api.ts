@@ -262,7 +262,7 @@ on("POST", "/api/exames", async (req, env, _p, u) => json(await createExam(env, 
 on("DELETE", "/api/exames/:id", async (_req, env, p, u) => json(await deleteExam(env, u.id, p.id)));
 
 // Gera (não salva) o treino do dia com o core — o mesmo cálculo que o app faz localmente.
-// Conta sem perfil/academia → { plan: null, empty: "sem_perfil" | "sem_academia", message }.
+// Conta sem perfil → { plan: null, empty: "sem_perfil", message }. #79 sem academia: gymId null e equipamento "sem_academia".
 on("POST", "/api/plan-day", async (req, env, _p, u) => {
   const b = await readJson<Record<string, unknown>>(req);
   const r = await buildDayInput(env, u.id, {
@@ -271,7 +271,7 @@ on("POST", "/api/plan-day", async (req, env, _p, u) => {
     focus: Array.isArray(b.focus) ? (b.focus.filter((m) => MUSCLE_IDS.includes(m as MuscleId)) as MuscleId[]) : undefined, crowded: !!b.crowded,
   });
   if (r.empty) return json({ gymId: null, input: null, plan: null, empty: r.empty, message: EMPTY_MSG[r.empty] });
-  return json({ gymId: r.gymId, input: r.input, plan: planDay(r.input) });
+  return json({ gymId: r.gymId, equipamento: r.equipamento, input: r.input, plan: planDay(r.input) });
 });
 
 on("PUT", "/api/day-plan/:date", async (req, env, p, u) => {
