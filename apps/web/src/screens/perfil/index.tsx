@@ -57,9 +57,10 @@ function Corpo() {
     <div class="pp-steppers"><div><span class="f">Idade</span><Stepper value={p.age} step={1} onStep={(d) => step("age", d)} /></div><div><span class="f">Altura</span><Stepper value={p.heightCm} step={1} unit=" cm" onStep={(d) => step("heightCm", d)} /></div><div><span class="f">Peso</span><Stepper value={p.weightKg} step={0.5} unit=" kg" onStep={(d) => step("weightKg", d)} /></div></div>
     <div style="margin-top:16px"><span class="f">Como você se vê hoje</span><div class="opts two">{BODY.map(([v, l, d]) => <Opt key={v} on={p.bodyType === v} onClick={() => pset("bodyType", v)} title={l} desc={d}><IlustCorpo id={v} /></Opt>)}</div></div>
     <div style="margin-top:16px"><span class="f">Onde acumula gordura (pode marcar mais de um)</span><div class="chips">{C.FAT_WHERE.map((v) => <button type="button" key={v} class="chip tall" aria-pressed={p.fatWhere.includes(v)} onClick={() => ptoggle("fatWhere", v)}>{v}</button>)}</div></div>
-    <div style="margin-top:16px"><span class="f">Saúde (opcional)</span><p class="small sub">Só para avisar quando vale falar com um profissional de saúde. Não muda o treino e não é diagnóstico.</p>
-      <div class="chips" style="margin-top:8px">{SAUDE.map(([v, l]) => <button type="button" key={v} class="chip tall" aria-pressed={(p.saude ?? []).includes(v)} onClick={() => toggleSaude(v)}>{l}</button>)}</div>
-      {C.avisosSaude(p.saude).map((a) => <div key={a} class="note" role="status" style="margin-top:10px"><Icon id="info" /><span>{a}</span></div>)}</div></>;
+    <div class="saude-perfil" role="group" aria-labelledby="saude-rotulo"><span class="f" id="saude-rotulo">Saúde (opcional, pode marcar mais de um)</span>
+      <p class="small sub">Não marcar nada também vale. Serve só para avisar quando vale falar com um profissional de saúde: não muda o treino e não é diagnóstico.</p>
+      <div class="chips">{SAUDE.map(([v, l]) => <button type="button" key={v} class="chip tall" aria-pressed={(p.saude ?? []).includes(v)} onClick={() => toggleSaude(v)}>{l}</button>)}</div>
+      <div role="status" aria-live="polite">{C.avisosSaude(p.saude).map((a) => <div key={a} class="note"><Icon id="info" /><span>{a}</span></div>)}</div></div></>;
 }
 
 function Objetivo() {
