@@ -1,6 +1,7 @@
 // Conta (#54/#55/#62): menu com as subtelas Perfil, Segurança, Pessoas e Convidar (só dono), Conectar Chat,
-// Privacidade e dados, e Sair sempre visível. Rotas: #conta, #conta/perfil, #conta/seguranca, #conta/pessoas, #conta/chat, #conta/dados.
+// Privacidade e dados, e Sair sempre visível. Rotas: #conta, #conta/perfil, #conta/seguranca, #conta/pessoas, #conta/chat, #conta/chaves (#88), #conta/dados.
 // Nada de dado de saúde de outra conta passa por aqui.
+import type { ComponentType } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { Route } from "../../lib/roteador/index.ts";
 import { SERVER, api } from "../../lib/api/index.ts";
@@ -19,6 +20,7 @@ const ITENS: { id: string; nm: string; desc: string; icon: string; dono?: boolea
   { id: "seguranca", nm: "Segurança", desc: "Aparelhos, passkeys e códigos de recuperação", icon: "key" },
   { id: "pessoas", nm: "Pessoas e Convidar", desc: "Convites, vagas e acessos", icon: "grid", dono: true },
   { id: "chat", nm: "Conectar Chat", desc: "Use o Ciclo pelo Chat", icon: "chat" },
+  { id: "chaves", nm: "Chaves de IA", desc: "Sua chave de API, modelo, esforço e teto de gasto", icon: "key" },
   { id: "dados", nm: "Privacidade e dados", desc: "Termos, privacidade, exportar e apagar", icon: "book" },
 ];
 
@@ -29,7 +31,11 @@ export default function Conta({ route }: { route: Route }) {
   const load = async () => { const r = await api<{ account: Account; setupPendente?: boolean }>("GET", "/api/account"); setAcc(r.account); setSetup(!!r.setupPendente); };
   useEffect(() => { if (SERVER) load().catch(() => setErro("Não deu para carregar a conta.")); }, []);
   const sub = route.parts[0] ?? "";
+  // #88: Chaves de IA em chunk à parte (orçamento de JS inicial), baixa só ao abrir a subtela
+  const [Chaves, setChaves] = useState<ComponentType<{ demo?: boolean }> | null>(null);
+  useEffect(() => { if (sub === "chaves" && !Chaves) import("./chaves.tsx").then((m) => setChaves(() => m.Chaves)).catch(() => setErro("Não deu para abrir as chaves.")); }, [sub]);
 
+  if (!SERVER && sub === "chaves") return <Sub titulo="Chaves de IA">{Chaves ? <Chaves demo /> : <p class="small sub" aria-busy="true">{erro || "Carregando…"}</p>}</Sub>;
   if (!SERVER) return <div class="conta"><p class="kicker">Conta</p><h1>Conta</h1>
     <div class="note"><Icon id="info" />Na demonstração não há conta: os dados ficam só neste navegador.</div>
     <Conectar demo /></div>;
@@ -38,6 +44,7 @@ export default function Conta({ route }: { route: Route }) {
   if (sub === "seguranca") return <Sub titulo="Segurança"><Seguranca /></Sub>;
   if (sub === "pessoas" && acc?.role === "owner") return <Sub titulo="Pessoas e Convidar"><Pessoas /></Sub>;
   if (sub === "chat") return <Sub titulo="Conectar Chat"><Conectar demo={false} /></Sub>;
+  if (sub === "chaves") return <Sub titulo="Chaves de IA">{Chaves ? <Chaves /> : <p class="small sub" aria-busy="true">{erro || "Carregando…"}</p>}</Sub>;
   if (sub === "dados") return <Sub titulo="Privacidade e dados"><PrivacidadeDados dona={acc?.role === "owner"} /></Sub>;
 
   return <div class="conta">
