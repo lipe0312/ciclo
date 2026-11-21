@@ -350,12 +350,12 @@ export async function takeGeocodeSlot(env: Env, now = Date.now()): Promise<numbe
 
 // ---- direitos da conta (LGPD) ----
 /** Tabelas de dado pessoal (todas têm user_id). Ordem de apagar: filhas antes das mães. */
-export const USER_TABLES = ["oauth_code", "set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym_weekday", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "porcao_pessoal", "porcao_cache", "porcao_sombra", "claude_memory", "claude_heartbeat", "busca", "auth_challenge", "recovery_codes", "sessions", "passkeys", "invites", "consent", "ui_pref", "mcp_previa", "exercicio_personalizado", "conta_versao", "chave_ia_uso", "chave_ia_evento", "chave_ia"] as const;
+export const USER_TABLES = ["oauth_code", "set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym_weekday", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "porcao_pessoal", "porcao_cache", "porcao_sombra", "claude_memory", "claude_heartbeat", "busca", "auth_challenge", "recovery_codes", "sessions", "passkeys", "invites", "consent", "ui_pref", "mcp_previa", "exercicio_personalizado", "conta_versao", "chave_ia_uso", "chave_ia_evento", "chave_ia", "conversa_msg", "conversa"] as const;
 
 /** Tudo da conta em JSON (mídia: só metadados; tokens: sem hash). */
 export async function exportAccount(env: Env, uid: string) {
   const q = (sql: string) => env.DB.prepare(sql).bind(uid);
-  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "gym_weekday", "mcp_token", "week_plan", "day_override", "cardio_log", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat", "passkeys", "sessions", "recovery_codes", "invites", "consent", "ui_pref", "mcp_previa", "porcao_pessoal", "porcao_sombra", "porcao_cache", "exercicio_personalizado", "chave_ia", "chave_ia_uso", "chave_ia_evento"] as const;
+  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "gym_weekday", "mcp_token", "week_plan", "day_override", "cardio_log", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat", "passkeys", "sessions", "recovery_codes", "invites", "consent", "ui_pref", "mcp_previa", "porcao_pessoal", "porcao_sombra", "porcao_cache", "exercicio_personalizado", "chave_ia", "chave_ia_uso", "chave_ia_evento", "conversa", "conversa_msg"] as const;
   const res = await env.DB.batch([
     q("SELECT id, email, name, sobrenome, sexo, nascimento, altura_cm, peso_kg, role, created_at, last_seen_at, onboarding_done_at FROM user WHERE id = ?1"),
     q("SELECT data, updated_at FROM profile WHERE user_id = ?1"),
@@ -408,6 +408,9 @@ export async function exportAccount(env: Env, uid: string) {
     q("SELECT id, provedor, apelido, ultimos4, impressao, kek_versao, modelos_json, modelo, esforco, teto_dia, teto_mes, criado_em, usado_em, ativo FROM chave_ia WHERE user_id = ?1 ORDER BY criado_em"),
     q("SELECT chave_id, dia, usd_micro, chamadas, tokens_in, tokens_out FROM chave_ia_uso WHERE user_id = ?1 ORDER BY dia"),
     q("SELECT chave_id, tipo, codigo, criado_em FROM chave_ia_evento WHERE user_id = ?1 ORDER BY id"),
+    // #134 histórico do Chat: as conversas e as mensagens (o texto é da própria pessoa)
+    q("SELECT id, titulo, created_at, updated_at FROM conversa WHERE user_id = ?1 ORDER BY created_at"),
+    q("SELECT conversa_id, id, papel, texto, pedido_id, created_at FROM conversa_msg WHERE user_id = ?1 ORDER BY conversa_id, created_at"),
   ]);
   const out: Record<string, unknown> = { formato: "ciclo-export-1", exportadoEm: new Date().toISOString() };
   names.forEach((n, i) => { out[n] = n === "user" || n === "profile" ? res[i].results[0] ?? null : res[i].results; });

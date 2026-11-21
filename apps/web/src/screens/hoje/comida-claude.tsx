@@ -5,7 +5,16 @@ import { Card, Icon } from "../../lib/ui/index.tsx";
 import { BarraSimples } from "../../lib/grafico/index.tsx";
 import { fmt } from "../../lib/util.ts";
 import { Painel } from "./paineis.tsx";
-import { AvisoIa } from "../../lib/sua-ia/aviso.tsx";
+import { useEffect, useState } from "preact/hooks";
+import type { FunctionComponent } from "preact";
+
+// #134 O aviso de IA do cartão baixa depois da 1ª pintura (fora do JS inicial). Até lá não mostra nada (é dispensável).
+let Aviso: FunctionComponent | null = null;
+function AvisoIa() {
+  const [, set] = useState(0);
+  useEffect(() => { if (!Aviso) import("../../lib/sua-ia/aviso.tsx").then((m) => { Aviso = m.AvisoIa; set(1); }).catch(() => {}); }, []);
+  return Aviso ? <Aviso /> : null;
+}
 
 const Linha = ({ nome, valor, meta, pct, un }: { nome: string; valor: number | null; meta: number; pct: number | null; un: string }) =>
   <div class="hm-linha"><div class="row between wrapx" style="gap:6px"><span class="small">{nome}</span>
@@ -36,5 +45,5 @@ export function ClaudeCard() {
       : resp ? <><p class="small sub" style="margin-top:6px">Última resposta</p><p class="small">{curto(resp.response ?? "")}</p></>
         : <p class="small sub" style="margin-top:6px">Peça ajustes de treino, comida ou dor. Os pedidos ficam guardados até a sua IA responder.</p>}
     <div style="margin-top:10px"><AvisoIa /></div>
-    <div class="hm-ctas"><a class="btn sm pri" href="#chat"><Icon id="chat" />Fale com a IA</a></div></Card>;
+    <div class="hm-ctas"><a class="btn sm pri" href={C.HREF_FALE_HOJE}><Icon id="chat" />Fale com a IA</a></div></Card>;
 }

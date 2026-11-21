@@ -1,17 +1,15 @@
-// Caixa de pedidos ao Chat (connector MCP). No demo, respostas ilustrativas; no servidor, o Chat responde ao processar a caixa.
+// Pedidos da rotina (caixa do connector MCP): enviar, aplicar e cancelar. No demo, respostas ilustrativas; no servidor, a IA
+// responde ao processar a caixa. #134: a tela é o Chat (index.tsx); aqui fica só a lógica, sem link direto para IA externa.
 import { C, S, calc, commit, today, loadServer } from "../../lib/store/index.ts";
-import { FOCUS, EXB, activePlan, addFood, addPain, computePlan, dayInput, estimateFood, foodTotals, mName } from "../../lib/store/regras.ts";
+import { FOCUS, EXB, addFood, addPain, computePlan, dayInput, estimateFood, foodTotals, mName } from "../../lib/store/regras.ts";
 import { SERVER, send } from "../../lib/api/index.ts";
-import { Card, Chip, Icon, Seg, toast } from "../../lib/ui/index.tsx";
-import { Mic } from "../../lib/voz/index.tsx";
+import { toast } from "../../lib/ui/index.tsx";
 import { clone, fmt, uid } from "../../lib/util.ts";
-import { loadClaude, useClaude } from "./memoria.tsx";
+import { loadClaude } from "./memoria.tsx";
 
-const hhmm = (ms: number) => new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-/** #81 status do pedido: na fila → o Chat leu → respondido. */
-const statusPedido = (m: { read_at?: number | null }) => (m.read_at ? `o Chat leu às ${hhmm(m.read_at)}; a resposta chega aqui` : "na fila: o Chat responde quando processar a caixa");
-
+/** Categorias de pedido (modelo por tipo, em Perfil → Como o Chat trabalha com você). */
 export const CATS = ["Hoje", "Treino", "Corpo", "Comida", "Plano"];
+export const hhmm = (ms: number) => new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 type Tier = keyof typeof C.TIER_INFO;
 
 function demoAnswer(m: any): { response: string; change?: any } {
@@ -65,8 +63,9 @@ function previewDiff(ch: any) {
   return out.slice(0, 9);
 }
 
-export async function sendInbox(text: string, promptId?: string) {
-  text = text.trim(); if (!text) return toast("Escreva ou fale o pedido");
+/** Manda um pedido para a rotina. Devolve o pedido criado (no aparelho), ou null se o texto está vazio. */
+export async function sendInbox(text: string, promptId?: string): Promise<any | null> {
+  text = text.trim(); if (!text) { toast("Escreva ou fale o pedido"); return null; }
   const preset = C.PROMPTS.find((p) => p.id === promptId);
   const cls = C.classify(text);
   const m: any = { id: uid(), created_at: Date.now(), text, action: preset?.action ?? cls.action, tier: S.ui.tierOverride ?? preset?.tier ?? cls.tier, status: "pendente" };
@@ -77,53 +76,16 @@ export async function sendInbox(text: string, promptId?: string) {
     if (r) m.id = r.id;
     if (r?.status === "respondido") { Object.assign(m, { status: "respondido", response: r.response, change: r.change ?? null, cerebro: r.cerebro }); commit(); toast("Respondido"); }
     else toast(`Na fila · ${C.TIER_INFO[m.tier as Tier].nm}`);
-    loadClaude(); return;
+    loadClaude(); return m;
   }
-  setTimeout(() => { const a = demoAnswer(m); m.response = a.response; m.change = a.change ? { ...a.change, diff: previewDiff(a.change) } : null; m.status = a.change ? "respondido" : "aplicado"; commit(); }, 900);
+  setTimeout(() => { if (m.status !== "pendente") return; const a = demoAnswer(m); m.response = a.response; m.change = a.change ? { ...a.change, diff: previewDiff(a.change) } : null; m.status = a.change ? "respondido" : "aplicado"; commit(); }, 900);
+  return m;
 }
 
-function applyInbox(m: any) {
+export function applyInbox(m: any) {
   if (!m?.change) return;
   if (m.change.salvo) { S.ui.locked = false; loadServer().then(commit).catch(() => {}); } else applyChangeTo(S.ui, m.change, [], false);
   m.status = "aplicado"; commit(); toast("Aplicado ao treino de hoje");
   send("POST", `/api/inbox/${m.id}/status`, { status: "aplicado" }).catch(() => {});
 }
-function dropInbox(m: any) { m.status = "descartado"; commit(); send("POST", `/api/inbox/${m.id}/status`, { status: "descartado" }).catch(() => {}); }
-
-/** "Continuar no Chat": abre o claude.ai com o pedido e o tipo de contexto já escritos (conversa em tempo real pelo connector). */
-export const Continuar = ({ m }: { m: { text: string; action?: string; tier?: string } }) =>
-  <a class="btn ghost sm" href={C.linkContinuar({ texto: m.text, acao: m.action, tier: m.tier })} target="_blank" rel="noopener noreferrer"><Icon id="chat" />Continuar no Chat</a>;
-
-export function InboxItem({ m }: { m: any }) {
-  const diff: { minus?: string; plus?: string }[] | null = m.change?.diff ?? (m.change?.itens ? m.change.itens.map((t: string) => ({ plus: t })) : null);
-  return <div><div class="msg me small"><b>Você</b> <span class={`tier ${m.tier}`}>{C.TIER_INFO[m.tier as Tier]?.nm ?? m.tier}</span><br />{m.text}</div>
-    {m.response ? <div class="msg small" style="margin-top:6px"><b>{m.cerebro === "regra" ? "Ciclo (regra, sem IA):" : m.cerebro === "openai-api" ? "IA de reserva:" : "Chat:"}</b> {m.response}
-      {!!diff?.length && <div class="diff">{diff.map((d, i) => <div key={i}>{d.minus && <div class="minus">− {d.minus}</div>}{d.plus && <div class="plus">+ {d.plus}</div>}</div>)}</div>}
-      {m.status === "respondido" && m.change && <div class="row" style="margin-top:8px;gap:6px"><button type="button" class="btn pri sm" onClick={() => applyInbox(m)}><Icon id="check" />Aplicar</button><button type="button" class="btn sm" onClick={() => dropInbox(m)}>Descartar</button></div>}
-      {m.status === "aplicado" && <p class="tiny sub" style="margin-top:6px"><Icon id="check" style="width:12px;height:12px" /> aplicado</p>}
-    </div> : <div class="row between wrapx" style="margin-top:4px;row-gap:4px"><p class="tiny sub"><Icon id="clock" style="width:12px;height:12px;vertical-align:-2px" /> {SERVER ? statusPedido(m) : "pensando…"}</p>
-      <Continuar m={m} /></div>}</div>;
-}
-
-export function CaixaClaude({ limit = 6 }: { limit?: number }) {
-  void activePlan;
-  const ps = C.PROMPTS.filter((p) => p.cat === S.ui.promptCat);
-  const draft = S.ui.inboxDraft ?? "";
-  const cls = draft ? C.classify(draft) : null;
-  const tier = (S.ui.tierOverride ?? cls?.tier ?? S.profile.tiers[S.ui.promptCat]) as Tier;
-  const setDraft = (v: string) => { S.ui.inboxDraft = v; commit(); };
-  const info = useClaude();
-  return <Card><div class="row between wrapx"><h2>Pedidos da rotina</h2><span class="badge">sua IA responde depois</span></div>
-    <p class="small sub" style="margin:4px 0 10px">Toque num pedido pronto ou escreva/fale. A resposta volta aqui com a mudança para aplicar.</p>
-    <div class="tabs">{CATS.map((c) => <Chip key={c} on={S.ui.promptCat === c} onClick={() => { S.ui.promptCat = c; commit(); }}>{c}</Chip>)}</div>
-    <div class="chips" style="margin-top:8px">{ps.map((p) => <button type="button" key={p.id} class="chip" onClick={() => sendInbox(p.text, p.id)}>{p.label} <span class={`tier ${p.tier}`}>{C.TIER_INFO[p.tier].nm}</span></button>)}</div>
-    <div class="row start" style="margin-top:10px;gap:8px"><textarea class="input" id="inboxTxt" rows={2} aria-label="Pedido ao Chat" placeholder="ex.: hoje quero treinar ombro e tenho 45 min" value={draft}
-      onInput={(e) => { S.ui.inboxDraft = e.currentTarget.value; }} onBlur={() => commit()} />
-      <Mic value={draft} onChange={setDraft} label="Falar o pedido" /></div>
-    <div class="row between wrapx" style="margin-top:8px;row-gap:8px"><div class="row small" style="gap:6px">Modelo:
-      <Seg opts={(["haiku", "sonnet", "opus"] as Tier[]).map((t) => [t, C.TIER_INFO[t].nm] as [Tier, string])} value={tier} onPick={(t) => { S.ui.tierOverride = t; commit(); }} label="Modelo" /></div>
-      <button type="button" class="btn pri sm" onClick={() => sendInbox(S.ui.inboxDraft)}><Icon id="send" />Enviar</button></div>
-    <p class="tiny sub" style="margin-top:6px">{C.TIER_INFO[tier].why}{cls ? ` · detectado: ${cls.action.replace(/_/g, " ")}` : ""}</p>
-    <hr />{SERVER && <p class="tiny sub" role="status" style="margin-bottom:8px"><Icon id="clock" style="width:12px;height:12px;vertical-align:-2px" /> {info?.rotinaEm ? `Última passada da rotina: ${new Date(info.rotinaEm).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} às ${hhmm(info.rotinaEm)}` : "A rotina ainda não passou. Sem ela, peça no Chat: “processa minha caixa do Ciclo”."}</p>}
-    <div class="thread">{S.inbox.slice(0, limit).map((m) => <InboxItem key={m.id} m={m} />)}{!S.inbox.length && <p class="small sub">Nenhum pedido ainda.</p>}</div></Card>;
-}
+export function dropInbox(m: any) { m.status = "descartado"; commit(); send("POST", `/api/inbox/${m.id}/status`, { status: "descartado" }).catch(() => {}); }

@@ -1,0 +1,89 @@
+/* #134 Chat (estilo dos apps de IA). Só tokens de app.css; celular primeiro (390 px); toques de 44 px. */
+.ch{--nav-h:61px;display:flex;flex-direction:column;gap:var(--sp-3);min-width:0;max-width:760px;margin:0 auto}
+.ch-topo{display:flex;align-items:center;gap:var(--sp-2);min-width:0}
+.ch-topo h1{margin:0;flex:none}
+.ch-ia{display:inline-flex;align-items:center;gap:4px;min-height:var(--alvo);padding:0 12px;border-radius:var(--r-chip);border:1px solid var(--borda);background:var(--sup);color:var(--sub);font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+button.ch-ia{cursor:pointer}
+.ch-seta{width:14px;height:14px;transform:rotate(90deg);flex:none}
+.ch-mais{margin-left:auto;flex:none}
+.ch-txt{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+
+/* faixa dos pedidos da rotina */
+.ch-faixa{border:1px solid var(--borda);border-radius:var(--r);background:var(--sup)}
+.ch-faixa-btn{display:flex;align-items:center;gap:var(--sp-2);width:100%;min-height:var(--alvo);padding:0 var(--sp-3);border:0;background:none;font-weight:600;font-size:14px;cursor:pointer;text-align:left}
+.ch-faixa-btn span{flex:1}
+.ch-faixa-btn .i{width:16px;height:16px;color:var(--warn)}
+.ch-faixa-btn .ch-seta{color:var(--sub);transition:transform var(--dur-1) var(--ease)}
+.ch-faixa.on .ch-faixa-btn .ch-seta{transform:rotate(-90deg)}
+.ch-faixa-corpo{display:grid;gap:var(--sp-3);padding:0 var(--sp-3) var(--sp-3)}
+.ch-faixa-corpo>.badge{justify-self:start}
+.ch-pedidos{list-style:none;margin:0;padding:0;display:grid;gap:var(--sp-3)}
+.ch-pedido{display:grid;gap:6px;padding-top:var(--sp-3);border-top:1px solid var(--borda)}
+.ch-pedido .badge{flex:none}
+.ch-resp{margin-top:2px}
+.ch-acoes{gap:6px}
+.ch-acoes .btn.sm{min-height:var(--alvo)}
+.ch-mini{display:grid;gap:6px;justify-items:start}
+.ch-prompt{display:block;width:100%;padding:8px 10px;border-radius:8px;background:var(--sup-2);font-size:13px;overflow-wrap:anywhere;user-select:all;white-space:pre-wrap}
+
+/* balões */
+.ch-thread{display:flex;flex-direction:column;gap:var(--sp-3);min-height:40dvh}
+.ch-msg{max-width:min(85%,560px);padding:10px 14px;border-radius:16px;font-size:15px;display:grid;gap:var(--sp-2);justify-items:start}
+.ch-msg p{margin:0}
+.ch-msg.eu{align-self:flex-end;background:var(--sup-3);border-bottom-right-radius:4px}
+.ch-msg.ia{align-self:flex-start;background:var(--sup);border:1px solid var(--borda);border-bottom-left-radius:4px}
+.ch-anexo-nm{display:inline-flex;align-items:center;gap:4px;color:var(--sub)}
+.ch-anexo-nm .i{width:14px;height:14px}
+.ch-pensando{display:inline-flex;align-items:center;gap:8px;color:var(--sub);font-size:14px}
+.ch-pontos{display:inline-flex;gap:3px}
+.ch-pontos i{width:6px;height:6px;border-radius:50%;background:var(--sub);opacity:.4}
+@media (prefers-reduced-motion:no-preference){
+  .ch-pontos i{animation:ch-pulsa 1s var(--ease) infinite}
+  .ch-pontos i:nth-child(2){animation-delay:.15s} .ch-pontos i:nth-child(3){animation-delay:.3s}
+}
+@keyframes ch-pulsa{0%,100%{opacity:.3;transform:translateY(0)}50%{opacity:1;transform:translateY(-2px)}}
+.ch-vazio{display:grid;gap:var(--sp-2);margin:auto 0 0;padding-top:var(--sp-5)}
+.ch-vazio h2{margin:0}
+.ch-config{justify-self:start}
+.ch-sugestoes{margin-top:var(--sp-2)}
+/* espaço para o composer fixo não cobrir a última mensagem */
+.ch-fim{height:calc(var(--ch-comp,96px) + var(--sp-3));flex:none}
+
+/* composer fixo: acima da barra inferior no celular; acima do teclado quando ele abre */
+.ch-composer{position:fixed;left:0;right:0;bottom:calc(var(--nav-h) + env(safe-area-inset-bottom));z-index:21;display:grid;gap:6px;padding:var(--sp-2) var(--sp-4);background:var(--bg);border-top:1px solid var(--borda)}
+.ch-composer[data-teclado]{bottom:var(--teclado)}
+.ch-linha{display:flex;align-items:flex-end;gap:6px;min-width:0}
+.ch-btn{width:var(--alvo);height:var(--alvo);flex:none;display:grid;place-items:center;border-radius:50%;border:1px solid var(--borda-ctrl);background:var(--sup);color:var(--txt);cursor:pointer}
+.ch-btn .i{width:20px;height:20px}
+.ch-enviar{background:var(--acc-bg);color:var(--acc-txt);border-color:var(--acc-bg)}
+.ch-enviar:disabled{opacity:.5;cursor:default}
+.ch-campo{flex:1;min-width:0;height:var(--alvo);min-height:var(--alvo);max-height:142px;resize:none;border-radius:22px;border:1px solid var(--borda-ctrl);background:var(--sup);padding:10px 14px;line-height:22px;overflow-y:auto}
+.ch-mic .micwrap{display:contents}
+.ch-mic .mic{width:var(--alvo);height:var(--alvo)}
+.ch-mic .mic svg{width:20px;height:20px}
+.ch-rotina{display:flex;align-items:center;gap:8px;min-height:var(--alvo);color:var(--txt);font-size:13px}
+.ch-rotina input{width:20px;height:20px;accent-color:var(--acc-bg)}
+.ch-anexo{gap:4px}
+.ch-anexo .chip{min-height:var(--alvo);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch-voz{margin:0}
+
+/* menu de conversas e seletor */
+.ch-mais{display:inline-flex;align-items:center;gap:6px;min-height:var(--alvo)}
+.ch-nova{margin-top:var(--sp-3)}
+.ch-sec{margin:var(--sp-4) 0 var(--sp-2)}
+.ch-conversas{list-style:none;margin:0 0 var(--sp-2);padding:0;display:grid}
+.ch-conversas li{gap:4px;border-top:1px solid var(--borda)}
+.ch-conv{flex:1;min-width:0;min-height:var(--alvo);display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);border:0;background:none;text-align:left;cursor:pointer;padding:6px 0}
+.ch-conv .ch-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch-conv[aria-current="true"] .ch-txt{font-weight:700}
+.ch-menu-cards{margin-top:var(--sp-4)}
+.ch-lista{margin:8px 0 0;padding-left:20px;display:grid;gap:4px}
+.ch-opcoes{margin:var(--sp-3) 0}
+
+@media (min-width:960px){
+  .ch{min-height:calc(100dvh - 190px)}
+  .ch-thread{flex:1}
+  .ch-composer{position:sticky;bottom:0;left:auto;right:auto;margin:0 calc(-1 * var(--sp-4));padding-bottom:var(--sp-4);border-top:0}
+  .ch-composer[data-teclado]{bottom:0}
+  .ch-fim{height:var(--sp-3)}
+}

@@ -22,7 +22,7 @@
     "test": "node --no-warnings --test packages/core/test/*.test.ts apps/worker/test/*.test.ts apps/web/test/*.test.ts",
     "typecheck": "tsc -p packages/core && tsc -p apps/web && npm run cf:types -w @ciclo/worker && tsc -p apps/worker",
     "check": "npm run typecheck && npm test && npm run build",
-    "gate": "npm run check && npm run e2e:primeiro-acesso && npm run e2e:pular && npm run e2e:treino-atual && npm run e2e:navegacao && npm run e2e:mcp",
+    "gate": "npm run check && npm run e2e:primeiro-acesso && npm run e2e:pular && npm run e2e:treino-atual && npm run e2e:navegacao && npm run e2e:chat && npm run e2e:mcp",
     "cf:setup": "bash scripts/setup-cloudflare.sh",
     "predeploy:check": "node scripts/predeploy.mjs",
     "deploy:dry": "npm run build && node scripts/predeploy.mjs --static && npm run deploy:dry -w @ciclo/worker",
@@ -35,6 +35,7 @@
     "e2e:pular": "node scripts/e2e-cenario.mjs pular",
     "e2e:treino-atual": "node scripts/e2e-cenario.mjs treino-atual",
     "e2e:navegacao": "node scripts/e2e-cenario.mjs navegacao",
+    "e2e:chat": "node scripts/e2e-cenario.mjs chat",
     "e2e:mcp": "node scripts/e2e-mcp.mjs",
     "mcp:local": "node scripts/mcp-local.mjs",
     "demo": "npm run dev -w @ciclo/web -- --open /?demo"
