@@ -83,7 +83,8 @@ Termos somados ao score de `candidates()` (`plan-day.ts`). Nada disso fura apare
 |---|---|---|
 | `FAMILIAR` | +4 | o exercício está no "Meu treino atual" (forte; fica abaixo só do "sempre esse" fixado à mão, +5) |
 | `FAMILIAR_FRACO` | +1,5 | o texto livre da pessoa casa com o nome ou apelido do exercício |
-| `EFICIENCIA_PESO` | +1 × nota | nota de eficiência na subparte alvo (`ALVO_PADRAO`: o orçamento "ombro" mira o lateral; sem alvo, a melhor subparte do músculo) |
+| `EFICIENCIA_PESO` | +1 × nota | nota de eficiência na subparte-alvo (seção "Subparte-alvo", #82) |
+| `PRIORIDADE_FINA` | +3 | exercício principal (nota 3) da subparte marcada como prioridade fina: ela recebe o melhor exercício para si |
 | `POPULAR_PESO` | +0,05 × popularidade | só para iniciante (nunca treinou ou "estou começando"), só como desempate |
 | `REPOSICAO` | +4,5 | exercício principal (nota 3) da subparte que uma troca forçada deixou sem estímulo |
 | `CREDITO_NOTA` | 1 · 0,5 · 0 | crédito por série das notas 3, 2 e 1 (seção "Volume por subparte") |
@@ -91,6 +92,41 @@ Termos somados ao score de `candidates()` (`plan-day.ts`). Nada disso fura apare
 - **Por que priorizar o que a pessoa já faz:** exercícios escolhidos pela própria pessoa foram percebidos como mais agradáveis, com o mesmo esforço, e ela tende a escolher bem ([PubMed 40505704](https://pubmed.ncbi.nlm.nih.gov/40505704/)). Teste: com o treino atual cadastrado e a academia permitindo, ≥ 70% dos exercícios da semana vêm dele.
 - **Trocar** (`alternativas`): só lista a **mesma subparte principal**, nesta ordem: o que a pessoa já faz, eficiência naquela parte, aparelho livre (academia cheia) e ordem do catálogo. "Trocar por outra parte do músculo" mostra o resto do grupo grande com o aviso de que a semana repõe a parte que sair.
 - **Sem cadastro, nada muda:** o "Meu treino atual" é opcional e não entra em `faltaParaGerar` nem em `validarParaGerar`.
+
+## Subparte-alvo
+
+#82. Vale para **todo** músculo do orçamento (`subAlvos`/`subAlvo` em `plan-day.ts`). A subparte que o ranqueamento mira vem, nesta ordem:
+1. reposição de troca forçada (#74) ou alvo explícito (`DayInput.subAlvo`);
+2. a **prioridade fina** do perfil (`subPriorities`: qualquer subparte de `SUB_MUSCLES`, como peito superior, dorsal, cabeça longa do tríceps, glúteo, adutores ou oblíquos);
+3. senão, a subparte principal **mais atrasada** em volume na semana (crédito por subparte da seção "Volume por subparte");
+4. senão, o padrão do músculo.
+
+| Músculo | Subpartes principais (o padrão é a 1ª) | Por quê |
+|---|---|---|
+| Peito | peito superior, peito médio | o inclinado pega o superior (3) e o médio (2); o reto, o contrário (seção "Eficiência por subparte") |
+| Costas | dorsal, meio das costas | puxadas e remadas se completam (Lehman 2004; Signorile 2002) |
+| Ombro lateral | ombro lateral | o anterior já vem dos supinos e desenvolvimentos |
+| Ombro post. | ombro posterior | |
+| Bíceps | bíceps | |
+| Tríceps | cabeça longa, cabeça lateral | acima da cabeça cresceu mais a longa (Maeo 2023) |
+| Quadríceps, posterior, glúteo, panturrilha, abdômen | a subparte de mesmo nome | |
+
+- Trapézio, lombar, antebraço, adutores e oblíquos só entram como prioridade fina (como "atrasados" puxariam encolhimento ou hiperextensão toda semana). Hoje o catálogo não tem exercício planejável com nota 3 em trapézio, lombar, antebraço e oblíquos: o gerador usa a melhor nota disponível.
+- **Mais de uma subparte prioritária no mesmo músculo:** o peso segue a ordem (a 1ª pesa mais: 2 subpartes = 2:1). `dividirPorSubparte` dá 1 série para cada uma (primeiro a que está mais atrás na semana, pelo volume ÷ peso) e reparte o resto na proporção do peso. Cada uma recebe o exercício de maior eficiência para si.
+- Teste de propriedade (`subparte-82.test.ts`): para cada `SubMuscleId` marcado como prioridade, em perfis aleatórios, a semana tem ≥ 1 exercício com a melhor nota daquela subparte (3 quando o catálogo e o aparelho permitem).
+
+## Divisão da pessoa
+
+#82, `divisao.ts`. Com o "Meu treino atual" cadastrado, `detectarDivisao` identifica o tipo pelos grupos de cada treino (os marcados mais os dos exercícios): corpo inteiro (todo treino tem pernas, empurrar e puxar), superior/inferior, empurrar/puxar/pernas (PPL com 3 treinos, PPL×2 com 6) e, fora disso, ABC, ABCD ou ABCDE pelo número de treinos.
+
+`compararDivisao(divisao, dias, metas)`:
+- **Cabe nos dias:** o ciclo se repete (ABC em 6 dias = ABCABC). Compatível quando cada grupo (peito, costas, ombro, bíceps, tríceps e pernas; o abdômen fica fora) pega a frequência do método: 2× (seção "Frequência"), ou 1× se o método escolhido for esse.
+- **Não cabe** (mais treinos que dias, como ABCDE em 3 dias): incompatível; o aviso diz que ela não fecha na semana e quais grupos ficam abaixo de 2×.
+
+Na semana (`planWeek`):
+- **Compatível:** cada dia de treino é o próximo treino da pessoa, na ordem e com o nome dela. O gerador só ajusta volume e exercícios. A Semana mostra "Seguindo a sua divisão A/B/C/D".
+- **Incompatível:** nada é imposto. A Semana mostra o aviso ("Sua divisão treina costas 1× por semana.") com **Manter minha divisão** e **Ajustar**. Manter é respeitado (regra 5 do CLAUDE.md): a semana segue a divisão e o aviso continua à vista como risco. Se a divisão tem mais treinos que dias, o ciclo continua de uma semana para a outra (ABC, DEA, BCD…). Ajustar mantém o desenho do método, com os exercícios que a pessoa já faz.
+- A escolha fica no perfil (`divisaoEscolha`) com a assinatura dos grupos. Mudou a divisão, a pergunta volta.
 
 ## Gerador determinístico e validador (#65)
 
