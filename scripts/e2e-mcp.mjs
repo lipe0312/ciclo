@@ -173,7 +173,7 @@ async function main() {
       ok(ex, "semana sem itens");
       ok((await tool(ta["ler escrever"], "ciclo_treino_registrar", { exercicioId: ex, series: [{ kg: 10, reps: 10, rir: 2 }] })).registrado === 1, "série");
       const tr = await tool(ta["ler escrever"], "ciclo_treino_trocar", { exercicioId: ex });
-      ok(Array.isArray(tr.mesmaParte), "trocar");
+      ok(Array.isArray(tr.alternativas) && tr.alternativas.length > 0, `trocar: ${JSON.stringify(tr)}`);
       const g = await tool(ta["ler escrever"], "ciclo_semana_gerar");
       ok(g.previa && g.semanaJaTreinada, "semana treinada sem prévia");
     });
