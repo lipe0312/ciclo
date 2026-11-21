@@ -10,6 +10,7 @@ import { confirmar, criarPrevia } from "./mcp-previa.ts";
 import { aprovacaoDe, salvarAprovacao } from "./mcp-comida.ts";
 import { S, addDays, dado, obj, today } from "./mcp-tipos.ts";
 import { idsPersonalizados, lerPersonalizado, listarPersonalizados } from "./exercicio-personalizado.ts";
+import { resumirSeTerminada } from "./treino-corrigir.ts";
 
 const personalizadoComo = async (env: Env, uid: string, id: string) => {
   const p = await lerPersonalizado(env, uid, id);
@@ -98,7 +99,8 @@ async function treinoRegistrar(a: Args, env: Env, uid: string) {
   // #106 cada série: reps OU segundos, conforme a medida do exercício (prancha só tempo; polichinelo os dois)
   series.forEach((s, i) => { const er = erroSerie(ex, s); if (er) throw new HttpError(400, `series[${i}]: ${er}`); });
   const now = Date.now();
-  let sess = await env.DB.prepare("SELECT id FROM session WHERE user_id = ?1 AND date = ?2 AND (finished_at IS NULL OR closed_by = 'auto') ORDER BY started_at DESC LIMIT 1").bind(uid, d).first<{ id: string }>();
+  // #123 dia feito não trava: soma na sessão do dia (aberta ou já terminada), nunca abre uma 2ª por conta própria
+  let sess = await env.DB.prepare("SELECT id FROM session WHERE user_id = ?1 AND date = ?2 ORDER BY (finished_at IS NULL) DESC, started_at DESC LIMIT 1").bind(uid, d).first<{ id: string }>();
   if (!sess) {
     const plan = await lerTreinoDoDia(env, uid, d, today()); // #121 a sessão nasce com o treino do dia da fonte única
     const sid = crypto.randomUUID();
@@ -113,6 +115,7 @@ async function treinoRegistrar(a: Args, env: Env, uid: string) {
   if (ini + series.length > 12) throw new HttpError(400, "no máximo 12 séries por exercício na sessão");
   await env.DB.batch(series.map((s, i) => env.DB.prepare(`INSERT INTO set_log (user_id, session_id, exercise_id, muscle, set_no, kg, reps, rir, created_at, segundos) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
     ON CONFLICT(user_id, session_id, exercise_id, set_no) DO UPDATE SET kg = ?6, reps = ?7, rir = ?8, segundos = ?10`).bind(uid, sess!.id, ex, e.m, ini + i + 1, s.kg ?? null, s.reps ?? null, s.rir ?? null, now + i, s.segundos ?? null)));
+  await resumirSeTerminada(env, uid, sess.id); // #123 terminada: o resumo (volume, PRs) inclui o que entrou
   return {
     registrado: series.length, sessao: sess.id, date: d, exercicio: "cus" in e ? { id: ex, nome: dado(e.nm) } : `${ex} (${e.nm})`, medida: medidaDe(ex),
     series: series.map((s, i) => `${ini + i + 1}: ${fmtSerie({ kg: s.kg ?? 0, reps: s.reps ?? 0, segundos: s.segundos })}${s.rir != null ? ` RIR ${s.rir}` : ""}`),
@@ -233,7 +236,7 @@ export const TOOLS_TREINO: Tool[] = [
   },
   {
     name: "ciclo_treino_registrar",
-    description: "Registra séries feitas de UM exercício (ID do ciclo_catalogo ou cus_ desta conta) num dia (padrão hoje; até 7 dias atrás): carga, reps (ou segundos se a medida do exercício for tempo/ambos, ex.: prancha) e RIR. Abre a sessão do dia se não houver e marca presença. Exercício do catálogo fora do plano do dia vira troca forçada: a semana repõe a parte que saiu; cus_ conta volume no músculo dele e não vira troca. Escreve.",
+    description: "Registra séries feitas de UM exercício (ID do ciclo_catalogo ou cus_ desta conta) num dia (padrão hoje; até 7 dias atrás): carga, reps (ou segundos se a medida do exercício for tempo/ambos, ex.: prancha) e RIR. Soma na sessão do dia (mesmo já terminada) ou abre uma se não houver, e marca presença. Para apagar/corrigir séries: ciclo_treino_corrigir. Exercício do catálogo fora do plano do dia vira troca forçada: a semana repõe a parte que saiu; cus_ conta volume no músculo dele e não vira troca. Escreve.",
     inputSchema: obj({
       date: S.date, exercicioId: { type: "string", pattern: EX_RE },
       series: { type: "array", minItems: 1, maxItems: 12, items: { type: "object", additionalProperties: false, properties: { kg: { type: "number", minimum: 0, maximum: 600 }, reps: { type: "integer", minimum: 0, maximum: 100 }, segundos: { type: "integer", minimum: SEGUNDOS_MIN, maximum: SEGUNDOS_MAX }, rir: { type: "integer", minimum: 0, maximum: 6 } } } },

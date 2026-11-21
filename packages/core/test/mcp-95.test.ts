@@ -7,7 +7,7 @@ import { EXERCISES, MCP_CONTRATO, academiaDoDia, academiasMcp, aparelhosFaltando
 const comLegpress = EXERCISES.find((e) => e.eq.includes("legpress"))!;
 const soHalter = EXERCISES.find((e) => e.eq.length === 1 && e.eq[0] === "halteres")!;
 
-test("contrato 1.3.0", () => assert.equal(MCP_CONTRATO, "1.3.0"));
+test("contrato 1.4.0 (#123 ciclo_treino_corrigir)", () => assert.equal(MCP_CONTRATO, "1.4.0"));
 
 test("resumoTreinoAtual: null sem cadastro, [] 'estou começando', divisões compactas e quem preencheu", () => {
   assert.deepEqual(resumoTreinoAtual(null), { treinoAtual: null });
