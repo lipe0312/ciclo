@@ -312,6 +312,35 @@ on("POST", "/api/week/day/:date", async (req, env, p, u) => json(await dayAction
 // #108 "Gerar treino" num dia sem treino: só por toque; gera, valida e abre o pedido de revisão da IA
 on("POST", "/api/week/day/:date/gerar-treino", async (req, env, p, u) => json(await gerarTreinoDoDia(env, u.id, p.date, date((await readJson<{ today?: unknown }>(req, 1024)).today, "today"))));
 
+// #122 Plano da sessão (Começar e mudança no meio do treino): cada item com id conhecido (catálogo, cus_ ou o "meu" da
+// edição manual), séries e nomes com limite. Inválido → 400. Campos fora da lista não são guardados.
+const PROPRIO_RE = /^proprio_[a-z0-9_]{1,60}$/;
+function planoSessao(v: unknown): Record<string, unknown> {
+  if (v == null) return {};
+  if (typeof v !== "object" || Array.isArray(v)) throw new HttpError(400, "plan: objeto");
+  const p = v as Record<string, unknown>, out: Record<string, unknown> = { ...p };
+  if (p.name != null) out.name = str(p.name, "plan.name", 120);
+  if (p.doDia != null) out.doDia = str(p.doDia, "plan.doDia", 8000);
+  if (p.items == null) return out;
+  if (!Array.isArray(p.items) || p.items.length > 40) throw new HttpError(400, "plan.items: lista de até 40");
+  out.items = p.items.map((x, i) => {
+    if (!x || typeof x !== "object" || Array.isArray(x)) throw new HttpError(400, `plan.items[${i}]: objeto`);
+    const it = x as Record<string, unknown>, f = `plan.items[${i}]`;
+    const ex = str(it.exerciseId, `${f}.exerciseId`, 80)!;
+    if (!EXERCISE_BY_ID[ex] && !ehIdPersonalizado(ex) && !PROPRIO_RE.test(ex)) throw new HttpError(400, `${f}.exerciseId: use um ID do catálogo`);
+    const reps = it.reps == null ? undefined : Array.isArray(it.reps) && it.reps.length === 2
+      ? [int(it.reps[0], `${f}.reps`, 1, 3600)!, int(it.reps[1], `${f}.reps`, 1, 3600)!] : (() => { throw new HttpError(400, `${f}.reps: [mín, máx]`); })();
+    return {
+      exerciseId: ex, nm: str(it.nm, `${f}.nm`, 120, false) ?? undefined, muscle: it.muscle == null ? undefined : oneOf(it.muscle, `${f}.muscle`, MUSCLE_IDS),
+      kind: str(it.kind, `${f}.kind`, 20, false) ?? undefined, sets: int(it.sets, `${f}.sets`, 1, 12)!, reps, rest: int(it.rest, `${f}.rest`, 0, 900, false) ?? undefined,
+      alts: Array.isArray(it.alts) ? it.alts.slice(0, 20).map((a, k) => str(a, `${f}.alts[${k}]`, 80)) : undefined,
+      prehab: it.prehab === true || undefined, manual: it.manual === true || undefined, personalizado: it.personalizado === true || undefined,
+      rir: int(it.rir, `${f}.rir`, 0, 6, false) ?? undefined, par: str(it.par, `${f}.par`, 4, false) ?? undefined, trocado: it.trocado === true || undefined,
+    };
+  });
+  return out;
+}
+
 // Iniciou = foi. A presença é gravada no "Começar".
 on("POST", "/api/sessions", async (req, env, _p, u) => {
   const b = await readJson<{ id?: string; date: string; gymId?: string; plan: DayPlan; startedAt?: number }>(req, 48 * 1024);
@@ -325,7 +354,7 @@ on("POST", "/api/sessions", async (req, env, _p, u) => {
   await env.DB.batch([
     env.DB.prepare(`INSERT OR IGNORE INTO session (user_id, id, date, gym_id, plan, started_at) SELECT ?6, ?1, ?2, ?3, ?4, ?5
       WHERE NOT EXISTS (SELECT 1 FROM session WHERE user_id = ?6 AND date = ?2 AND id <> ?1 AND finished_at IS NULL AND started_at > ?7)`)
-      .bind(sid, d, str(b.gymId, "gymId", 40, false), JSON.stringify(b.plan ?? {}), startedAt, u.id, now - MAX_SESSION_MS),
+      .bind(sid, d, str(b.gymId, "gymId", 40, false), JSON.stringify(planoSessao(b.plan)), startedAt, u.id, now - MAX_SESSION_MS),
     env.DB.prepare("INSERT INTO attendance (user_id, date, status, source, updated_at) VALUES (?3, ?1, 'fui', 'inicio', ?2) ON CONFLICT(user_id, date) DO UPDATE SET status='fui', source='inicio', updated_at=?2").bind(d, now, u.id),
   ]);
   const s = await env.DB.prepare(aberta).bind(u.id, d, now - MAX_SESSION_MS).first<{ id: string; started_at: number }>();
@@ -337,9 +366,8 @@ on("POST", "/api/sessions", async (req, env, _p, u) => {
 // para outro aparelho retomar igual. Só a sessão aberta da própria conta.
 on("PUT", "/api/sessions/:id/plan", async (req, env, p, u) => {
   const b = await readJson<{ plan?: unknown }>(req, 48 * 1024);
-  if (!b.plan || typeof b.plan !== "object" || !Array.isArray((b.plan as { items?: unknown }).items)) throw new HttpError(400, "plan: objeto com items");
-  if ((b.plan as { items: unknown[] }).items.length > 40) throw new HttpError(400, "plan: no máximo 40 itens");
-  const r = await env.DB.prepare("UPDATE session SET plan = ?3 WHERE user_id = ?1 AND id = ?2 AND finished_at IS NULL").bind(u.id, p.id, JSON.stringify(b.plan)).run();
+  if (!b.plan || !Array.isArray((b.plan as { items?: unknown }).items)) throw new HttpError(400, "plan: objeto com items");
+  const r = await env.DB.prepare("UPDATE session SET plan = ?3 WHERE user_id = ?1 AND id = ?2 AND finished_at IS NULL").bind(u.id, p.id, JSON.stringify(planoSessao(b.plan))).run();
   return json({ ok: true, saved: r.meta.changes > 0 });
 });
 

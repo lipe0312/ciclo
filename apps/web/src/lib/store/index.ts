@@ -70,7 +70,7 @@ export function useStore() {
 const LS = "ciclo:v1";
 const key = () => LS + (SERVER ? ":srv" : ":demo") + ":" + today;
 export function saveLocal() {
-  const keep: Record<string, unknown> = { ui: { ...S.ui, perfilSec: null }, session: S.session, plan: S.ui.locked ? S.plan : null, past: S.past };
+  const keep: Record<string, unknown> = { ui: { ...S.ui, perfilSec: null, avisoSessao: null }, session: S.session, plan: S.ui.locked ? S.plan : null, past: S.past };
   if (!SERVER) Object.assign(keep, { profile: S.profile, gyms: S.gyms, week: S.week, pains: S.pains, inbox: S.inbox, food: S.food, media: S.media, measures: S.measures, edits: S.edits, history: S.history });
   lsSet(key(), keep);
 }

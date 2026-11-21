@@ -38,8 +38,17 @@ test("IA altera o dia com treino em andamento: o plano ajustado fica na mesma se
   assert.deepEqual(s.plan.items.map((i: any) => [i.exerciseId, i.trocado ?? false]), [[EX, true], [EX2, false]]);
   assert.equal(s.sets.length, 2);
   assert.equal((await doDia(env, "ana")).length, 1);
-  // validação e conta alheia
-  assert.equal((await call(env, "PUT", `/api/sessions/${S1}/plan`, { user: "ana", body: { plan: "x" } })).status, 400);
+  // validação (lixo, id inventado, nm gigante, séries fora da faixa) e conta alheia
+  const put = (plan: unknown) => call(env, "PUT", `/api/sessions/${S1}/plan`, { user: "ana", body: { plan } });
+  const it = { exerciseId: EX, sets: 3 };
+  for (const [plan, re] of [["x", /plan/], [{ items: "x" }, /plan/], [{ items: [null] }, /items\[0\]/],
+    [{ items: [{ ...it, exerciseId: "x'; DROP TABLE session;--" }] }, /exerciseId/], [{ items: [{ ...it, exerciseId: "Inventado_Fake" }] }, /catálogo/],
+    [{ items: [{ ...it, nm: "a".repeat(5000) }] }, /nm/], [{ items: [{ ...it, sets: 99 }] }, /sets/], [{ items: [{ ...it, sets: "3" }] }, /sets/],
+    [{ name: "b".repeat(500), items: [it] }, /name/], [{ items: Array.from({ length: 41 }, () => it) }, /40/], [{ items: [{ ...it, reps: [1] }] }, /reps/]] as const) {
+    const r = await put(plan); assert.equal(r.status, 400, r.text); assert.match(r.data.error, re);
+  }
+  const bad = await call(env, "POST", "/api/sessions", { user: "ana", body: { id: S2, date: D, plan: { items: [{ exerciseId: EX, sets: 3, nm: "c".repeat(5000) }] } } });
+  assert.equal(bad.status, 400, "o Começar também valida o plano");
   assert.equal((await ok(call(env, "PUT", `/api/sessions/${S1}/plan`, { user: "bia", body: { plan: { items: [] } } }))).saved, false, "a B não troca o plano da A");
   assert.equal((await ok(call(env, "GET", `/api/sessions/${S1}`, { user: "ana" }))).plan.name, "Braços (IA)");
 });
