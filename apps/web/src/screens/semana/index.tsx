@@ -73,7 +73,7 @@ function DiaCard({ d }: { d: Dia }) {
         <h3 style="min-width:0">{p ? p.name : SEM_PLANO[d.status]}</h3>
         <span class={`sem-st st-${d.status}`}>{STATUS[d.status]}</span></div>
       {p ? <>
-        <p class="small sub num" style="margin-top:2px">{p.items.length} exercícios · {p.setsTotal} séries · ~{p.estMinutes} min{gym ? ` · ${gym}` : ""}</p>
+        <p class="small sub num" style="margin-top:2px">{C.cabecalhoDia(p)}{gym ? ` · ${gym}` : ""}</p>
         <p class="tiny sub" style="margin-top:4px">{Object.entries(p.perMuscle).map(([m, n]) => `${mName(m)} ${n}`).join(" · ")}</p>
         {(d.source !== "auto" || p.revisao) && <p class="tiny" style="margin-top:4px"><SeloOrigem d={d} p={p} /></p>}
         {d.warn.map((w, i) => <p key={i} class="tiny" style="margin-top:4px;color:var(--warn)">{w}</p>)}
@@ -147,9 +147,9 @@ function Detalhe({ date }: { date: string }) {
     <p class="kicker">{longDate(date)}{d.gymId ? ` · ${gymById(d.gymId)?.name ?? ""}` : ""}</p>
     <h1 style="margin:2px 0 6px">{p?.name ?? (d.status === "livre" ? "Sem treino" : "Folga")}</h1>
     {p && (d.source !== "auto" || p.revisao) && <p class="tiny" style="margin-bottom:6px"><SeloOrigem d={d} p={p} /></p>}
-    {p && <p class="small sub num">{p.items.length} exercícios · {p.setsTotal} séries · ~{p.estMinutes} min{d.opts.format && d.opts.format !== "tradicional" ? ` · ${d.opts.format === "superserie" ? "superséries" : "circuito"}` : ""}</p>}
+    {p && <p class="small sub num">{C.cabecalhoDia(p)}{d.opts.format && d.opts.format !== "tradicional" ? ` · ${d.opts.format === "superserie" ? "superséries" : "circuito"}` : ""}</p>}
     <div class="grid dash" style="margin-top:14px"><div class="stack">
-      {p && p.items.length > 0 ? <Card><h2>Exercícios</h2><div class="sem-exs">{[...p.prehab, ...p.items].map((it, i) => <Exercicio key={i} it={it} />)}</div></Card>
+      {p && p.items.length > 0 ? <Card><h2>Exercícios</h2><div class="sem-exs">{C.exerciciosDoDia(p).map((it, i) => <Exercicio key={i} it={it} />)}</div></Card>
         : <Card><p class="small">{p?.why[0] ?? (semTreino(d) ? "Nenhum treino neste dia. Gere um só se for treinar: sai na hora e a IA revisa depois." : "Dia de descanso. Recuperar também conta.")}</p>
           {semTreino(d) && <button type="button" class="btn pri full" style="margin-top:10px" onClick={() => void gerarTreino(d.date)}><Icon id="bolt" />Gerar treino</button>}</Card>}
     </div><div class="stack">

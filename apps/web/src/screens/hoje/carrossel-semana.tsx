@@ -27,7 +27,7 @@ function CardDia({ d }: { d: Dia }) {
       <span class={`sem-st st-${d.status}`}>{STATUS[d.status]}</span></div>
     <h3 class="hm-dia-nome">{p ? p.name : d.status === "folga" ? "Folga" : d.status === "livre" ? "Dia livre" : "Sem treino"}</h3>
     {p ? <>
-      <p class="small sub num">{p.groups.map((g) => GRUPOS[g]).join(" + ")} · {p.items.length} exercícios · {p.setsTotal} séries</p>
+      <p class="small sub num">{p.groups.map((g) => GRUPOS[g]).join(" + ")} · {C.exerciciosDoDia(p).length} exercícios · {p.setsTotal} séries</p>
       <p class="small num"><Icon id="clock" /> ~{p.estMinutes} min{gym ? <> · <Icon id="gym" /> {gym}</> : null}</p>
       {musc && <p class="tiny sub">{musc}</p>}
       {p.revisao && <p class="tiny"><SeloOrigem d={d} p={p} /></p>}
