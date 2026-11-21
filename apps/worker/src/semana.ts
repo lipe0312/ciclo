@@ -1,7 +1,7 @@
 // Semana completa planejada (#24): monta a entrada do core a partir do D1, guarda versões (desfazer) e as escolhas
 // por dia. Todo SQL com bind e filtrado por user_id; o uid vem da autenticação.
 import {
-  EQUIPMENT_BY_ID, JANELA_MES, MUSCLE_IDS, altsDoBanco, applyDayAction, exerciciosCansados, parametrosDoPerfil, diffWeeks, empurrarTreinos, entradaTreinoAtual, formatoDe, mondayOf, planWeek, resumirDia, salvosSubstituidos, treinoDoDia, trocasDoDia,
+  EQUIPMENT_BY_ID, JANELA_MES, semBaseParaGerar, MUSCLE_IDS, altsDoBanco, applyDayAction, exerciciosCansados, parametrosDoPerfil, diffWeeks, empurrarTreinos, entradaTreinoAtual, formatoDe, mondayOf, planWeek, resumirDia, salvosSubstituidos, treinoDoDia, trocasDoDia,
   weekDates, weekProgression, weekView, weeklyTargets,
 } from "@ciclo/core";
 import type { CardioEntry, DayAction, DayOpts, DayOverride, DayPlan, Intensity, MuscleId, Progression, Sets, WeekInput, WeekPlan, WeekProfile } from "@ciclo/core";
@@ -42,8 +42,8 @@ interface Ctx {
 export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx | { empty: EmptyReason }> {
   const weekStart = mondayOf(today), dates = weekDates(weekStart), [from, to] = [dates[0], dates[6]];
   const [profile, gyms, week] = await Promise.all([getProfile(env, uid), listGyms(env, uid), weekState(env, uid, today)]);
-  if (!profile) return { empty: "sem_perfil" };
-  if (!gyms.length) return { empty: "sem_academia" };
+  if (!profile || semBaseParaGerar(profile, gyms.length)) return { empty: "sem_perfil" };
+  // #79 sem academia a semana sai com peso corporal (gyms vazio → equipamento [] no core) e gymId null
   const [sets, ovr, fixed, vers, latest, cardio, porEx, mes] = await env.DB.batch([
     env.DB.prepare(`SELECT s.date AS date, l.muscle AS muscle, COUNT(*) AS n FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
       WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 GROUP BY s.date, l.muscle`).bind(uid, from, to),

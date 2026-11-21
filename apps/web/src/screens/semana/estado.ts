@@ -22,7 +22,6 @@ let carregando: Promise<void> | null = null;
 /** #63 Texto do "sem semana" na interface (o servidor manda só o motivo). */
 const VAZIO: Record<string, string> = {
   sem_perfil: "Complete o Perfil de treino: falta o básico (objetivo, dias e onde treina).",
-  sem_academia: "Complete o Perfil de treino: falta dizer onde você treina.",
 };
 export const getSemana = () => semana;
 export const getVazio = () => vazio;

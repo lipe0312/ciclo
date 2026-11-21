@@ -54,3 +54,4 @@ export * from "./outro-aparelho.ts";
 export * from "./semana-variacao.ts";
 export * from "./historico.ts";
 export * from "./chaves.ts";
+export * from "./sem-academia.ts";

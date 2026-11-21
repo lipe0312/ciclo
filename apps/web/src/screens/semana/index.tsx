@@ -16,6 +16,7 @@ import { AvisoFalta } from "./aviso.tsx";
 import { DivisaoCard } from "./divisao.tsx";
 import { Marcar, STATUS, SeloOrigem, semTreino } from "./comum.tsx";
 export { Marcar, STATUS, SeloOrigem, semTreino } from "./comum.tsx";
+import { AvisoSemAcademia } from "./aviso-sem-academia.tsx";
 import { abrirEmpurrar, abrirMover, abrirRegenerar, abrirTrocar, aberto, diaCurto } from "./folhas.tsx";
 import { abrirGerarOutro } from "../treino/gerar.tsx";
 import "./semana.css";
@@ -99,6 +100,7 @@ function Lista({ s }: { s: Semana }) {
   return <>
     <div class="row between wrapx" style="margin-bottom:14px;gap:8px"><div><p class="kicker">Semana · {curto(s.weekStart)} a {curto(s.days[6].date)}</p><h1>Semana</h1>
       <p class="small sub num" style="margin-top:4px">{treinos} treinos planejados · fecha em {s.closePct}% do orçamento</p></div></div>
+    <AvisoSemAcademia />
     <div class="grid dash"><div class="stack">
       <AvisoFalta />
       <HojeNaoDa s={s} />
