@@ -42,13 +42,14 @@ test("segunda de manhã: 4 dias habituais planejados inteiros, alternando superi
   assert.equal(v.offer, null);
 });
 
-test("semana de 3 dias: superior, inferior e corpo inteiro → todo músculo 2×", () => {
+test("semana de 3 dias: corpo inteiro A/B/C (#90) → prioridades 2× e, com tempo, todo músculo 2×", () => {
   const i = inp({ profile: prof({ daysUsual: ["seg", "qua", "sex"], daysTarget: 3 }) });
   const w = planWeek(i), v = weekView(i, w);
-  assert.deepEqual([0, 2, 4].map((k) => groupsOf(day(w, k).plan).join()), ["sup", "inf", "inf,sup"]);
-  assert.equal(day(w, 4).plan!.name, "Corpo inteiro");
-  // o que não coube nos 60 min fica escrito; o resto (e toda prioridade) pega 2×
-  for (const m of MUSCLE_IDS) if (!day(w, 4).plan!.dropped.includes(m)) assert.ok((v.projected.freq[m] ?? 0) >= 2, m);
+  assert.deepEqual([0, 2, 4].map((k) => groupsOf(day(w, k).plan).join()), ["inf,sup", "inf,sup", "inf,sup"]);
+  assert.deepEqual([0, 2, 4].map((k) => day(w, k).plan!.name.split(" · ")[0]), ["Corpo inteiro A", "Corpo inteiro B", "Corpo inteiro C"]);
+  // o que não coube nos 60 min fica escrito; toda prioridade pega 2×
+  const fora = new Set([0, 2, 4].flatMap((k) => day(w, k).plan!.dropped));
+  for (const m of MUSCLE_IDS) if (!fora.has(m)) assert.ok((v.projected.freq[m] ?? 0) >= 2, m);
   for (const m of PRIOS) assert.ok((v.projected.freq[m] ?? 0) >= 2, m);
   const longo = inp({ profile: prof({ daysUsual: ["seg", "qua", "sex"], daysTarget: 3, minutes: 90 }) });
   const v90 = weekView(longo, planWeek(longo));
