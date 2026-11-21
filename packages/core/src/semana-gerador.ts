@@ -9,13 +9,12 @@ import type { DiaGerado, PerfilGerador, SemanaGerada } from "./gerador.ts";
 import { resumirDia } from "./plan-day.ts";
 import type { DayPlan } from "./plan-day.ts";
 import { avisosSaude } from "./saude-avisos.ts";
-import type { AvisoSaude } from "./saude-avisos.ts";
 import { divisaoSeguida, isClosed, planWeek } from "./semana.ts";
 import type { Split, WeekInput, WeekPlan } from "./semana.ts";
 import { rotuloDia } from "./semana-variacao.ts";
 
-/** O que o gerador precisa e a semana não tem: sexo, nível e os sinais de saúde (só avisos). */
-export interface BaseGerador { sexo: "m" | "f" | null; nivel: 0 | 1 | 2 | 3; saude?: AvisoSaude[] }
+/** O que o gerador precisa e a semana não tem: sexo e nível. A saúde fica fora: o aviso sai na leitura (avisosDaSemana). */
+export interface BaseGerador { sexo: "m" | "f" | null; nivel: 0 | 1 | 2 | 3 }
 export type FonteSemana = "gerador" | "semana";
 export type MotivoSemGerador = "divisao" | "ajuste" | "salvo" | "feito" | "dias" | "invalida";
 
@@ -44,7 +43,7 @@ export function perfilGeradorDaSemana(inp: WeekInput, plan: WeekPlan, base: Base
     sexo: base.sexo, nivel: base.nivel, prioridades: p.priorities, equipamentos,
     dias: treinos.map((d) => d.dow), diasMeta: treinos.length, minutos: p.minutes,
     dores: p.pains ?? [], evitar: p.avoid, prefs: p.prefs, pinned: p.pinned, familiar: p.familiar,
-    saude: base.saude, alvos: inp.targets,
+    alvos: inp.targets,
   };
 }
 
@@ -67,13 +66,11 @@ export function diasDoPlano(plan: Pick<WeekPlan, "days">): DiaGerado[] {
   });
 }
 
-/** A semana do app: do gerador quando limpa (e válida); senão, a do planWeek. Os avisos de saúde valem nas duas. */
+/** A semana do app: do gerador quando limpa (e válida); senão, a do planWeek. Nada de saúde aqui: a semana é gravada
+ *  (versões e desfazer) e o aviso de saúde tem de sumir quando a pessoa desmarca; ele sai na leitura (avisosDaSemana). */
 export function semanaComGerador(inp: WeekInput, base: BaseGerador): { plan: WeekPlan; fonte: FonteSemana; perfil: PerfilGerador | null; motivo: MotivoSemGerador | null } {
   const plan = planWeek(inp);
-  const semGerador = (motivo: MotivoSemGerador) => {
-    const avisos = avisosSaude(base.saude);
-    return { plan: avisos.length ? { ...plan, avisos } : plan, fonte: "semana" as const, perfil: null, motivo };
-  };
+  const semGerador = (motivo: MotivoSemGerador) => ({ plan, fonte: "semana" as const, perfil: null, motivo });
   const motivo = motivoSemGerador(inp, plan);
   if (motivo) return semGerador(motivo);
   const perfil = perfilGeradorDaSemana(inp, plan, base);
@@ -89,4 +86,9 @@ export function semanaComGerador(inp: WeekInput, base: BaseGerador): { plan: Wee
     return { ...resto, plan: planoDoDiaDaSemana(gd), warn: [] };
   });
   return { plan: { ...plan, days, ...(g.avisos.length ? { avisos: g.avisos } : {}) }, fonte: "gerador", perfil, motivo: null };
+}
+
+/** Avisos da semana na hora de ler: os do gerador (gravados) + os de saúde do perfil ATUAL (nunca gravados). */
+export function avisosDaSemana(plan: Pick<WeekPlan, "avisos">, saude: readonly unknown[] | null | undefined): string[] {
+  return [...(plan.avisos ?? []), ...avisosSaude(saude)];
 }

@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  AVISOS_SAUDE, DOWS, EQUIPMENT, MUSCLE_IDS, avisosSaude, diasDoPlano, gerarSemana, mensagemPerfil, planWeek, semanaComGerador,
+  AVISOS_SAUDE, DOWS, EQUIPMENT, MUSCLE_IDS, avisosDaSemana, avisosSaude, diasDoPlano, gerarSemana, mensagemPerfil, planWeek, semanaComGerador,
   validarSemana, validateProfilePatch, weekDates, weeklyTargets,
 } from "../src/index.ts";
 import type { BaseGerador, MuscleId, TreinoAtual, WeekInput, WeekProfile } from "../src/index.ts";
@@ -113,12 +113,15 @@ test("saúde: gestação, pós-parto e RED-S só geram aviso que encaminha a pro
   }
   assert.equal(avisosSaude(["gestacao", "pos_parto"]).length, 1, "gestação e pós-parto: um aviso só");
   assert.deepEqual(avisosSaude(["xyz", "__proto__"]), [], "valor desconhecido não vira aviso");
-  const com = semanaComGerador(inp(), { ...BASE, saude: ["gestacao"] });
-  const sem = semanaComGerador(inp(), BASE);
-  assert.ok(com.plan.avisos?.some((x) => /profissional/.test(x)));
-  assert.ok(!(sem.plan.avisos ?? []).some((x) => /profissional/.test(x)));
-  // a saúde não muda o treino: mesmos exercícios e séries
-  assert.deepEqual(treinos(com).map((d) => d.plan!.items), treinos(sem).map((d) => d.plan!.items));
+  // a semana (que é gravada) nunca leva o aviso de saúde: ele sai na leitura, do perfil atual (desmarcou → some)
+  const r = semanaComGerador(inp(), BASE), fb = semanaComGerador(inp({ today: D[2] }), BASE);
+  assert.ok(!JSON.stringify(r.plan).includes("profissional de saúde") && !JSON.stringify(fb.plan).includes("profissional de saúde"));
+  assert.ok(!("saude" in r.perfil!), "a entrada do gerador não leva a saúde");
+  const com = avisosDaSemana(r.plan, ["gestacao"]), sem = avisosDaSemana(r.plan, []);
+  assert.ok(com.some((x) => /profissional de saúde/.test(x)));
+  assert.ok(!sem.some((x) => /profissional de saúde/.test(x)));
+  assert.deepEqual(sem, r.plan.avisos ?? [], "sem marcação, só os avisos do gerador");
+  assert.deepEqual(avisosDaSemana({}, ["red_s"]), avisosSaude(["red_s"]), "semana do planWeek (sem avisos) também recebe");
 });
 
 test("perfil: campo saude opcional, validado (só os 3 sinais, sem repetir) e com nome humano no erro", () => {

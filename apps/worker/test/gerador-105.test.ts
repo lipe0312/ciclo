@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { diasDoPlano, gerarSemana, validarSemana } from "@ciclo/core";
 import type { MuscleId, PerfilGerador } from "@ciclo/core";
 import { HttpError } from "../src/http.ts";
-import { validarEntradaGerador } from "../src/gerador.ts";
+import { entradaGeradorSalva, validarEntradaGerador } from "../src/gerador.ts";
 import { call, makeEnv, mcp } from "./fakes.ts";
 
 const SEG = "2026-11-16";
@@ -80,6 +80,8 @@ test("perfil inválido → 400 (nível, minutos, dias, meta, saúde) e nada muda
   assert.equal(env.DB.raw.prepare("SELECT data FROM profile").get().data, antes, "nada foi salvo");
   const chat = await tool(env, a.token, "ciclo_perfil_atualizar", { perfil: { saude: ["inventado"] } });
   assert.match(chat.erro, /saude/);
+  // a entrada nova passa pelos helpers de http.ts (mensagem "fora de min..max" do int, não a do perfil)
+  assert.match((await tool(env, a.token, "ciclo_perfil_atualizar", { perfil: { level: 7 } })).erro, /level fora de 0\.\.3/);
   assert.equal((await a.c("GET", `/api/week?date=${SEG}`)).status, 200, "a semana segue com o perfil válido");
 });
 
@@ -118,4 +120,38 @@ test("saúde: aviso de encaminhamento só na semana da conta que marcou; a outra
   assert.equal(sb.profile?.saude, undefined, "B não vê a saúde de A");
   assert.deepEqual((await a.c("GET", `/api/state?date=${SEG}`)).data.profile.saude, ["gestacao"]);
   assert.ok(!logs.some((l) => /gestacao|Gestação/.test(l)), "dado de saúde nunca em log");
+});
+
+test("saúde fora do que é gravado: marcar → aviso; desmarcar → some sem refazer a semana (versões e desfazer limpos)", async (t) => {
+  naSegunda(t);
+  const env = makeEnv();
+  const a = await conta(env, "ana", { saude: ["red_s"] });
+  const w1 = (await a.c("GET", `/api/week?date=${SEG}`)).data.week;
+  assert.ok(w1.avisos.some((x: string) => /RED-S/.test(x)));
+  const gravado = () => env.DB.raw.prepare("SELECT plan_json FROM week_plan").all().map((r: any) => r.plan_json).join("\n");
+  assert.doesNotMatch(gravado(), /RED-S|profissional de saúde/, "o aviso de saúde nunca vai para week_plan");
+  assert.equal((await a.c("PATCH", "/api/profile", { data: { saude: [] } })).status, 200);
+  const w2 = (await a.c("GET", `/api/week?date=${SEG}`)).data.week;
+  assert.equal(w2.version, w1.version, "a semana não foi refeita");
+  assert.ok(!w2.avisos.some((x: string) => /RED-S/.test(x)), "desmarcou: o aviso some");
+});
+
+test("dado legado já salvo (dor de região que saiu do catálogo, perfil fora das faixas) não trava a semana nem o Gerar treino", async (t) => {
+  naSegunda(t);
+  const env = makeEnv();
+  const a = await conta(env, "ana");
+  const uid = env.DB.raw.prepare("SELECT id FROM user WHERE email LIKE 'ana%'").get().id;
+  // gravado direto no D1, como se viesse de uma versão antiga (fora da validação de hoje)
+  env.DB.raw.prepare("INSERT INTO pain (user_id, id, region, intensity, created_at) VALUES (?1, 'p-legado', 'regiao_antiga', 2, ?2)").run(uid, Date.now());
+  const perfil = JSON.parse(env.DB.raw.prepare("SELECT data FROM profile WHERE user_id = ?1").get(uid).data);
+  env.DB.raw.prepare("UPDATE profile SET data = ?2 WHERE user_id = ?1").run(uid, JSON.stringify({ ...perfil, level: 9, minutes: 500, sex: "x", saude: ["xyz"] }));
+  const r = await a.c("GET", `/api/week?date=${SEG}`);
+  assert.equal(r.status, 200, r.text);
+  assert.ok(r.data.week.days.some((d: any) => d.kind === "treino" && d.plan?.items.length));
+  const g = await a.c("POST", `/api/week/day/2026-11-19/gerar-treino`, { today: SEG });
+  assert.notEqual(g.status, 400, g.text);
+  assert.equal((await tool(env, a.token, "ciclo_semana_gerar", {})).refeita, true);
+  // o saneamento: região desconhecida sai, faixas ajustadas, valores inválidos ignorados
+  assert.deepEqual(entradaGeradorSalva({ level: 9, minutes: 500, sex: "x", daysUsual: ["seg", "xx", "seg"], daysTarget: 0, pains: [{ region: "regiao_antiga", intensity: 2 }, { region: "ombro_d", intensity: 7 }], saude: ["xyz", "red_s"] }),
+    { sexo: null, nivel: 3, minutos: 180, dias: ["seg"], diasMeta: 1, dores: [{ region: "ombro_d", intensity: 3 }], saude: ["red_s"] });
 });
