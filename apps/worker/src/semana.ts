@@ -56,7 +56,7 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
       WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 GROUP BY s.date, l.exercise_id`).bind(uid, from, to),
     // #90 o que foi feito nas 4 semanas antes desta (data + exercício): anti-repetição
     env.DB.prepare(`SELECT DISTINCT s.date AS date, l.exercise_id AS ex FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
-      WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 LIMIT 2000`).bind(uid, addDays(weekStart, -JANELA_MES), addDays(weekStart, -1)),
+      WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 ORDER BY s.date DESC LIMIT 2000`).bind(uid, addDays(weekStart, -JANELA_MES), addDays(weekStart, -1)),
   ]);
   const feitos: Record<string, Record<string, number>> = {};
   for (const r of porEx.results as { date: string; ex: string; n: number }[]) (feitos[r.date] ??= {})[r.ex] = r.n;

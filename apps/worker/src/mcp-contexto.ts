@@ -50,8 +50,8 @@ export async function ciclo_contexto(a: Args, env: Env, uid: string, today: stri
     // #90 resumo do histórico do mês (só IDs e números; "não fui" sem o motivo)
     precisa.historico ? env.DB.batch([
       env.DB.prepare(`SELECT s.date AS date, l.exercise_id AS ex, l.muscle AS muscle, l.kg AS kg, l.reps AS reps FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
-        WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 LIMIT 3000`).bind(uid, addDays(d, -(JANELA_MES - 1)), d),
-      env.DB.prepare("SELECT date FROM attendance WHERE user_id = ?1 AND status = 'nao_fui' AND date BETWEEN ?2 AND ?3 LIMIT 40").bind(uid, addDays(d, -(JANELA_MES - 1)), d),
+        WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 ORDER BY s.date DESC LIMIT 3000`).bind(uid, addDays(d, -(JANELA_MES - 1)), d),
+      env.DB.prepare("SELECT date FROM attendance WHERE user_id = ?1 AND status = 'nao_fui' AND date BETWEEN ?2 AND ?3 ORDER BY date DESC LIMIT 40").bind(uid, addDays(d, -(JANELA_MES - 1)), d),
     ]) : Promise.resolve(null),
   ]);
 
@@ -59,14 +59,16 @@ export async function ciclo_contexto(a: Args, env: Env, uid: string, today: stri
   const gym = gyms.find((g) => g.id === wanted) ?? gyms[0];
   const dia = plan?.plan ?? null;
   const diet = (profile.diet ?? {}) as { kcal?: number; protein?: number };
+  const dores = (week?.pains ?? []).map((p) => ({ region: p.region, intensity: p.intensity }));
+  const nivel = ([0, 1, 2, 3].includes(profile.level) ? profile.level : 1) as 0 | 1 | 2 | 3;
   const e: EstadoContexto = {
     data: d, perfil: profile,
     dia: dia ? { nome: dia.name, itens: (dia.items ?? []).map((i) => ({ exerciseId: String(i.exerciseId), sets: Number(i.sets) || 0 })) } : null,
     exercicioId, aparelhos: gym?.equipment ?? [],
-    dores: (week?.pains ?? []).map((p) => ({ region: p.region, intensity: p.intensity })),
+    dores,
     semana: week ? {
       inicio: monday, diasRestantes, minutos: minutos ?? profile.minutes,
-      alvo: weeklyTargets(profile.level, profile.priorities), feito: week.done, freq: week.freq,
+      alvo: weeklyTargets(nivel, profile.priorities), feito: week.done, freq: week.freq,
       presenca: { fui: (week.attendance as { status: string }[]).filter((x) => x.status === "fui").length, meta: profile.daysTarget },
       checkins: week.checkins.length,
     } : undefined,
@@ -74,11 +76,11 @@ export async function ciclo_contexto(a: Args, env: Env, uid: string, today: stri
     series: series?.results.filter((r) => MUSCLE_IDS.includes(r.muscle)).map((r) => ({ date: r.date, exerciseId: r.exercise_id, muscle: r.muscle, kg: r.kg ?? 0, reps: r.reps ?? 0 })),
     medidas: medidas?.results.map((m) => ({ date: m.date, armCm: m.arm_cm, waistCm: m.waist_cm })),
     historico: hist ? resumoHistorico({
-      hoje: d, alvo: weeklyTargets(profile.level, profile.priorities), prioridades: profile.priorities,
+      hoje: d, alvo: weeklyTargets(nivel, profile.priorities), prioridades: profile.priorities,
       series: (hist[0].results as { date: string; ex: string; muscle: MuscleId; kg: number | null; reps: number | null }[]).filter((r) => MUSCLE_IDS.includes(r.muscle))
         .map((r) => ({ date: r.date, exerciseId: r.ex, muscle: r.muscle, kg: r.kg, reps: r.reps })),
       sempre: (profile.pinned ?? {}) as Partial<Record<MuscleId, string>>, nunca: Array.isArray(profile.avoid) ? profile.avoid : [],
-      dores: (week?.pains ?? []).map((p) => ({ region: p.region, intensity: p.intensity })),
+      dores,
       faltas: (hist[1].results as { date: string }[]).map((r) => r.date),
     }, pedido === "gerar" ? { tipo: "semana" } : { tipo: "dia", dias: 7 }) : null,
   };

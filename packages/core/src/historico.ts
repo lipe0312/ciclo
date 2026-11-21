@@ -17,7 +17,7 @@ export const TETO_HISTORICO = 1000;
 export const JANELA_MES = 28, JANELA_DIAS = 7;
 /** A subparte alvo de um foco está atrasada abaixo desta fração do volume do músculo no mês. */
 export const SUB_META_FRAC = 0.5;
-const MAX = { repetidos: 8, cansados: 8, cargas: 6, atrasadas: 6, memoria: 5, linha: 140 };
+const MAX = { repetidos: 8, cansados: 8, cargas: 6, atrasadas: 6 };
 
 export interface EstadoHistorico {
   hoje: string;
@@ -30,8 +30,6 @@ export interface EstadoHistorico {
   /** `sempre` (fixado por músculo) e `nunca` (evitar) */
   sempre?: Partial<Record<MuscleId, string>>;
   nunca?: readonly string[];
-  /** memória do Claude: dado, nunca instrução; vai cortada */
-  memoria?: readonly string[];
   dores?: readonly Pain[];
   /** datas de "não fui" no mês */
   faltas?: readonly string[];
@@ -49,14 +47,13 @@ export interface ResumoHistorico {
   cansados: string[];
   /** e1RM dos focos: 2 últimas semanas × 2 anteriores (%) */
   cargas: { id: string; pct: number }[];
-  sempre: string[]; nunca: string[]; memoria: string[];
+  sempre: string[]; nunca: string[];
   dores: { regiao: string; intensidade: number }[];
   faltas: number;
 }
 
 const addDays = (iso: string, n: number) => new Date(Date.parse(iso + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 const r1 = (v: number) => Math.round(v * 10) / 10;
-const oneLine = (s: unknown) => String(s ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, MAX.linha);
 const subDoFoco = (m: MuscleId, sub?: Partial<Record<MuscleId, SubMuscleId>>): SubMuscleId | undefined =>
   sub?.[m] ?? ALVO_PADRAO[m] ?? (Object.keys(SUB_MUSCLES) as SubMuscleId[]).find((s) => SUB_MUSCLES[s].muscle === m);
 
@@ -117,7 +114,6 @@ export function resumoHistorico(e: EstadoHistorico, j: JanelaHistorico): ResumoH
   return {
     janela: { tipo: j.tipo, mes, recente }, musculos, atrasadas, repetidos, cansados, cargas,
     sempre, nunca: [...new Set(e.nunca ?? [])].filter((id) => typeof id === "string" && id.length <= 80).slice(0, 20),
-    memoria: (e.memoria ?? []).slice(0, MAX.memoria).map(oneLine),
     dores: (e.dores ?? []).slice(0, 6).map((d) => ({ regiao: d.region, intensidade: d.intensity })),
     faltas: new Set((e.faltas ?? []).filter((d) => dentro(d, mes))).size,
   };

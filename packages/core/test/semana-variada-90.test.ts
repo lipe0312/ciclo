@@ -210,11 +210,10 @@ test("resumoHistorico: dentro do teto de tamanho com histórico pesado", () => {
   const exs = ["Side_Lateral_Raise", "Seated_Dumbbell_Press", "Incline_Dumbbell_Curl", "Hammer_Curls", "Triceps_Pushdown", "Leg_Press", "Romanian_Deadlift", "Leverage_Iso_Row", "Incline_Dumbbell_Press", "Reverse_Flyes", "Cable_Crunch", "Standing_Calf_Raises"];
   const series = dias(40).flatMap((d, k) => exs.flatMap((id) => [1, 2, 3, 4].map((s) => serie(d, id, EXERCISE_BY_ID[id].m, 10 + k + s, 8 + s))));
   const r = resumoHistorico({
-    hoje: HOJE, series, alvo: T, prioridades: PRIOS, memoria: Array.from({ length: 20 }, (_, k) => `fato ${k} `.repeat(40)),
+    hoje: HOJE, series, alvo: T, prioridades: PRIOS,
     dores: [{ region: "escapula_e", intensity: 2 }, { region: "lombar", intensity: 1 }], faltas: dias(10),
   }, { tipo: "semana" });
   const tok = estimarTokens(JSON.stringify(r));
   assert.ok(tok <= TETO_HISTORICO, `${tok} tokens`);
-  assert.ok(r.memoria.length <= 5 && r.memoria.every((m) => m.length <= 140));
   assert.ok(r.cargas.length >= 1 && r.cargas.length <= 6);
 });
