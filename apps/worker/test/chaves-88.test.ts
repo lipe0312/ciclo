@@ -21,13 +21,14 @@ afterEach(() => { globalThis.fetch = realFetch; });
 
 type Chamada = { url: string; headers: Record<string, string>; body: string };
 /** Provedor falso: lista de modelos (validação) e chat completions. `eco` = responde erro ecoando o cabeçalho com a chave. */
-function provedorFalso(o: { status?: number; eco?: boolean; content?: (body: any) => unknown } = {}) {
+function provedorFalso(o: { status?: number; eco?: boolean; content?: (body: any) => unknown; aoValidar?: () => void } = {}) {
   const calls: Chamada[] = [];
   globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
     const u = String(url), headers = { ...(init?.headers as Record<string, string>) };
     calls.push({ url: u, headers, body: String(init?.body ?? "") });
     if (o.status && o.status >= 400) return new Response(JSON.stringify({ error: { message: `Incorrect API key provided: ${o.eco ? JSON.stringify(headers) : "x"}` } }), { status: o.status });
     if (u.includes("/models")) {
+      o.aoValidar?.();
       if (u.includes("anthropic")) return Response.json({ data: [{ id: "claude-haiku-4-5" }, { id: "claude-sonnet-5-5" }, { id: "claude-opus-5-5" }] });
       if (u.includes("generativelanguage")) return Response.json({ models: [{ name: "models/gemini-2.5-flash" }, { name: "models/embedding-001" }] });
       return Response.json({ data: [{ id: "gpt-4.1-mini" }, { id: "gpt-5-mini" }, { id: "dall-e-3" }] });
@@ -307,4 +308,50 @@ test("varredura de segredo: nada com cara de chave real (sk-, sk-ant-, AIza) no 
   const achados = procurarSegredos(Object.keys(falsos), (f: string) => falsos[f]);
   assert.deepEqual(achados.map((x: string) => x.split(":")[0]).sort(), ["a", "b", "c", "d"], "o canário é a única exceção");
   assert.ok(achados.every((x: string) => !x.includes("Q".repeat(10))), "o relatório não repete o segredo");
+});
+
+test("corrida no limite de 6 chaves: o INSERT confere o teto; sem linha → 409 e nenhum evento 'criada'", async () => {
+  const env = makeEnv({ KEK_V1: KEK });
+  const c = await conta(env, "ana");
+  provedorFalso();
+  for (let i = 0; i < 5; i++) assert.equal((await c("POST", "/api/account/chaves", nova(CANARIO, { apelido: `c${i}` }))).status, 201);
+  const uid = env.DB.raw.prepare("SELECT user_id FROM chave_ia LIMIT 1").get().user_id;
+  // outro cadastro "simultâneo" ocupa a 6ª vaga enquanto este valida no provedor
+  provedorFalso({ aoValidar: () => env.DB.raw.prepare(`INSERT INTO chave_ia (id, user_id, provedor, apelido, ultimos4, impressao, ciphertext, iv, dek_cifrada, kek_versao, teto_dia, teto_mes, criado_em)
+    VALUES ('concorrente-01', ?1, 'openai', 'outra', 'ABCD', 'abcdef012345', 'x', 'x', 'x', 1, 100, 100, 1)`).run(uid) });
+  const r = await c("POST", "/api/account/chaves", nova());
+  assert.equal(r.status, 409); assert.equal(r.data.code, "limite_chaves");
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM chave_ia").get().n, 6);
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM chave_ia_evento WHERE tipo = 'criada'").get().n, 5, "evento só com linha gravada");
+});
+
+test("sem a KEK da versão da linha: não reserva teto nem chama (cofre)", async () => {
+  const env = makeEnv({ KEK_V1: KEK });
+  const c = await conta(env, "ana");
+  provedorFalso();
+  const k = (await c("POST", "/api/account/chaves", nova())).data.chave;
+  const uid = env.DB.raw.prepare("SELECT user_id FROM chave_ia WHERE id = ?1").get(k.id).user_id;
+  delete env.KEK_V1;
+  let chamou = false;
+  assert.deepEqual(await comChaveDoUsuario(env, uid, "openai", () => 0.5, async () => { chamou = true; return { valor: 1 }; }), { ok: false, motivo: "cofre" });
+  assert.equal(chamou, false);
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM chave_ia_uso").get().n, 0, "nada reservado");
+});
+
+test("uso real acima da estimativa: o teto estoura em no máximo uma chamada; a próxima é bloqueada", async () => {
+  const env = makeEnv({ KEK_V1: KEK });
+  const c = await conta(env, "ana");
+  provedorFalso();
+  const k = (await c("POST", "/api/account/chaves", nova(CANARIO, { tetoDia: 1, tetoMes: 5 }))).data.chave;
+  const uid = env.DB.raw.prepare("SELECT user_id FROM chave_ia WHERE id = ?1").get(k.id).user_id;
+  const now = Date.parse(`${D}T12:00:00Z`);
+  assert.equal((await comChaveDoUsuario(env, uid, "openai", () => 0.1, async () => ({ valor: 1, usdReal: 2 }), now)).ok, true);
+  assert.equal(env.DB.raw.prepare("SELECT usd_micro FROM chave_ia_uso").get().usd_micro, 2_000_000, "cobra o real");
+  assert.deepEqual(await comChaveDoUsuario(env, uid, "openai", () => 0.000001, async () => ({ valor: 2 }), now), { ok: false, motivo: "teto" });
+});
+
+test("migration: gasto e contadores nunca negativos (CHECK)", () => {
+  const env = makeEnv();
+  env.DB.raw.prepare("INSERT INTO user (id, email, role, created_at) VALUES ('u-check', 'check@exemplo.com', 'user', 1)").run();
+  assert.throws(() => env.DB.raw.prepare("INSERT INTO chave_ia_uso (user_id, chave_id, dia, usd_micro) VALUES ('u-check', 'k', '2026-11-12', -1)").run(), /CHECK/);
 });

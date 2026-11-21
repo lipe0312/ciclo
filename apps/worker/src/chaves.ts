@@ -40,7 +40,7 @@ function meta(r: Row, g?: { dia: number; mes: number }) {
 const kekDe = async (env: Env, versao?: number) => {
   const ks = lerKeks(env as unknown as Record<string, unknown>);
   const k = versao ? (ks.has(versao) ? { versao, b64: ks.get(versao)! } : null) : kekAtual(ks);
-  return k ? { versao: k.versao, kek: await importarKek(k.b64) } : null;
+  return k ? { versao: k.versao, b64: k.b64, kek: await importarKek(k.b64) } : null;
 };
 const evento = (env: Env, uid: string, chaveId: string, tipo: string, codigo: string | null = null) =>
   env.DB.prepare("INSERT INTO chave_ia_evento (user_id, chave_id, tipo, codigo, criado_em) VALUES (?1, ?2, ?3, ?4, ?5)").bind(uid, chaveId, tipo, codigo, Date.now());
@@ -111,20 +111,20 @@ export function registerChaves(on: (method: string, path: string, h: Handler) =>
     const f = validarChaveFormato(provedor, b.chave);
     if (!f.ok) throw new HttpError(400, f.erro);
     const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM chave_ia WHERE user_id = ?1").bind(u.id).first<{ n: number }>();
-    if ((n?.n ?? 0) >= MAX_CHAVES_POR_CONTA) throw new HttpError(409, `até ${MAX_CHAVES_POR_CONTA} chaves por conta`);
+    if ((n?.n ?? 0) >= MAX_CHAVES_POR_CONTA) throw new HttpError(409, `até ${MAX_CHAVES_POR_CONTA} chaves por conta`, "limite_chaves");
     const wait = await limiteConta(env, u.id, "validar");
     if (wait) return json({ error: "muitas validações de chave; tente de novo mais tarde" }, 429, { "Retry-After": String(wait) });
     const id = crypto.randomUUID();
     const modelos = await validarNoProvedor(env, u.id, id, provedor, f.chave);
     const e = await cifrarChave(k.kek, k.versao, aadChave(u.id, provedor, id), f.chave);
     const now = Date.now();
-    await env.DB.batch([
-      env.DB.prepare(`INSERT INTO chave_ia (id, user_id, provedor, apelido, ultimos4, impressao, ciphertext, iv, dek_cifrada, kek_versao, modelos_json, modelo, esforco, teto_dia, teto_mes, criado_em, ativo)
-        SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'medio', ?13, ?14, ?15, 1 WHERE (SELECT COUNT(*) FROM chave_ia WHERE user_id = ?2) < ?16`)
-        .bind(id, u.id, provedor, ap.valor, ultimos4(f.chave), await impressaoChave(f.chave), e.ciphertext, e.iv, e.dekCifrada, e.kekVersao,
-          JSON.stringify(modelos), modeloPadrao(provedor, modelos), tt.dia, tt.mes, now, MAX_CHAVES_POR_CONTA),
-      evento(env, u.id, id, "criada"), evento(env, u.id, id, "validada"),
-    ]);
+    // o teto de chaves é conferido no próprio INSERT (corrida entre dois cadastros); sem linha, sem evento
+    const ins = await env.DB.prepare(`INSERT INTO chave_ia (id, user_id, provedor, apelido, ultimos4, impressao, ciphertext, iv, dek_cifrada, kek_versao, modelos_json, modelo, esforco, teto_dia, teto_mes, criado_em, ativo)
+        SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'medio', ?13, ?14, ?15, 1 WHERE (SELECT COUNT(*) FROM chave_ia WHERE user_id = ?2) < ?16 RETURNING id`)
+      .bind(id, u.id, provedor, ap.valor, ultimos4(f.chave), await impressaoChave(k.b64, u.id, f.chave), e.ciphertext, e.iv, e.dekCifrada, e.kekVersao,
+        JSON.stringify(modelos), modeloPadrao(provedor, modelos), tt.dia, tt.mes, now, MAX_CHAVES_POR_CONTA).first<{ id: string }>();
+    if (!ins) throw new HttpError(409, `até ${MAX_CHAVES_POR_CONTA} chaves por conta`, "limite_chaves");
+    await env.DB.batch([evento(env, u.id, id, "criada"), evento(env, u.id, id, "validada")]);
     return json({ chave: meta(await linha(env, u.id, id)) }, 201);
   });
 
@@ -144,7 +144,7 @@ export function registerChaves(on: (method: string, path: string, h: Handler) =>
     const modelo = r.modelo && modelos.includes(r.modelo) ? r.modelo : modeloPadrao(r.provedor, modelos);
     await env.DB.batch([
       env.DB.prepare(`UPDATE chave_ia SET ciphertext = ?3, iv = ?4, dek_cifrada = ?5, kek_versao = ?6, ultimos4 = ?7, impressao = ?8, modelos_json = ?9, modelo = ?10
-        WHERE id = ?1 AND user_id = ?2`).bind(r.id, u.id, e.ciphertext, e.iv, e.dekCifrada, e.kekVersao, ultimos4(f.chave), await impressaoChave(f.chave), JSON.stringify(modelos), modelo),
+        WHERE id = ?1 AND user_id = ?2`).bind(r.id, u.id, e.ciphertext, e.iv, e.dekCifrada, e.kekVersao, ultimos4(f.chave), await impressaoChave(k.b64, u.id, f.chave), JSON.stringify(modelos), modelo),
       evento(env, u.id, r.id, "trocada"), evento(env, u.id, r.id, "validada"),
     ]);
     return json({ chave: meta(await linha(env, u.id, r.id)) });
@@ -201,7 +201,9 @@ export type ResultadoUso<T> = { ok: true; valor: T } | { ok: false; motivo: "sem
 
 /** Usa a chave ativa da pessoa numa chamada: rate limit da conta → reserva do pior caso no teto do dia e do mês (UPDATE
  *  atômico) → decifra (só aqui, numa variável local) → `f` chama o provedor → acerta o gasto pelo uso real (sem uso
- *  real, fica a estimativa). `f` recebe a chave e não pode devolvê-la: o resultado é o que `f` monta da resposta. */
+ *  real, fica a estimativa). `f` recebe a chave e não pode devolvê-la: o resultado é o que `f` monta da resposta.
+ *  Se o uso real passar da estimativa, o teto pode estourar em no máximo ESTA chamada: o gasto fica ≥ teto e a
+ *  reserva da próxima já não cabe (bloqueada). */
 export async function comChaveDoUsuario<T>(
   env: Env, uid: string, provedor: ProvedorIa, estimarUsd: (modelo: string) => number,
   f: (k: UsoChave) => Promise<{ valor: T; usdReal?: number | null; tokensIn?: number; tokensOut?: number } | null>,
@@ -213,6 +215,8 @@ export async function comChaveDoUsuario<T>(
   const modelo = r.modelo && classificarModelo(provedor, r.modelo) ? r.modelo : modeloPadrao(provedor, modelosDe(r));
   if (!modelo) return { ok: false, motivo: "sem_chave" };
   if (await limiteConta(env, uid, "uso")) return { ok: false, motivo: "limite" };
+  const k = await kekDe(env, r.kek_versao); // sem a KEK desta versão: nem reserva o teto
+  if (!k) return { ok: false, motivo: "cofre" };
   const dia = diaUtc(now), mesIni = dia.slice(0, 8) + "01";
   const est = Math.max(1, Math.ceil(estimarUsd(modelo) * 1e6));
   const [, reserva] = await env.DB.batch([
@@ -224,8 +228,6 @@ export async function comChaveDoUsuario<T>(
       RETURNING usd_micro`).bind(uid, r.id, dia, est, mesIni),
   ]);
   if (!reserva.results?.length) { await evento(env, uid, r.id, "teto").run(); return { ok: false, motivo: "teto" }; }
-  const k = await kekDe(env, r.kek_versao);
-  if (!k) return { ok: false, motivo: "cofre" };
   let out: Awaited<ReturnType<typeof f>> = null;
   try {
     const chave = await decifrarChave(k.kek, { ciphertext: r.ciphertext, iv: r.iv, dekCifrada: r.dek_cifrada, kekVersao: r.kek_versao }, aadChave(uid, provedor, r.id));

@@ -41,9 +41,17 @@ export function validarChaveFormato(provedor: ProvedorIa, raw: unknown): { ok: t
 export const ultimos4 = (k: string) => k.slice(-4);
 
 const hexDe = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
-/** Impressão curta (12 hex do SHA-256) para a pessoa reconhecer a chave sem vê-la. */
-export async function impressaoChave(k: string): Promise<string> {
-  return hexDe(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(k))).slice(0, 12);
+/** Impressão curta para a pessoa reconhecer a chave sem vê-la: 12 hex de HMAC-SHA256(user_id|chave) com uma chave
+ *  derivada da KEK por HKDF. Sem a KEK não dá para testar uma chave conhecida contra ela, e a mesma chave em duas
+ *  contas tem impressões diferentes (não correlaciona contas). */
+export async function impressaoChave(kekB64: string, userId: string, k: string): Promise<string> {
+  const raw = deB64(kekB64);
+  try {
+    const base = await crypto.subtle.importKey("raw", raw, "HKDF", false, ["deriveKey"]);
+    const mac = await crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(32), info: new TextEncoder().encode("ciclo-impressao-v1") },
+      base, { name: "HMAC", hash: "SHA-256", length: 256 }, false, ["sign"]);
+    return hexDe(await crypto.subtle.sign("HMAC", mac, bytesDe(`${userId}|${k}`))).slice(0, 12);
+  } finally { raw.fill(0); }
 }
 
 /** Apelido: 1 a 40 caracteres, sem controle, espaço normalizado. < e > recusados (o app escapa, mas nem guardamos). */

@@ -34,6 +34,7 @@ CREATE TABLE chave_ia_uso (
   chamadas INTEGER NOT NULL DEFAULT 0,
   tokens_in INTEGER NOT NULL DEFAULT 0,
   tokens_out INTEGER NOT NULL DEFAULT 0,
+  CHECK (usd_micro >= 0 AND chamadas >= 0 AND tokens_in >= 0 AND tokens_out >= 0),
   PRIMARY KEY (user_id, chave_id, dia)
 );
 

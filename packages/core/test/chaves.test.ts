@@ -27,9 +27,14 @@ test("formato: aceita os três provedores, apara espaço colado, recusa o resto 
   assert.equal(ultimos4(CANARIO), "CDEF");
 });
 
-test("impressão: SHA-256 curta (12 hex), estável e diferente por chave", async () => {
-  const a = await impressaoChave(CANARIO), b = await impressaoChave(ANT);
-  assert.match(a, /^[0-9a-f]{12}$/); assert.equal(a, await impressaoChave(CANARIO)); assert.notEqual(a, b);
+test("impressão: HMAC-SHA256 curta (12 hex) com chave derivada da KEK, por conta; não é o SHA-256 público da chave", async () => {
+  const a = await impressaoChave(KEK_B64, "u1", CANARIO);
+  assert.match(a, /^[0-9a-f]{12}$/); assert.equal(a, await impressaoChave(KEK_B64, "u1", CANARIO), "estável");
+  assert.notEqual(a, await impressaoChave(KEK_B64, "u1", ANT), "outra chave");
+  assert.notEqual(a, await impressaoChave(KEK_B64, "u2", CANARIO), "mesma chave em outra conta não correlaciona");
+  assert.notEqual(a, await impressaoChave(KEK2_B64, "u1", CANARIO), "depende da KEK");
+  const sha = Buffer.from(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(CANARIO))).toString("hex").slice(0, 12);
+  assert.notEqual(a, sha, "sem a KEK ninguém confere uma chave conhecida contra a impressão");
 });
 
 test("apelido: 1 a 40, sem controle, espaço normalizado; < e > recusados (XSS); aspas e ponto e vírgula passam (vai por bind)", () => {
