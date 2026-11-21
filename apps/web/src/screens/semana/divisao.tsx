@@ -4,15 +4,18 @@
 import * as C from "@ciclo/core";
 import { S, commit } from "../../lib/store/index.ts";
 import { send } from "../../lib/api/index.ts";
-import { Card, Icon } from "../../lib/ui/index.tsx";
+import { Card, Icon, toast } from "../../lib/ui/index.tsx";
 import { garantirSemana, regenerar } from "./estado.ts";
 import type { Semana } from "./estado.ts";
 
 async function escolher(d: C.DivisaoSemana, escolha: C.EscolhaDivisao) {
   const divisaoEscolha: C.DivisaoEscolha = { escolha, assinatura: d.assinatura };
-  (S.profile as C.PerfilApp & { divisaoEscolha?: C.DivisaoEscolha }).divisaoEscolha = divisaoEscolha;
+  const perfil = S.profile as C.PerfilApp & { divisaoEscolha?: C.DivisaoEscolha };
+  const antes = perfil.divisaoEscolha;
+  perfil.divisaoEscolha = divisaoEscolha;
   commit();
-  try { await send("PATCH", "/api/profile", { data: { divisaoEscolha } }); } catch { return; }
+  try { await send("PATCH", "/api/profile", { data: { divisaoEscolha } }); }
+  catch { perfil.divisaoEscolha = antes; commit(); toast("Não deu para salvar a escolha. Tente de novo."); return; }
   // a semana refaz os dias que ainda não passaram só quando muda o desenho (passa a seguir ou deixa de seguir a divisão)
   if (d.seguindo !== (d.compativel || escolha === "manter")) await regenerar(false);
   else await garantirSemana(true);

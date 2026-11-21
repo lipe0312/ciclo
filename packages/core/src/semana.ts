@@ -338,8 +338,9 @@ export function planWeek(inp: WeekInput): WeekPlan {
         ...(t ? { tipo: t, letra: letraDe(antes.length), enfase: enfaseDoDia(t, antes.length, inp.profile.priorities), musculos: musculosDoTipo(t),
           extras: extras.get(d.date) ?? [], variarDe: [...new Set(antes.flatMap((x) => feitosOuPlano(inp, x)))] } : {}),
         ...(rp ? { repor: Object.fromEntries(rp.map((x) => [x.m, { sub: x.troca.parte, sets: x.sets }])) } : {}) });
-      // #82 o nome do dia é o da divisão da pessoa ("Treino A · ombros e tríceps"); o nome é dado do usuário (só texto)
-      if (dm && divisao) { const k = divDia.get(d.date)!; plan = { ...plan, name: rotuloDia(divisao.nomes[k] || `Treino ${letraDe(k)}`, plan.perMuscle),
+      // #82 o nome do dia é texto do sistema pela letra da divisão ("Treino A · ombros e tríceps"); o nome digitado pela
+      // pessoa nunca entra no plano (sairia sem marcação de dado do usuário no MCP)
+      if (dm && divisao) { const k = divDia.get(d.date)!; plan = { ...plan, name: rotuloDia(`Treino ${letraDe(k)}`, plan.perMuscle),
         why: [`Seguindo a sua divisão ${divisao.letras}: hoje é o treino ${letraDe(k)}. O app só ajusta volume e exercícios.`, ...plan.why.slice(1)] }; }
       if (rp) {
         const feitas = rp.filter((x) => plan.items.some((i) => partePrincipal(EXERCISE_BY_ID[i.exerciseId] ?? {}) === x.troca.parte));
