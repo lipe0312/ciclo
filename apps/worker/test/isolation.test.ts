@@ -74,6 +74,8 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   // #107 exercício personalizado criado pela IA (nome e descrição com a marca)
   // (só na B: a matriz fica dentro do limite de escritas por minuto)
   const cus = tag !== "MARCA_B" ? "" : JSON.parse((await ok(mcp(env, tok.token, "ciclo_exercicio_criar", { jaBusqueiNoCatalogo: true, nome: `${tag} elevação`, musculo: "ombro", descricao: `${tag} execução` }))).data.result.content[0].text).exercicio.id as string;
+  // #134 histórico do Chat: uma conversa com a marca no texto (e no título)
+  const conversa = (await ok(c("POST", "/api/conversas/mensagens", { texto: `${tag} conversa sobre ombro`, pedidoId: inbox }))).data.conversa.id as string;
   const exp = (await c("GET", "/api/account/export")).data;
   const revisao = (exp.inbox as { id: string; action: string }[]).find((i) => i.action === "revisar_treino")!.id;
   const dev = (await c("GET", "/api/account/devices")).data; // #54: sessão e passkey (só existem nas contas criadas por convite)
@@ -81,7 +83,7 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   const chave = `chv_${tag.slice(-1).toLowerCase()}_${SID.slice(0, 8)}`;
   env.DB.raw.prepare(`INSERT INTO chave_ia (id, user_id, provedor, apelido, ultimos4, impressao, ciphertext, iv, dek_cifrada, kek_versao, modelos_json, teto_dia, teto_mes, criado_em)
     VALUES (?1, ?2, 'openai', ?3, 'ABCD', 'abcdef012345', 'Y3Q=', 'aXY=', 'ZGVr', 1, '["gpt-4.1-mini"]', 100, 500, 1)`).run(chave, exp.user.id, `${tag} chave`);
-  return { chave, sessao: dev.sessions[0]?.id ?? "x1", passkey: dev.passkeys[0]?.id ?? "x1", mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id, previa, livre, revisao, cus };
+  return { chave, sessao: dev.sessions[0]?.id ?? "x1", passkey: dev.passkeys[0]?.id ?? "x1", mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id, previa, livre, revisao, cus, conversa };
 }
 const snap = async (env: any, user: string) => {
   const e = (await call(env, "GET", "/api/account/export", { user })).data;
@@ -94,7 +96,7 @@ async function matriz(env: any, ana: string, bia: string) {
   const A = await seed(env, ana, "MARCA_A", SID_A, 10);
   const before = await snap(env, bia);
   const r2Before = [...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length;
-  const secrets = [B.chave, B.mem, "MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, B.revisao, B.cus, String(MARK_KG), "bia@"];
+  const secrets = [B.chave, B.mem, "MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, B.revisao, B.cus, B.conversa, String(MARK_KG), "bia@"];
   const subsB = () => env.DB.raw.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE endpoint = ?1").get(B.endpoint).n;
   const restB = () => JSON.stringify(env.DB.raw.prepare("SELECT fire_at, sent_at FROM rest_timer WHERE user_id = ?1").get(B.uid));
   const restBefore = restB();
@@ -211,6 +213,12 @@ async function matriz(env: any, ana: string, bia: string) {
     ["PUT /api/account/chaves/:id/segredo", () => a("PUT", `/api/account/chaves/${B.chave}/segredo`, { chave: "sk-" + "y".repeat(30) }), 404],
     ["PATCH /api/account/chaves/:id", () => a("PATCH", `/api/account/chaves/${B.chave}`, { ativo: false }), 404],
     ["DELETE /api/account/chaves/:id", () => a("DELETE", `/api/account/chaves/${B.chave}`), 404],
+    // #134 histórico do Chat: a A não lista, não abre, não escreve nem apaga a conversa da B (nem liga ao pedido da B)
+    ["GET /api/conversas", () => a("GET", "/api/conversas")],
+    ["GET /api/conversas/:id", () => a("GET", `/api/conversas/${B.conversa}`), 404],
+    ["POST /api/conversas/mensagens", () => a("POST", "/api/conversas/mensagens", { conversaId: B.conversa, texto: "hackeado" }), 404],
+    ["POST /api/conversas/mensagens (pedido da B)", () => a("POST", "/api/conversas/mensagens", { texto: "A oi", pedidoId: B.inbox }), 404],
+    ["DELETE /api/conversas/:id", () => a("DELETE", `/api/conversas/${B.conversa}`), 404],
     ["PATCH /api/exercicios-personalizados/:id", () => a("PATCH", `/api/exercicios-personalizados/${B.cus}`, { nome: "hackeado" }), 404],
     ["DELETE /api/exercicios-personalizados/:id", () => a("DELETE", `/api/exercicios-personalizados/${B.cus}`), 404],
   ];
