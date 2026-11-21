@@ -136,6 +136,8 @@ export function montarPerfilApp(salvo: Record<string, unknown> | null | undefine
   }
   // #93 `treinoAtual` não existe no perfil vazio (é opcional), mas é dado da pessoa: recarregar não pode descartá-lo.
   if (s.treinoAtual != null && typeof s.treinoAtual === "object" && !Array.isArray(s.treinoAtual)) base.treinoAtual = structuredClone(s.treinoAtual);
+  // #82 a escolha Manter/Ajustar da divisão também é opcional e da pessoa
+  if (s.divisaoEscolha != null && typeof s.divisaoEscolha === "object" && !Array.isArray(s.divisaoEscolha)) base.divisaoEscolha = structuredClone(s.divisaoEscolha);
   return base as PerfilApp;
 }
 

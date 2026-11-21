@@ -1,7 +1,7 @@
 // Perfil: salvar pelo MCP (parcial, validado, só da conta do token) e flag "treino desatualizado".
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EQUIPMENT } from "@ciclo/core";
+import { EQUIPMENT, EXERCISE_BY_ID } from "@ciclo/core";
 import { call, makeEnv, mcp } from "./fakes.ts";
 
 const D = "2026-11-05", ALL = EQUIPMENT.map((e) => e.id);
@@ -119,7 +119,14 @@ test("treino desatualizado: a impressão vem só do perfil da própria conta (se
   const fp = (await a("GET", `/api/state?date=${D}`)).data.dayPlan.profileFp as string;
   assert.equal(fp, planFingerprint(profileOf(env, "ana")));
   assert.ok(!fp.includes("Pullups") && !fp.includes("peito"), "impressão da conta B vazou");
-  assert.equal((await b("GET", `/api/state?date=${D}`)).data.dayPlan, null);
+  // #79 a conta B (sem academia) tem o próprio treino de peso corporal: nunca o da A
+  const db = (await b("GET", `/api/state?date=${D}`)).data.dayPlan;
+  assert.ok(!db || (db.gym_id === null && db.profileFp !== fp), "o treino da conta A vazou para a B");
+  if (db) {
+    const idsB = (db.plan?.items ?? []).map((i: any) => i.exerciseId as string);
+    assert.ok(idsB.every((id: string) => EXERCISE_BY_ID[id]?.eq.length === 0), `a conta B recebeu exercício com aparelho: ${idsB}`);
+    assert.notDeepEqual(idsB, plan.items.map((i: any) => i.exerciseId), "a conta B recebeu os exercícios da A");
+  }
 });
 
 test("perfil antigo no banco: o app e o Claude continuam conseguindo salvar", async () => {

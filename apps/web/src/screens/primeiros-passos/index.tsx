@@ -17,6 +17,7 @@ import { DEFAULT_GYMS } from "../../lib/store/index.ts";
 import { limparDispensaCheckup } from "../../lib/faixa-checkup/index.tsx";
 import { lsGet, lsSet, setPath } from "../../lib/util.ts";
 import { garantirSemana } from "../semana/estado.ts";
+import { AvisoSemAcademia } from "../semana/aviso-sem-academia.tsx";
 import { classePulso, pararPulso } from "../../lib/pulso/index.ts";
 import { TelaIa, TelaIaAcesso } from "./ia.tsx";
 
@@ -138,7 +139,8 @@ function Onde() {
   };
   return <><div class="opts" role="group" aria-label="Onde você treina (pode marcar os dois)">{LUGARES.map(([k, nm, d]) => <Opt key={k} on={places.includes(k)} title={nm} desc={d} onClick={() => toggle(k)} />)}</div>
     <div class="note" style="margin-top:14px"><Icon id="gym" /><span>{novaConta() ? <>Os aparelhos de cada lugar você ajusta depois, em <a class="link44" href="#academias">Academias</a>, com um passo a passo rápido.</>
-      : <>Seus lugares ficam como estão ({S.gyms.map((x) => x.name).join(", ")}). Para mexer nos aparelhos, use <a class="link44" href="#academias">Academias</a>.</>}</span></div></>;
+      : S.gyms.length ? <>Seus lugares ficam como estão ({S.gyms.map((x) => x.name).join(", ")}). Para mexer nos aparelhos, use <a class="link44" href="#academias">Academias</a>.</>
+      : <>Sem academia cadastrada, o treino sai com peso corporal. Cadastre quando quiser em <a class="link44" href="#academias">Academias</a>.</>}</span></div></>;
 }
 
 function resolvePain(region: string) {
@@ -216,7 +218,9 @@ function Resumo() {
       <p class="small sub num" style="margin-top:2px">{plan.items.length} exercícios · {plan.setsTotal} séries · ~{plan.estMinutes} min</p>
       <ul class="pp-prev">{plan.items.slice(0, 6).map((i) => <li key={i.exerciseId}><span>{i.nm}</span><span class="sub num">{i.sets}×{i.reps.join("–")}</span></li>)}</ul>
       {plan.items.length > 6 && <p class="tiny sub">+ {plan.items.length - 6} no treino completo</p>}
-      <p class="tiny sub" style="margin-top:10px">Prioridades: {C.groupsOfSubs(S.profile.subPriorities ?? []).map((gr) => C.priorityGroups[gr].nm).join(" › ") || "nenhuma"}. Você pode mudar tudo depois em Perfil.</p></div></>;
+      <p class="tiny sub" style="margin-top:10px">Prioridades: {C.groupsOfSubs(S.profile.subPriorities ?? []).map((gr) => C.priorityGroups[gr].nm).join(" › ") || "nenhuma"}. Você pode mudar tudo depois em Perfil.</p></div>
+    {/* #79 sem academia o botão "Gerar" funciona; a tela de pronto repete o aviso uma vez */}
+    {SERVER && <div style="margin-top:12px"><AvisoSemAcademia fixa /></div>}</>;
 }
 
 interface Passo { id: C.PassoPP; title: string; sub: string; Tela: () => any }
@@ -260,7 +264,7 @@ async function concluir(setBusy: (b: boolean) => void, setFalta: (f: C.Falta[]) 
       const respostas = C.PASSOS_PP.reduce((a, id) => ({ ...a, ...C.patchDoPasso(id, S.profile) }), {} as Record<string, unknown>);
       await api("PATCH", "/api/profile", { data: { ...respostas, dayGym: S.profile.dayGym, meta: S.profile.meta } });
       for (const g of S.gyms.slice(0, 2)) await api("PUT", `/api/gyms/${encodeURIComponent(g.id)}`, { name: g.name, kind: g.kind, equipment: g.equipment, busyHours: g.busyHours });
-      await api("PUT", `/api/day-plan/${today}`, { plan, gymId: S.ui.gymId, source: "core" });
+      await api("PUT", `/api/day-plan/${today}`, { plan, gymId: S.gyms.length ? S.ui.gymId : undefined, source: "core" }); // #79 sem academia: gymId null
       await api("PATCH", "/api/account", { onboarding: "concluido" });
       rascunhoPP.limpar();
       // a casca já carregou a semana no boot (sem perfil → "sem semana"); sem recarregar aqui o Hoje abria vazio até o F5

@@ -142,19 +142,29 @@ export function lembradasDoTreino(t: TreinoAtual | null | undefined): Remembered
   return out;
 }
 
-/** O que o gerador recebe do perfil (#74): familiares fortes/fracos e se é iniciante (nunca treinou ou "estou começando"). */
-export function entradaTreinoAtual(perfil: { level?: unknown; treinoAtual?: unknown } | null | undefined): { familiar: string[]; familiarFraco: string[]; iniciante: boolean } {
+/** O que o gerador recebe do perfil (#74): familiares fortes/fracos e se é iniciante (nunca treinou ou "estou começando").
+ *  #82: também as prioridades finas (subPriorities, para a subparte-alvo de todo músculo), o treino atual (a semana detecta
+ *  a divisão dele: divisao.ts) e a escolha Manter/Ajustar como veio do perfil (só vale para a divisão em que foi feita). */
+export function entradaTreinoAtual(perfil: { level?: unknown; treinoAtual?: unknown; subPriorities?: unknown; divisaoEscolha?: unknown } | null | undefined): {
+  familiar: string[]; familiarFraco: string[]; iniciante: boolean; subPrioridades: SubMuscleId[]; treinoAtual: TreinoAtual | null; divisaoEscolha: unknown;
+} {
   const t = (perfil?.treinoAtual ?? null) as TreinoAtual | null;
   const { fortes, fracos } = familiaresDoTreino(t);
   const comecando = !!t && Array.isArray(t.divisoes) && t.divisoes.length === 0;
-  return { familiar: fortes, familiarFraco: fracos, iniciante: perfil?.level === 0 || comecando };
+  const subs = Array.isArray(perfil?.subPriorities) ? perfil.subPriorities.filter((s): s is SubMuscleId => typeof s === "string" && own(SUB_MUSCLES, s)) : [];
+  return { familiar: fortes, familiarFraco: fracos, iniciante: perfil?.level === 0 || comecando, subPrioridades: [...new Set(subs)], treinoAtual: t, divisaoEscolha: perfil?.divisaoEscolha ?? null };
 }
 
 /** #93 PUT do perfil sem o campo `treinoAtual` (outra tela, sync, cache antigo) não apaga o que já está salvo; com o campo, vale o novo. */
 export function manterTreinoAtual<T extends Record<string, any>>(salvo: Record<string, any> | null | undefined, novo: T): T {
-  if (own(novo, "treinoAtual") && novo.treinoAtual != null) return novo;
-  const antes = salvo?.treinoAtual;
-  return antes == null ? novo : { ...novo, treinoAtual: antes };
+  let out = novo;
+  // #82 a escolha Manter/Ajustar da divisão segue a mesma regra
+  for (const k of ["treinoAtual", "divisaoEscolha"]) {
+    if (own(novo, k) && novo[k] != null) continue;
+    const antes = salvo?.[k];
+    if (antes != null) out = { ...out, [k]: antes };
+  }
+  return out;
 }
 
 /** #93 Só as divisões que passam na validação, cada uma por si: um treino com erro não impede de gravar os outros. */

@@ -14,7 +14,7 @@ import { aplicarNaSemana, getWeek } from "./semana.ts";
 const dowDe = (d: string) => DOWS[(new Date(d + "T12:00:00Z").getUTCDay() + 6) % 7] as Dow;
 
 /** Entrada do gerador a partir do perfil, da academia do dia, das dores abertas e das preferências. */
-async function gerado(env: Env, uid: string, d: string): Promise<{ g: TreinoGerado | null; gymId: string }> {
+async function gerado(env: Env, uid: string, d: string): Promise<{ g: TreinoGerado | null; gymId: string | null }> {
   const [profile, bi] = await Promise.all([getProfile(env, uid), buildDayInput(env, uid, { date: d, daysLeft: 1 })]);
   if (!profile || bi.empty) throw new HttpError(409, EMPTY_MSG[bi.empty ?? "sem_perfil"]);
   const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);

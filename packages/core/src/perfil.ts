@@ -12,6 +12,8 @@ import { validarTreinoAtual } from "./treino-atual.ts";
 import type { TreinoAtual } from "./treino-atual.ts";
 import { validarPerfilIa } from "./ia.ts";
 import type { PerfilIa } from "./ia.ts";
+import { assinaturaValida } from "./divisao.ts";
+import type { DivisaoEscolha } from "./divisao.ts";
 export const GOAL_IDS = ["bracos_ombros", "massa_geral", "definir", "recompor", "forca", "constancia", "shape_v", "perder_barriga", "saude", "retorno"] as const;
 export const PLACES = ["academia", "casa"] as const;
 export type PlaceChoice = (typeof PLACES)[number];
@@ -42,10 +44,10 @@ export const DEFAULT_PROFILE = {
   /** onde treina (multi): só a resposta leve do quiz; os aparelhos ficam em Academias */
   places: ["academia"] as ("academia" | "casa")[],
   /** `assistentes`: telas cujo mini-assistente de 1ª vez já foi visto (ou dispensado com "Fazer manual") */
-  meta: { filledBy: "app" as "app" | "claude", confirmed: true } as { filledBy: "app" | "claude"; confirmed: boolean; checkup?: "feito" | "pulado"; assistentes?: Record<string, boolean> },
+  meta: { filledBy: "app" as "app" | "claude", confirmed: true } as { filledBy: "app" | "claude"; confirmed: boolean; checkup?: "feito" | "pulado"; assistentes?: Record<string, boolean>; avisos?: { semAcademia?: string } },
 };
 /** `treinoAtual` (#74) é opcional e não tem padrão: sem cadastro, o gerador funciona igual. */
-export type ProfileData = typeof DEFAULT_PROFILE & { treinoAtual?: TreinoAtual; /** #133 Sua IA */ ia?: PerfilIa };
+export type ProfileData = typeof DEFAULT_PROFILE & { treinoAtual?: TreinoAtual; divisaoEscolha?: DivisaoEscolha; /** #133 Sua IA */ ia?: PerfilIa };
 
 // ---------- prioridades ----------
 export interface Check { ok: boolean; errors: string[] }
@@ -175,11 +177,17 @@ const SCHEMA: Record<string, Rule> = {
   tiers: record((v, p, err) => ((TIER_CATS as readonly string[]).includes(v as string) ? v : (err(`${p}: tipo de pedido inválido`), undefined)), oneOf(["haiku", "sonnet", "opus"]), 5),
   // #71 lista vazia = ainda não respondeu (rascunho); fica de fora em vez de dar erro
   places: (v, p, err) => { const r = list(oneOf(PLACES), 2)(v, p, err); return Array.isArray(r) && !r.length ? undefined : r; },
-  meta: objectKeys({ filledBy: oneOf(["app", "claude"]), confirmed: bool, checkup: oneOf(["feito", "pulado"]), assistentes: record(slug, yes, 12) }),
+  meta: objectKeys({ filledBy: oneOf(["app", "claude"]), confirmed: bool, checkup: oneOf(["feito", "pulado"]), assistentes: record(slug, yes, 12), avisos: objectKeys({ semAcademia: isoDay }) }), // #79 dispensa da faixa "sem academia" (7 dias)
   // #74 "Meu treino atual" (opcional; nunca entra no faltaParaGerar): divisões por grupo grande, IDs só do catálogo
   // #133 Sua IA (opcional; nunca entra no faltaParaGerar): qual IA, como usa e a principal. Substitui inteiro no merge.
   ia: (v, p, err) => { const r = validarPerfilIa(v); if (!r.ok) { r.erros.forEach(err); return undefined; } return r.valor; },
   treinoAtual: (v, p, err, ctx) => { const r = validarTreinoAtual(v, p, ctx?.personalizados); if (!r.ok) { r.errors.forEach(err); return undefined; } return r.value; },
+  // #82 "Manter minha divisão" / "Ajustar": vale só para a divisão (assinatura dos grupos) em que foi escolhido
+  divisaoEscolha: (v, p, err) => {
+    const r = shape({ escolha: oneOf(["manter", "ajustar"]), assinatura: (x, q, e) => (assinaturaValida(x) ? x : (e(`${q}: assinatura inválida`), undefined)) })(v, p, err) as Record<string, unknown> | undefined;
+    if (r && (r.escolha == null || r.assinatura == null)) return err(`${p}: escolha e assinatura são obrigatórias`), undefined;
+    return r;
+  },
 };
 /** `campos`: os campos (de 1º nível) com erro, para a mensagem humana (`mensagemPerfil`); `errors` é o texto técnico (Chat e console). */
 export type Validation<T> = { ok: true; value: T; errors: [] } | { ok: false; errors: string[]; campos: string[] };
@@ -212,7 +220,7 @@ export const PERFIL_ROTULO: Record<string, string> = {
   pinned: "exercícios fixos", avoid: "exercícios que você evita", dynamics: "formato do treino", crowdedStrategy: "academia cheia",
   mobility: "mobilidade", dayGym: "lugar de cada dia", diet: "comida", autonomy: "o que o Chat muda sozinho", tone: "tom do Chat",
   reviewTime: "horário da revisão", tiers: "modelos do Chat", places: "academia, casa ou os dois", meta: "dados do perfil",
-  treinoAtual: "meu treino atual", ia: "sua IA",
+  treinoAtual: "meu treino atual", divisaoEscolha: "manter ou ajustar a divisão", ia: "sua IA",
 };
 const juntar = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}`);
 const maiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
