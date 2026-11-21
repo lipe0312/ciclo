@@ -14,6 +14,8 @@ import { validarPerfilIa } from "./ia.ts";
 import type { PerfilIa } from "./ia.ts";
 import { assinaturaValida } from "./divisao.ts";
 import type { DivisaoEscolha } from "./divisao.ts";
+import { AVISOS_SAUDE } from "./saude-avisos.ts";
+import type { AvisoSaude } from "./saude-avisos.ts";
 export const GOAL_IDS = ["bracos_ombros", "massa_geral", "definir", "recompor", "forca", "constancia", "shape_v", "perder_barriga", "saude", "retorno"] as const;
 export const PLACES = ["academia", "casa"] as const;
 export type PlaceChoice = (typeof PLACES)[number];
@@ -47,7 +49,8 @@ export const DEFAULT_PROFILE = {
   meta: { filledBy: "app" as "app" | "claude", confirmed: true } as { filledBy: "app" | "claude"; confirmed: boolean; checkup?: "feito" | "pulado"; assistentes?: Record<string, boolean>; avisos?: { semAcademia?: string } },
 };
 /** `treinoAtual` (#74) é opcional e não tem padrão: sem cadastro, o gerador funciona igual. */
-export type ProfileData = typeof DEFAULT_PROFILE & { treinoAtual?: TreinoAtual; divisaoEscolha?: DivisaoEscolha; /** #133 Sua IA */ ia?: PerfilIa };
+export type ProfileData = typeof DEFAULT_PROFILE & { treinoAtual?: TreinoAtual; divisaoEscolha?: DivisaoEscolha; /** #133 Sua IA */ ia?: PerfilIa;
+  /** #105 sinais de saúde (opcional): só avisos que encaminham a um profissional; dado de saúde, nunca em log */ saude?: AvisoSaude[] };
 
 // ---------- prioridades ----------
 export interface Check { ok: boolean; errors: string[] }
@@ -181,6 +184,8 @@ const SCHEMA: Record<string, Rule> = {
   // #74 "Meu treino atual" (opcional; nunca entra no faltaParaGerar): divisões por grupo grande, IDs só do catálogo
   // #133 Sua IA (opcional; nunca entra no faltaParaGerar): qual IA, como usa e a principal. Substitui inteiro no merge.
   ia: (v, p, err) => { const r = validarPerfilIa(v); if (!r.ok) { r.erros.forEach(err); return undefined; } return r.valor; },
+  // #105 saúde (opcional; nunca entra no faltaParaGerar nem muda o treino): só os avisos que encaminham a um profissional
+  saude: list(oneOf(AVISOS_SAUDE), AVISOS_SAUDE.length),
   treinoAtual: (v, p, err, ctx) => { const r = validarTreinoAtual(v, p, ctx?.personalizados); if (!r.ok) { r.errors.forEach(err); return undefined; } return r.value; },
   // #82 "Manter minha divisão" / "Ajustar": vale só para a divisão (assinatura dos grupos) em que foi escolhido
   divisaoEscolha: (v, p, err) => {
@@ -220,7 +225,7 @@ export const PERFIL_ROTULO: Record<string, string> = {
   pinned: "exercícios fixos", avoid: "exercícios que você evita", dynamics: "formato do treino", crowdedStrategy: "academia cheia",
   mobility: "mobilidade", dayGym: "lugar de cada dia", diet: "comida", autonomy: "o que o Chat muda sozinho", tone: "tom do Chat",
   reviewTime: "horário da revisão", tiers: "modelos do Chat", places: "academia, casa ou os dois", meta: "dados do perfil",
-  treinoAtual: "meu treino atual", divisaoEscolha: "manter ou ajustar a divisão", ia: "sua IA",
+  treinoAtual: "meu treino atual", divisaoEscolha: "manter ou ajustar a divisão", ia: "sua IA", saude: "saúde",
 };
 const juntar = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}`);
 const maiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

@@ -10,6 +10,7 @@ import { EMPTY_MSG, buildDayInput, getProfile, parse } from "./db.ts";
 import { HttpError, date, id } from "./http.ts";
 import { today as hojeSP } from "./mcp-tipos.ts";
 import { aplicarNaSemana, getWeek } from "./semana.ts";
+import { entradaGeradorSalva } from "./gerador.ts";
 
 const dowDe = (d: string) => DOWS[(new Date(d + "T12:00:00Z").getUTCDay() + 6) % 7] as Dow;
 
@@ -17,11 +18,11 @@ const dowDe = (d: string) => DOWS[(new Date(d + "T12:00:00Z").getUTCDay() + 6) %
 async function gerado(env: Env, uid: string, d: string): Promise<{ g: TreinoGerado | null; gymId: string | null }> {
   const [profile, bi] = await Promise.all([getProfile(env, uid), buildDayInput(env, uid, { date: d, daysLeft: 1 })]);
   if (!profile || bi.empty) throw new HttpError(409, EMPTY_MSG[bi.empty ?? "sem_perfil"]);
-  const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+  // #105 o que já está salvo é saneado (dor de região que saiu do catálogo, faixa antiga): nunca 400, a pessoa não trava
+  const e = entradaGeradorSalva({ sex: profile.sex, level: profile.level, minutes: bi.input.minutes, daysUsual: profile.daysUsual, daysTarget: profile.daysTarget, pains: bi.input.pains });
   const p: PerfilGerador = {
-    sexo: typeof profile.sex === "string" ? profile.sex : null, nivel: profile.level, prioridades: bi.input.priorities,
-    equipamentos: bi.input.equipment, dias: strs(profile.daysUsual), diasMeta: profile.daysTarget, minutos: bi.input.minutes,
-    dores: bi.input.pains, evitar: bi.input.avoid, prefs: bi.input.prefs, pinned: bi.input.pinned, familiar: bi.input.familiar,
+    sexo: e.sexo, nivel: e.nivel, prioridades: bi.input.priorities, equipamentos: bi.input.equipment, dias: e.dias, diasMeta: e.diasMeta, minutos: e.minutos,
+    dores: e.dores, evitar: bi.input.avoid, prefs: bi.input.prefs, pinned: bi.input.pinned, familiar: bi.input.familiar,
   };
   return { g: gerarTreinoDia(p, dowDe(d)), gymId: bi.gymId };
 }

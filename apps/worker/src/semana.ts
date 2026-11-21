@@ -1,7 +1,7 @@
 // Semana completa planejada (#24): monta a entrada do core a partir do D1, guarda versões (desfazer) e as escolhas
 // por dia. Todo SQL com bind e filtrado por user_id; o uid vem da autenticação.
 import {
-  EQUIPMENT_BY_ID, JANELA_MES, semBaseParaGerar, MUSCLE_IDS, altsDoBanco, applyDayAction, exerciciosCansados, parametrosDoPerfil, diffWeeks, empurrarTreinos, entradaTreinoAtual, formatoDe, mondayOf, planWeek, resumirDia, salvosSubstituidos, treinoDoDia, trocasDoDia,
+  EQUIPMENT_BY_ID, JANELA_MES, semBaseParaGerar, MUSCLE_IDS, altsDoBanco, applyDayAction, exerciciosCansados, parametrosDoPerfil, diffWeeks, empurrarTreinos, entradaTreinoAtual, formatoDe, mondayOf, resumirDia, avisosDaSemana, semanaComGerador, salvosSubstituidos, treinoDoDia, trocasDoDia,
   weekDates, weekProgression, weekView, weeklyTargets,
 } from "@ciclo/core";
 import type { CardioEntry, DayAction, DayOpts, DayOverride, DayPlan, Intensity, MuscleId, Progression, Sets, WeekInput, WeekPlan, WeekProfile } from "@ciclo/core";
@@ -10,6 +10,7 @@ import { HttpError, date, int, oneOf, str } from "./http.ts";
 import { EMPTY_MSG, getProfile, listGyms, parse, weekState } from "./db.ts";
 import type { EmptyReason } from "./db.ts";
 import { hojeSP } from "./relogio.ts";
+import { entradaGeradorSalva } from "./gerador.ts";
 
 export type Source = "auto" | "regenerar" | "ajuste" | "falta" | "extra" | "desfazer";
 /** O que vai no plan_json de cada versão. */
@@ -37,6 +38,8 @@ interface Ctx {
   feitos: Record<string, Record<string, number>>;
   /** #90 anti-repetição: exercícios repetidos demais nas 4 semanas antes desta */
   cansados: string[];
+  /** #105 o que o gerador da semana precisa além do WeekProfile (saneado em generate) e a saúde do perfil ATUAL (só aviso, na leitura) */
+  gerador: { sex: unknown; level: unknown; saude: unknown };
 }
 
 export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx | { empty: EmptyReason }> {
@@ -92,6 +95,7 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
       .map((r) => ({ id: r.id, date: r.date, type: r.type, minutes: r.minutes, intensity: r.intensity, distanceKm: r.distance_km })),
     feitos,
     cansados: exerciciosCansados(sessoesDoMes(mes.results as { date: string; ex: string }[]), Object.values((p.pinned ?? {}) as Record<string, string>)),
+    gerador: { sex: p.sex, level: p.level, saude: p.saude },
   };
 }
 const sessoesDoMes = (rows: { date: string; ex: string }[]) => {
@@ -148,9 +152,13 @@ const presencaSig = (c: Ctx, plan: WeekPlan) => Object.entries(c.attendance).fil
   return kind != null && (s === "fui" ? kind === "folga" : kind !== "folga");
 }).sort().map(([d, s]) => `${d}:${s}`).join("|");
 
+/** #105 A semana sai do gerador determinístico (core: semanaComGerador) quando está limpa; com treino feito ou escolha do
+ *  dono, o planWeek reorganiza. O que já está salvo é saneado (nunca 400: dado legado não trava a semana); a entrada nova
+ *  é validada no perfil (validarPatchGerador). Nada de saúde no que é gravado. */
 async function generate(env: Env, c: Ctx, overrides: Record<string, DayOverride>, fresh: boolean): Promise<Stored> {
+  const e = entradaGeradorSalva({ sex: c.gerador.sex, level: c.gerador.level });
   const prog = !fresh && c.latest?.stored?.progression ? c.latest.stored.progression : await progression(env, c);
-  const plan = planWeek(input(c, { overrides, progression: prog }, c.latest?.stored?.plan ?? null));
+  const { plan } = semanaComGerador(input(c, { overrides, progression: prog }, c.latest?.stored?.plan ?? null), { sexo: e.sexo, nivel: e.nivel });
   return { plan, overrides, progression: prog, basis: Object.keys(c.sets).sort(), trocas: trocasSig(c, plan), presenca: presencaSig(c, plan) };
 }
 
@@ -177,6 +185,7 @@ function view(c: Ctx, s: Stored, version: number) {
   const v = weekView(input(c, s, null), s.plan);
   return {
     ...v, version, versions: c.versions,
+    avisos: avisosDaSemana(s.plan, entradaGeradorSalva({ saude: c.gerador.saude }).saude), // #105 saúde do perfil atual: desmarcou → some
     progression: { changes: s.progression.changes, deload: s.progression.deload, base: c.base },
   };
 }

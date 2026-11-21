@@ -11,6 +11,7 @@ import { newMcpToken } from "./auth.ts";
 import { exigirCotaConta, exigirCotaGlobal, somarBytesR2 } from "./limites.ts";
 import { dayAction, empurrar, getWeek, lerTreinoDoDia, regenerate } from "./semana.ts";
 import { gerarTreinoDoDia } from "./treino-gerado.ts";
+import { validarPatchGerador } from "./gerador.ts";
 import { registerComida } from "./comida.ts";
 import { lerPersonalizado, listarPersonalizados, registerPersonalizados } from "./exercicio-personalizado.ts";
 import { registerHome } from "./home.ts";
@@ -140,6 +141,7 @@ on("PUT", "/api/measurements/:date", async (req, env, p, u) => {
 const profileBody = async (req: Request) => {
   const b = await readJson<{ data: Record<string, unknown> }>(req, 32 * 1024);
   if (!b.data || typeof b.data !== "object" || Array.isArray(b.data)) throw new HttpError(400, "Não deu para salvar agora. Tente de novo.");
+  validarPatchGerador(b.data, true); // #105 campos do gerador (nível, minutos, dias, saúde) conferidos com http.ts: fora → 400
   return b.data;
 };
 on("PUT", "/api/profile", async (req, env, _p, u) => {
