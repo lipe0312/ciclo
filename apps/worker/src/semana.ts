@@ -1,7 +1,7 @@
 // Semana completa planejada (#24): monta a entrada do core a partir do D1, guarda versões (desfazer) e as escolhas
 // por dia. Todo SQL com bind e filtrado por user_id; o uid vem da autenticação.
 import {
-  EQUIPMENT_BY_ID, MUSCLE_IDS, applyDayAction, diffWeeks, empurrarTreinos, entradaTreinoAtual, formatoDe, mondayOf, planWeek, resumirDia, salvosSubstituidos, treinoDoDia, trocasDoDia,
+  EQUIPMENT_BY_ID, JANELA_MES, MUSCLE_IDS, altsDoBanco, applyDayAction, exerciciosCansados, parametrosDoPerfil, diffWeeks, empurrarTreinos, entradaTreinoAtual, formatoDe, mondayOf, planWeek, resumirDia, salvosSubstituidos, treinoDoDia, trocasDoDia,
   weekDates, weekProgression, weekView, weeklyTargets,
 } from "@ciclo/core";
 import type { CardioEntry, DayAction, DayOpts, DayOverride, DayPlan, Intensity, MuscleId, Progression, Sets, WeekInput, WeekPlan, WeekProfile } from "@ciclo/core";
@@ -35,6 +35,8 @@ interface Ctx {
   cardioLog: CardioEntry[];
   /** #74 séries por dia e exercício (o que foi FEITO), para achar a troca forçada */
   feitos: Record<string, Record<string, number>>;
+  /** #90 anti-repetição: exercícios repetidos demais nas 4 semanas antes desta */
+  cansados: string[];
 }
 
 export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx | { empty: EmptyReason }> {
@@ -42,7 +44,7 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
   const [profile, gyms, week] = await Promise.all([getProfile(env, uid), listGyms(env, uid), weekState(env, uid, today)]);
   if (!profile) return { empty: "sem_perfil" };
   if (!gyms.length) return { empty: "sem_academia" };
-  const [sets, ovr, fixed, vers, latest, cardio, porEx] = await env.DB.batch([
+  const [sets, ovr, fixed, vers, latest, cardio, porEx, mes] = await env.DB.batch([
     env.DB.prepare(`SELECT s.date AS date, l.muscle AS muscle, COUNT(*) AS n FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
       WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 GROUP BY s.date, l.muscle`).bind(uid, from, to),
     env.DB.prepare("SELECT date, kind, opts FROM day_override WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3").bind(uid, from, to),
@@ -52,6 +54,9 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
     env.DB.prepare("SELECT id, date, type, minutes, intensity, distance_km FROM cardio_log WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date, created_at").bind(uid, from, to),
     env.DB.prepare(`SELECT s.date AS date, l.exercise_id AS ex, COUNT(*) AS n FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
       WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 GROUP BY s.date, l.exercise_id`).bind(uid, from, to),
+    // #90 o que foi feito nas 4 semanas antes desta (data + exercício): anti-repetição
+    env.DB.prepare(`SELECT DISTINCT s.date AS date, l.exercise_id AS ex FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
+      WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 ORDER BY s.date DESC LIMIT 2000`).bind(uid, addDays(weekStart, -JANELA_MES), addDays(weekStart, -1)),
   ]);
   const feitos: Record<string, Record<string, number>> = {};
   for (const r of porEx.results as { date: string; ex: string; n: number }[]) (feitos[r.date] ??= {})[r.ex] = r.n;
@@ -70,6 +75,7 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
       goalId: typeof (p.goal as { id?: unknown } | undefined)?.id === "string" ? (p.goal as { id: string }).id : null,
       ...entradaTreinoAtual(p), // #74 "Meu treino atual": só prioriza; sem cadastro, igual a antes
       formato: formatoDe(p.dynamics), // #125 superséries = preferir pares
+      frequencia: parametrosDoPerfil(p as Record<string, unknown>).frequenciaMin, // #90 frequência do método
     },
     base: weeklyTargets(([0, 1, 2, 3].includes(p.level) ? p.level : 1) as 0 | 1 | 2 | 3, (p.priorities ?? []).filter((m) => MUSCLE_IDS.includes(m))),
     sets: setsBy,
@@ -85,8 +91,14 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
     cardioLog: (cardio.results as { id: string; date: string; type: string; minutes: number; intensity: Intensity; distance_km: number | null }[])
       .map((r) => ({ id: r.id, date: r.date, type: r.type, minutes: r.minutes, intensity: r.intensity, distanceKm: r.distance_km })),
     feitos,
+    cansados: exerciciosCansados(sessoesDoMes(mes.results as { date: string; ex: string }[]), Object.values((p.pinned ?? {}) as Record<string, string>)),
   };
 }
+const sessoesDoMes = (rows: { date: string; ex: string }[]) => {
+  const m = new Map<string, string[]>();
+  for (const r of rows) m.set(r.date, [...(m.get(r.date) ?? []), r.ex]);
+  return [...m].map(([date, ids]) => ({ date, ids }));
+};
 
 /** Alvos da semana: perfil + ajuste por feedback da semana passada + deload (core: weekProgression). */
 async function progression(env: Env, c: Ctx): Promise<Progression> {
@@ -123,7 +135,7 @@ async function progression(env: Env, c: Ctx): Promise<Progression> {
 
 const input = (c: Ctx, s: { overrides: Record<string, DayOverride>; progression: Progression }, prev: WeekPlan | null): WeekInput => ({
   weekStart: c.weekStart, today: c.today, sets: c.sets, attendance: c.attendance, profile: c.profile,
-  targets: s.progression.targets, overrides: s.overrides, fixed: c.fixed, cardioLog: c.cardioLog, prev, feitos: c.feitos,
+  targets: s.progression.targets, overrides: s.overrides, fixed: c.fixed, cardioLog: c.cardioLog, prev, feitos: c.feitos, cansados: c.cansados, alternativasDe: altsDoBanco,
 });
 /** Assinatura das trocas forçadas da semana até hoje (o dia guardado tem o planejado; `feitos`, o que foi feito). */
 const trocasSig = (c: Ctx, plan: WeekPlan) => plan.days.filter((d) => d.date <= c.today)

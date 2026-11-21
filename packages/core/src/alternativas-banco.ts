@@ -167,6 +167,9 @@ export const BANCO_ALTERNATIVAS: Readonly<Record<string, readonly Alt[]>> = {
   Plank: [["Dead_Bug", "anti-extensão deitado"], ["Ab_Roller", "mesma anti-extensão, mais difícil"], ["Reverse_Crunch", "abdômen deitado"]],
 };
 
+/** #90 Só os IDs das alternativas, na ordem do banco (a variação entre dias do mesmo tipo usa). */
+export const altsDoBanco = (id: string): readonly string[] => (Object.hasOwn(BANCO_ALTERNATIVAS, id) ? BANCO_ALTERNATIVAS[id].map(([x]) => x) : []);
+
 /** Motivo do banco para trocar `de` por `para` (null fora do banco). */
 export function motivoDoBanco(de: string, para: string): string | null {
   const l = Object.hasOwn(BANCO_ALTERNATIVAS, de) ? BANCO_ALTERNATIVAS[de] : undefined;

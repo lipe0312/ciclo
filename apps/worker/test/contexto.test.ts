@@ -87,9 +87,11 @@ test("comparativo de tokens por pedido típico: antes (ciclo_estado [+ ciclo_cat
   await ok(c("POST", "/api/pains", { region: "lombar", intensity: 1, context: "leve no remo" }));
   const estado = await tool(env, A.tok, "ciclo_estado", { date: D });
   const catalogo = await tool(env, A.tok, "ciclo_catalogo", { muscle: "ombro", gymId: "acad1" });
+  const historico = await tool(env, A.tok, "ciclo_historico", { tipo: "series", ate: D });
   const antes: Record<string, number> = {
     trocar: estimarTokens(estado) + estimarTokens(catalogo), dor: estimarTokens(estado) + estimarTokens(catalogo),
-    tempo: estimarTokens(estado), gerar: estimarTokens(estado), comida: estimarTokens(estado), recap: estimarTokens(estado), revisao: estimarTokens(estado),
+    // #90 gerar/tempo trazem o resumo do histórico: substitui o ciclo_estado + ciclo_historico (séries do mês)
+    tempo: estimarTokens(estado) + estimarTokens(historico), gerar: estimarTokens(estado) + estimarTokens(historico), comida: estimarTokens(estado), recap: estimarTokens(estado), revisao: estimarTokens(estado),
   };
   if (process.env.DUMP) { console.log(estado); console.log(await tool(env, A.tok, "ciclo_contexto", { pedido: "tempo", date: D })); }
   const linhas: string[] = [];

@@ -16,12 +16,14 @@ import type { FoodEntry, Meal } from "./comida.ts";
 import { epley } from "./loads.ts";
 import type { Action } from "./prompts.ts";
 import { resumoMetodo } from "./contexto-metodo.ts";
+import { TETO_HISTORICO } from "./historico.ts";
+import type { ResumoHistorico } from "./historico.ts";
 
 export const PEDIDOS = ["trocar", "dor", "tempo", "gerar", "comida", "recap", "revisao"] as const;
 export type Pedido = (typeof PEDIDOS)[number];
 
-/** Teto de tokens por fatia (medido em teste com um estado "pesado"). */
-export const TETO_TOKENS: Record<Pedido, number> = { trocar: 1200, dor: 1200, tempo: 800, gerar: 800, comida: 800, recap: 800, revisao: 1500 };
+/** Teto de tokens por fatia (medido em teste com um estado "pesado"). Gerar a semana e o treino avulso levam o resumo do histórico (#90). */
+export const TETO_TOKENS: Record<Pedido, number> = { trocar: 1200, dor: 1200, tempo: 500 + TETO_HISTORICO, gerar: 500 + TETO_HISTORICO, comida: 800, recap: 800, revisao: 1500 };
 /** Estimativa conservadora: ~3 caracteres por token em JSON pt-BR. */
 export const estimarTokens = (s: string) => Math.ceil(s.length / 3);
 
@@ -55,6 +57,8 @@ export interface EstadoContexto {
   /** séries das 2 últimas semanas (revisão) */
   series?: { date: string; exerciseId: string; muscle: MuscleId; kg: number; reps: number }[];
   medidas?: { date: string; armCm: number | null; waistCm: number | null }[];
+  /** #90 resumo do histórico (resumoHistorico): gerar → mês + semana; tempo (treino avulso) → mês + N dias */
+  historico?: ResumoHistorico | null;
 }
 
 export interface Fatia {
@@ -187,7 +191,7 @@ export function contexto(pedido: Pedido, e: EstadoContexto): Fatia {
   switch (pedido) {
     case "trocar": corpo = fatiaTroca(e, false); break;
     case "dor": corpo = fatiaTroca(e, true); break;
-    case "tempo": case "gerar": corpo = fatiaTempo(e); break;
+    case "tempo": case "gerar": corpo = { ...fatiaTempo(e), ...(e.historico ? { historico: e.historico } : {}) }; break;
     case "comida": case "recap": corpo = fatiaComida(e); break;
     case "revisao": corpo = fatiaRevisao(e, obj.prioridades); break;
   }

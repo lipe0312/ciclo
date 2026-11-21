@@ -6,6 +6,8 @@ import { EXERCISES, EXERCISE_BY_ID, EQUIPMENT_BY_ID, MUSCLES, MUSCLE_IDS, REGION
 import type { Exercise, Group, Joint, Kind, MuscleId, SubMuscleId } from "./catalog.ts";
 import { parearItens } from "./superserie.ts";
 import type { Format } from "./semana.ts";
+import { ENFASE_MAIS, ENFASE_MENOS, CANSADO, TIPO_NM, ajusteVariacao, rotuloDia } from "./semana-variacao.ts";
+import type { AlternativasDe, TipoDia } from "./semana-variacao.ts";
 
 
 export type Mode = "normal" | "compensatorio" | "expresso";
@@ -48,6 +50,23 @@ export interface DayInput {
   repor?: Partial<Record<MuscleId, { sub: SubMuscleId; sets: number }>>;
   /** #125 formato do dia: "superserie" = preferir pares (podeParear), nunca pela posição. */
   formato?: Format | null;
+  /** #90 tipo do dia na semana e a letra da variação (A/B/C): só nome e "por quê" */
+  tipo?: TipoDia | null;
+  letra?: string | null;
+  /** #90 ênfase do dia (ordem): vem primeiro, ganha a maior parte do volume e é a última a ser cortada pelo tempo */
+  enfase?: MuscleId[] | null;
+  /** #90 só estes músculos (empurrar/puxar) e músculos de fora dos grupos do dia (3× nos focos) */
+  musculos?: MuscleId[] | null;
+  extras?: MuscleId[] | null;
+  /** #90 estímulos por músculo na semana pedidos pelo método (padrão 2) */
+  freqAlvo?: number;
+  /** #90 dias que ainda vão treinar cada músculo, contando hoje (mais preciso que groupDaysLeft em empurrar/puxar) */
+  diasMusculo?: Partial<Record<MuscleId, number>>;
+  /** #90 exercícios do outro dia do mesmo tipo na semana: a variação sai do banco de alternativas (#125) */
+  variarDe?: string[];
+  alternativasDe?: AlternativasDe | null;
+  /** #90 anti-repetição: exercícios repetidos demais nas últimas semanas (o fixado "sempre" não sofre) */
+  cansados?: string[];
 }
 
 export interface PlanItem {
@@ -70,6 +89,8 @@ export interface DayPlan {
   leve?: boolean;
   /** #108 gerado pelo app no "Gerar treino": a revisão da IA (assíncrona) está pendente, mudou o treino ou manteve */
   revisao?: RevisaoTreino;
+  /** #90 tipo do dia, letra da variação e a ênfase (só em dias montados pela semana) */
+  tipo?: TipoDia; letra?: string; enfase?: MuscleId[];
 }
 export type RevisaoTreino = "pendente" | "revisada" | "mantida";
 
@@ -122,7 +143,7 @@ export function painBlocks(ex: Exercise, pains: Pain[]): boolean {
   return false;
 }
 
-type CandInput = Pick<DayInput, "equipment" | "crowded" | "prefs" | "pains" | "pinned" | "avoid" | "estilo" | "familiar" | "familiarFraco" | "iniciante" | "subAlvo" | "repor">;
+type CandInput = Pick<DayInput, "equipment" | "crowded" | "prefs" | "pains" | "pinned" | "avoid" | "estilo" | "familiar" | "familiarFraco" | "iniciante" | "subAlvo" | "repor" | "variarDe" | "alternativasDe" | "cansados">;
 export interface Candidate { ex: Exercise; score: number; blockedByPain: boolean; familiar: boolean; nota: number }
 export function candidates(m: MuscleId, inp: CandInput): Candidate[] {
   const eq = new Set(inp.equipment);
@@ -148,6 +169,11 @@ export function candidates(m: MuscleId, inp: CandInput): Candidate[] {
     if (familiar) score += FAMILIAR; else if (inp.familiarFraco?.includes(ex.id)) score += FAMILIAR_FRACO;
     if (inp.iniciante && !inp.familiar?.length) score += POPULAR_PESO * (ex.popularidade ?? 0);
     if (rp && (ex.eficiencia?.[rp.sub] ?? 0) >= 3) score += REPOSICAO;
+    // #90 variar do outro dia do mesmo tipo e anti-repetição; o fixado ("sempre") fica
+    if (inp.pinned?.[m] !== ex.id) {
+      if (inp.variarDe?.length) score += ajusteVariacao(ex.id, inp.variarDe, inp.alternativasDe);
+      if (inp.cansados?.includes(ex.id)) score -= CANSADO;
+    }
     out.push({ ex, score, blockedByPain, familiar, nota });
   });
   return out.sort((a, b) => b.score - a.score);
@@ -166,23 +192,33 @@ export function planDay(inp: DayInput): DayPlan {
   else if (inp.split) groups = inp.split === "full" ? ["sup", "inf"] : [inp.split];
   else groups = [inp.lastGroup === "sup" ? "inf" : "sup"];
 
-  let muscles = MUSCLE_IDS.filter((m) => groups.includes(MUSCLES[m].group) && !inp.exclude?.includes(m));
+  const normal = inp.mode === "normal" && !focus;
+  let muscles = MUSCLE_IDS.filter((m) => groups.includes(MUSCLES[m].group) && !inp.exclude?.includes(m) && (!normal || !inp.musculos?.length || inp.musculos.includes(m)));
+  if (normal) for (const m of inp.extras ?? []) if (!muscles.includes(m) && !inp.exclude?.includes(m)) muscles.push(m);
   if (inp.mode === "expresso") muscles = muscles.filter((m) => inp.priorities.includes(m) || focus?.includes(m));
   const isPrio = (m: MuscleId) => inp.priorities.includes(m) || !!focus?.includes(m);
+  const enfase = normal ? (inp.enfase ?? []).filter((m) => muscles.includes(m)) : [];
+  const extra = (m: MuscleId) => normal && !!inp.extras?.includes(m) && !groups.includes(MUSCLES[m].group);
+  const freqAlvo = inp.freqAlvo ?? 2;
 
   // dias restantes que vão treinar este grupo (contando hoje)
   const sameGroupDays = inp.mode === "normal" && groups.length === 1 && !focus ? Math.max(1, Math.ceil(daysLeft / 2)) : 1;
   const caps = inp.mode === "compensatorio" ? { p: 5, o: 3 } : inp.mode === "expresso" ? { p: 4, o: 3 } : { p: 6, o: 4 };
 
   // 2. séries por músculo
-  type A = { m: MuscleId; sets: number; deficit: number; lvl: 0 | 1 | 2 };
+  // nível de corte pelo tempo (0 sai primeiro): demais → ênfase do dia → prioridade fora da ênfase → prioridade na ênfase → foco.
+  // As prioridades mantêm o volume da semana; a ênfase muda onde ele cai (#90).
+  type A = { m: MuscleId; sets: number; deficit: number; lvl: 0 | 1 | 2 | 3 | 4 };
   let alloc: A[] = [];
   for (const m of muscles) {
     const target = n(inp.targets[m]);
     const deficit = Math.max(0, target - n(inp.done[m]));
-    const lowFreq = n(inp.freq[m]) < 2;
-    const gdl = inp.mode === "normal" ? inp.groupDaysLeft?.[MUSCLES[m].group] : undefined;
-    let sets = Math.ceil(deficit / Math.max(1, gdl ?? sameGroupDays));
+    const lowFreq = n(inp.freq[m]) < freqAlvo;
+    const gdl = inp.mode === "normal" ? inp.diasMusculo?.[m] ?? inp.groupDaysLeft?.[MUSCLES[m].group] : undefined;
+    const dias = Math.max(1, gdl ?? sameGroupDays);
+    // #90 dia de ênfase leva a maior parte do que falta; o outro dia do mesmo tipo, a menor (dividido, nunca copiado)
+    const peso = enfase.length && dias > 1 ? (enfase.includes(m) ? ENFASE_MAIS : ENFASE_MENOS) : 1;
+    let sets = extra(m) ? Math.min(deficit, 2) : Math.ceil((deficit / dias) * peso);
     if (focus?.includes(m)) sets = Math.max(sets, 4);
     if (lowFreq && target > 0) sets = Math.max(sets, 2);
     sets = Math.min(sets, isPrio(m) ? caps.p : caps.o);
@@ -195,7 +231,8 @@ export function planDay(inp: DayInput): DayPlan {
 
     const max = inp.maxPerMuscle?.[m];
     if (max != null) sets = Math.min(sets, Math.max(0, max));
-    if (sets > 0) alloc.push({ m, sets, deficit, lvl: focus?.includes(m) || adiant ? 2 : inp.priorities.includes(m) || rp ? 1 : 0 });
+    const prio = inp.priorities.includes(m) || !!rp, naEnfase = !enfase.length || enfase.includes(m);
+    if (sets > 0) alloc.push({ m, sets, deficit, lvl: focus?.includes(m) || adiant ? 4 : prio ? (naEnfase && !extra(m) ? 3 : 2) : enfase.includes(m) ? 1 : 0 });
   }
 
   // 3. prehab pelas dores (reserva ~2 min por série)
@@ -212,22 +249,26 @@ export function planDay(inp: DayInput): DayPlan {
   }
   if (prehab.length) why.push(`Aquecimento de fortalecimento pela dor marcada (${pains.map((p) => REGION_BY_ID[p.region]?.nm).join(", ")}).`);
 
+  const prioRank = (m: MuscleId) => focus?.includes(m) ? -20 + focus.indexOf(m) : enfase.includes(m) ? -10 + enfase.indexOf(m) : inp.priorities.includes(m) ? inp.priorities.indexOf(m) : 50;
+
   // 4. cabe no tempo?
   const prehabMin = prehab.reduce((s, i) => s + i.sets * 2, 0);
   const cap = Math.max(4, Math.floor((inp.minutes - prehabMin) / MIN_PER_SET));
   const total = () => alloc.reduce((s, a) => s + a.sets, 0);
-  // corta em camadas: demais até 2 → prioridades até 3 → foco até 4; depois remove demais de menor déficit
-  const floors = [2, 3, 4];
-  for (let lvl = 0; lvl <= 2 && total() > cap; lvl++) {
+  // corta em camadas: demais até 2 → ênfase até 2 → prioridades fora da ênfase até 3 → prioridades até 3 → foco até 4;
+  // depois remove demais (primeiro quem já tem a frequência da semana, depois o de menor déficit)
+  const floors = [2, 2, 3, 3, 4];
+  for (let lvl = 0; lvl <= 4 && total() > cap; lvl++) {
     while (total() > cap) {
-      const a = alloc.filter((x) => x.lvl === lvl && x.sets > floors[lvl]).sort((x, y) => x.deficit - y.deficit || y.sets - x.sets)[0];
+      const a = alloc.filter((x) => x.lvl === lvl && x.sets > floors[lvl]).sort((x, y) => x.deficit - y.deficit || y.sets - x.sets || prioRank(y.m) - prioRank(x.m))[0];
       if (!a) break;
       a.sets--;
     }
   }
   const dropped: MuscleId[] = [];
   while (total() > cap) {
-    const victim = alloc.filter((a) => a.lvl === 0).sort((a, b) => a.deficit - b.deficit)[0];
+    const feita = (a: A) => Number(n(inp.freq[a.m]) >= freqAlvo);
+    const victim = alloc.filter((a) => a.lvl === 0).sort((a, b) => feita(b) - feita(a) || a.deficit - b.deficit)[0];
     if (victim) { dropped.push(victim.m); alloc = alloc.filter((a) => a !== victim); continue; }
     const shrink = alloc.filter((a) => a.sets > 2).sort((a, b) => a.lvl - b.lvl || a.deficit - b.deficit)[0];
     if (!shrink) break;
@@ -237,22 +278,23 @@ export function planDay(inp: DayInput): DayPlan {
   // mais leve: ~30% menos séries (depois do corte por tempo), sem tirar o músculo do dia: o 2× da semana continua valendo
   if (inp.leve) for (const a of alloc) a.sets = Math.max(Math.min(a.sets, 2), Math.round(a.sets * 0.7));
 
-  // 5. ordem: foco → prioridades (na ordem) → mais cansativo primeiro
-  const prioRank = (m: MuscleId) => focus?.includes(m) ? -10 + focus.indexOf(m) : inp.priorities.includes(m) ? inp.priorities.indexOf(m) : 50;
+  // 5. ordem: foco → ênfase do dia (#90) → prioridades (na ordem) → mais cansativo primeiro
   alloc.sort((a, b) => prioRank(a.m) - prioRank(b.m));
 
   // 6. escolher exercícios
   const items: PlanItem[] = [];
   const missing: DayPlan["missing"] = [];
+  const avoid = [...(inp.avoid ?? []), ...prehab.map((p) => p.exerciseId)]; // o fortalecimento do dia não se repete na lista
   for (const a of alloc) {
-    const all = candidates(a.m, inp);
+    const all = candidates(a.m, { ...inp, avoid });
     const ok = all.filter((c) => !c.blockedByPain);
     if (!ok.length) { missing.push({ muscle: a.m, reason: all.length ? "dor" : "aparelho" }); continue; }
     const alts = (skip: string[]) => ok.filter((c) => !skip.includes(c.ex.id)).slice(0, 3).map((c) => c.ex.id);
     const first = ok[0].ex;
     if (a.sets >= 5 && ok.length > 1) {
       // quem já treina (#74): o 2º exercício também vem do treino atual quando houver
-      const famOk = ok[0].familiar ? ok.filter((c, k) => k > 0 && c.familiar) : [];
+      // #90 num dia de variação o 1º pode não ser do treino atual: o 2º ainda prefere o que ela já faz
+      const famOk = ok[0].familiar || inp.variarDe?.length ? ok.filter((c, k) => k > 0 && c.familiar) : [];
       const second = (famOk.find((c) => c.ex.kind !== first.kind) ?? famOk[0] ?? ok.find((c) => c.ex.kind !== first.kind) ?? ok[1]).ex;
       const s1 = Math.ceil(a.sets / 2);
       items.push(item(first, s1, alts([first.id, second.id])));
@@ -279,17 +321,25 @@ export function planDay(inp: DayInput): DayPlan {
   const suggestCompensatory = inp.mode === "normal" && daysLeft === 1 && !!other &&
     MUSCLE_IDS.some((m) => MUSCLES[m].group === other && n(inp.targets[m]) > 0 && n(inp.freq[m]) < 2);
 
+  // #90 o nome descreve o conteúdo: o tipo (e a letra da variação) + os músculos de maior volume do dia
+  const tipo: TipoDia = inp.tipo ?? (groups.length === 2 ? "full" : groups[0]);
   const name = inp.mode === "compensatorio" ? "Corpo inteiro compensatório"
     : inp.mode === "expresso" ? "Expresso · só prioridades"
     : focus ? `Foco: ${focus.map((m) => MUSCLES[m].nm.toLowerCase()).join(" + ")}`
-    : groups.length === 2 ? "Corpo inteiro"
-    : groups[0] === "sup" ? (inp.priorities.some((m) => m === "biceps" || m === "triceps") ? "Superior · ênfase em braços" : "Superior")
-    : "Inferior";
+    : rotuloDia(TIPO_NM[tipo], perMuscle, enfase, inp.letra);
 
+  const nomeMin = name.charAt(0).toLowerCase() + name.slice(1); // "superior B · …": a letra fica maiúscula
   if (inp.mode === "compensatorio") why.push(`Você pediu um treino compensatório: junta o que faltou dos dois grupos em uma sessão, prioridades primeiro.`);
   else if (inp.mode === "expresso") why.push(`Expresso: só as prioridades, para não zerar a semana num dia corrido.`);
   else if (focus) why.push(`Você escolheu focar em ${focus.map((m) => MUSCLES[m].nm.toLowerCase()).join(" e ")} hoje; o resto da semana se reorganiza.`);
-  else why.push(daysLeft === 1 ? `Último dia da semana: segue o próximo treino (${name.toLowerCase()}).` : `Restam ${daysLeft} dias: hoje ${name.toLowerCase()}, o volume que falta é dividido entre os dias do mesmo grupo.`);
+  else why.push(daysLeft === 1 ? `Último dia da semana: segue o próximo treino (${nomeMin}).` : `Restam ${daysLeft} dias: hoje ${nomeMin}, o volume que falta é dividido entre os dias do mesmo grupo.`);
+  if (normal && inp.letra && enfase.length) {
+    const m0 = enfase.find((m) => n(perMuscle[m]) > 0);
+    const estimulo = m0 ? `; ${n(inp.freq[m0]) + 1}º estímulo de ${MUSCLES[m0].nm.toLowerCase()} da semana` : "";
+    why.push(inp.variarDe?.length
+      ? `Variação ${inp.letra}: ênfase em ${enfase.map((m) => MUSCLES[m].nm.toLowerCase()).join(", ")}; mesmo músculo, outro exercício ou ângulo${estimulo}.`
+      : `Variação ${inp.letra}: ênfase em ${enfase.map((m) => MUSCLES[m].nm.toLowerCase()).join(", ")}${estimulo}.`);
+  }
   if (inp.crowded) why.push("Academia cheia: preferi halteres e aparelhos que costumam estar livres.");
   if (inp.estilo) why.push(inp.estilo === "livre" ? "Você pediu mais peso livre hoje." : "Você pediu mais máquina hoje.");
   if (nonPrehabItems.some((i) => i.par)) why.push("Superséries: pares A1 + A2 de músculos que não competem.");
@@ -303,6 +353,7 @@ export function planDay(inp: DayInput): DayPlan {
     name, mode: inp.mode, groups, items: nonPrehabItems, prehab, why, dropped, missing, cap,
     setsTotal, estMinutes: setsTotal * MIN_PER_SET + prehabMin, ...(inp.leve ? { leve: true } : {}),
     weekClosePct: tgt ? Math.round((proj / tgt) * 100) : 0, suggestCompensatory, perMuscle,
+    ...(normal && inp.tipo ? { tipo: inp.tipo, ...(inp.letra ? { letra: inp.letra } : {}), enfase } : {}),
   };
 }
 

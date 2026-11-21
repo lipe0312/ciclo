@@ -219,8 +219,8 @@ test("troca forçada: o replanejamento põe o posterior num dia seguinte e expli
 
 test("troca forçada na mesma músculo, outra parte: peito superior volta na quinta mesmo com o reto no treino atual", () => {
   const profile = prof({ familiar: ["Barbell_Bench_Press_-_Medium_Grip"] });
-  // sem troca, a quinta faria o supino reto (o que ela já faz)
-  const base = planWeek(inp({ profile })).days[3].plan!;
+  // sem troca, a segunda faz o supino reto (o que ela já faz); a quinta (Superior B, #90) já varia
+  const base = planWeek(inp({ profile })).days[0].plan!;
   assert.ok(base.items.some((i) => i.exerciseId === "Barbell_Bench_Press_-_Medium_Grip"));
   // na segunda, o planejado de peito vira o reto (ela trocou o inclinado pelo reto)
   const w0 = planWeek(inp({ profile }));

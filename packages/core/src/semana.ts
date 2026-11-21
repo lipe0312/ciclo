@@ -12,6 +12,8 @@ import type { CardioDose, CardioEntry, CardioPlanned } from "./cardio.ts";
 import { planDay, resumirDia } from "./plan-day.ts";
 import type { DayInput, DayPlan, Mode, Pain } from "./plan-day.ts";
 import { weekDates } from "./checkin.ts";
+import { FREQ_PADRAO, TIPO_GRUPOS, enfaseDoDia, letraDe, musculosDoTipo, tiposCurtos, tiposLongos } from "./semana-variacao.ts";
+import type { AlternativasDe, TipoDia } from "./semana-variacao.ts";
 
 export const DOWS = ["seg", "ter", "qua", "qui", "sex", "sab", "dom"] as const;
 export type Dow = (typeof DOWS)[number];
@@ -42,6 +44,8 @@ export interface WeekProfile {
   familiar?: string[]; familiarFraco?: string[]; iniciante?: boolean; subAlvo?: DayInput["subAlvo"];
   /** #125 formato padrão do perfil (dynamics): "superserie" = preferir pares na geração */
   formato?: Format | null;
+  /** #90 estímulos por músculo na semana pedidos pelo método (1× bro split, 2× padrão, 3× nos focos) */
+  frequencia?: number | null;
 }
 /** O que já aconteceu na semana: séries registradas por dia e presença marcada. */
 export interface WeekCtx {
@@ -58,6 +62,10 @@ export interface WeekInput extends WeekCtx {
   prev?: WeekPlan | null;                                              // versão anterior: dias que já passaram mantêm o plano
   /** #74 séries feitas por dia e exercício (data → id → nº de séries): acha a troca forçada e repõe a subparte que faltou */
   feitos?: Record<string, Record<string, number>>;
+  /** #90 anti-repetição: exercícios repetidos demais nas últimas semanas (exerciciosCansados) */
+  cansados?: string[];
+  /** #90 alternativas do banco da #125 (altsDoBanco), injetadas por quem gera (Worker); sem elas, a mesma subparte do catálogo */
+  alternativasDe?: AlternativasDe | null;
 }
 export interface WeekDay {
   date: string; dow: Dow; kind: DayKind; plan: DayPlan | null; gymId: string | null;
@@ -131,6 +139,7 @@ function dayInputFor(inp: WeekInput, d: WeekDay, run: { done: Sets; freq: Sets }
     estilo: d.opts.estilo ?? null, leve: !!d.opts.leve, adiantar: d.opts.adiantar ?? null,
     familiar: p.familiar, familiarFraco: p.familiarFraco, iniciante: p.iniciante, subAlvo: p.subAlvo,
     formato: d.opts.format ?? p.formato ?? null, // #125
+    freqAlvo: freqDe(p), cansados: inp.cansados, alternativasDe: inp.alternativasDe, // #90
   };
 }
 
@@ -154,44 +163,84 @@ function prevMuscles(inp: WeekInput, days: WeekDay[], i: number): MuscleId[] {
   return d.kind === "folga" ? [] : musclesOf(d.plan?.perMuscle);
 }
 
-/** 1ª passada: a divisão de cada dia aberto. Semana curta (≤ 3 treinos) tem desenho fixo para dar 2× a todo músculo;
- *  com 4+ dias, escolhe o grupo com menos estímulos (depois o maior déficit, depois o das prioridades), sem repetir o de ontem. */
+/** #90 Exercícios de um dia anterior: os feitos (se registrados) ou os do plano. */
+const feitosOuPlano = (inp: WeekInput, d: WeekDay) => {
+  const f = Object.keys(inp.feitos?.[d.date] ?? {}).filter((id) => n(inp.feitos![d.date][id]) > 0);
+  return f.length ? f : (d.plan?.items ?? []).map((it) => it.exerciseId);
+};
+/** #90 Estímulos por músculo pedidos pelo método do perfil: 1, 2 (padrão) ou 3 (nos focos). */
+const freqDe = (p: WeekProfile) => (p.frequencia === 1 || p.frequencia === 3 ? p.frequencia : FREQ_PADRAO);
+/** Tipo de um plano já feito ou salvo (os antigos, sem `tipo`, pelos grupos). */
+const tipoDoPlano = (p: DayPlan | null | undefined): TipoDia | null => p ? p.tipo ?? (p.groups.length === 2 ? "full" : p.groups[0] ?? null) : null;
+
+/** 1ª passada: o tipo de cada dia aberto (#90). Semana curta (≤ 3 treinos) tem desenho fixo pelo método (corpo inteiro A/B/C;
+ *  com 1×, superior/inferior ou empurrar/puxar/pernas); com 4+ dias, escolhe o tipo com menos estímulos (depois o que tem
+ *  prioridade, depois o maior déficit), sem repetir músculo de ontem: superior/inferior, ou empurrar/puxar/pernas com 6+ dias. */
 function decideSplits(inp: WeekInput, days: WeekDay[], open: Set<string>) {
   const out = new Map<string, Group[]>();
   const split = new Map<string, Split | null>();
+  const tipo = new Map<string, TipoDia>();
   const freq: Sets = { ...baseline(inp, days).freq };
   const training = days.filter((d) => d.kind === "treino");
-  const short: Split[] | null = training.length <= 2 ? ["full", "full"] : training.length === 3 ? ["sup", "inf", "full"] : null;
-  const prio0 = inp.profile.priorities[0];
-  let prev: Group[] = [];
+  const f = freqDe(inp.profile);
+  const curtos = tiposCurtos(training.length, f);
+  // a semana não muda de desenho no meio (falta, empurrar): os dias que já passaram dizem se é superior/inferior ou empurrar/puxar/pernas
+  const passados = days.filter((d) => !open.has(d.date) && d.kind !== "folga").map((d) => tipoDoPlano(d.plan));
+  const ppl: TipoDia[] = ["push", "pull", "legs"];
+  const longos = passados.some((t) => t && ppl.includes(t)) ? ppl : passados.some((t) => t === "sup" || t === "inf") ? ["sup", "inf"] as TipoDia[] : tiposLongos(training.length, f);
+  const prios = inp.profile.priorities;
+  const alvo = (m: MuscleId) => n(inp.targets[m]) > 0;
+  let prev: MuscleId[] = [];
   days.forEach((d, i) => {
-    if (!open.has(d.date)) {
-      prev = [...new Set(prevMuscles(inp, days, i + 1).map((m) => MUSCLES[m].group))];
-      return;
-    }
-    let gs: Group[] = [], sp: Split | null = null;
+    if (!open.has(d.date)) { prev = prevMuscles(inp, days, i + 1); return; }
+    let gs: Group[] = [], sp: Split | null = null, t: TipoDia | null = null;
     const fx = inp.fixed?.[d.date];
     if (fx) gs = fx.plan.groups;
     else if (d.kind === "extra") gs = [];
     else if (d.opts.mode === "compensatorio" || d.opts.mode === "expresso") gs = GROUPS;
     else if (d.opts.focus?.length) gs = [...new Set(d.opts.focus.map((m) => MUSCLES[m].group))];
-    else if (d.opts.split) { sp = d.opts.split; gs = splitGroups(sp); }
-    else if (short) { sp = short[training.indexOf(d)] ?? "full"; gs = splitGroups(sp); }
+    else if (d.opts.split) t = d.opts.split;
+    else if (curtos) t = curtos[training.indexOf(d)] ?? "full";
     else {
-      const need = (g: Group) => {
-        const ms = groupMuscles([g]).filter((m) => n(inp.targets[m]) > 0);
-        return { min: Math.min(...ms.map((m) => n(freq[m]))), tgt: ms.filter((m) => n(freq[m]) < 2).reduce((a, m) => a + n(inp.targets[m]), 0) };
+      const need = (x: TipoDia) => {
+        const ms = musculosDoTipo(x).filter(alvo);
+        return { min: Math.min(...ms.map((m) => n(freq[m]))), prio: Math.min(99, ...ms.filter((m) => prios.includes(m)).map((m) => prios.indexOf(m))), tgt: ms.filter((m) => n(freq[m]) < f).reduce((a, m) => a + n(inp.targets[m]), 0) };
       };
-      let cand = GROUPS.filter((g) => !prev.includes(g));
-      if (!cand.length) cand = [...GROUPS];
-      cand.sort((a, b) => need(a).min - need(b).min || need(b).tgt - need(a).tgt || (MUSCLES[prio0]?.group === b ? 1 : 0) - (MUSCLES[prio0]?.group === a ? 1 : 0));
-      sp = cand[0]; gs = [sp];
+      let cand = longos.filter((x) => !musculosDoTipo(x).some((m) => prev.includes(m)));
+      if (!cand.length) cand = [...longos];
+      cand.sort((a, b) => need(a).min - need(b).min || need(a).prio - need(b).prio || need(b).tgt - need(a).tgt);
+      t = cand[0];
     }
-    for (const m of groupMuscles(gs)) if (n(inp.targets[m]) > 0) freq[m] = n(freq[m]) + 1;
+    if (t) { gs = TIPO_GRUPOS[t]; sp = gs.length === 2 ? "full" : gs[0]; tipo.set(d.date, t); }
+    const ms = t ? musculosDoTipo(t) : groupMuscles(gs);
+    for (const m of ms) if (alvo(m)) freq[m] = n(freq[m]) + 1;
     out.set(d.date, gs); split.set(d.date, sp);
-    prev = gs;
+    prev = ms;
   });
-  return { groups: out, split };
+  return { groups: out, split, tipo };
+}
+
+/** #90 3× nos focos: o foco que não chega à frequência do método entra (2 séries) num dia de outro tipo, sem dia vizinho dele (48 h). */
+function extrasDosFocos(inp: WeekInput, days: WeekDay[], open: Set<string>, tipo: Map<string, TipoDia>, groups: Map<string, Group[]>) {
+  const out = new Map<string, MuscleId[]>();
+  const f = freqDe(inp.profile);
+  if (f < 3) return out;
+  const treina = (i: number, m: MuscleId) => {
+    const d = days[i];
+    if (!d) return false;
+    const t = tipo.get(d.date);
+    if (t) return musculosDoTipo(t).includes(m) || !!out.get(d.date)?.includes(m);
+    if (open.has(d.date)) return groupMuscles(groups.get(d.date) ?? []).includes(m);
+    return prevMuscles(inp, days, i + 1).includes(m);
+  };
+  for (const m of inp.profile.priorities) {
+    let tem = days.filter((_, i) => treina(i, m)).length;
+    days.forEach((d, i) => {
+      if (tem >= f || !tipo.has(d.date) || inp.fixed?.[d.date] || treina(i, m) || treina(i - 1, m) || treina(i + 1, m)) return;
+      out.set(d.date, [...(out.get(d.date) ?? []), m]); tem++;
+    });
+  }
+  return out;
 }
 
 /** #98 Plano salvo à mão ou pelo Chat: o resumo (perMuscle, séries, minutos) sai dos itens, nunca do plano antigo. */
@@ -220,7 +269,9 @@ export function planWeek(inp: WeekInput): WeekPlan {
   });
 
   const open = new Set(days.filter((d) => !isClosed(d.date, inp) && d.kind !== "folga").map((d) => d.date));
-  const { groups, split } = decideSplits(inp, days, open);
+  const { groups, split, tipo } = decideSplits(inp, days, open);
+  const extras = extrasDosFocos(inp, days, open, tipo, groups);
+  const musculosDoDia = (x: WeekDay) => { const t = tipo.get(x.date); return t ? [...musculosDoTipo(t), ...(extras.get(x.date) ?? [])] : groupMuscles(groups.get(x.date) ?? []); };
   const run = baseline(inp, days);
   const openDays = days.filter((d) => open.has(d.date));
   const repor = reposicoes(inp, days, openDays, groups);
@@ -235,8 +286,15 @@ export function planWeek(inp: WeekInput): WeekPlan {
     } else {
       const rest = openDays.slice(k).filter((x) => x.kind === "treino" && !inp.fixed?.[x.date]);
       const groupDaysLeft = Object.fromEntries(GROUPS.map((g) => [g, Math.max(1, rest.filter((x) => groups.get(x.date)?.includes(g)).length)]));
+      const diasMusculo = Object.fromEntries(MUSCLE_IDS.map((m) => [m, Math.max(1, rest.filter((x) => musculosDoDia(x).includes(m)).length)]));
       const rp = repor.get(d.date);
-      plan = planDay({ ...dayInputFor(inp, d, run), daysLeft: Math.max(1, rest.length), split: split.get(d.date) ?? null, groupDaysLeft,
+      // #90 variação: a letra é a ordem do dia entre os do mesmo tipo; varia dos exercícios dos anteriores (feitos, salvos ou gerados)
+      const t = tipo.get(d.date);
+      // (dia que passou sem treino não conta: a semana se reorganiza a partir do que foi feito)
+      const antes = t ? days.slice(0, i).filter((x) => x.plan && (open.has(x.date) || treinou(inp, x.date)) && (tipo.get(x.date) ?? tipoDoPlano(x.plan)) === t) : [];
+      plan = planDay({ ...dayInputFor(inp, d, run), daysLeft: Math.max(1, rest.length), split: split.get(d.date) ?? null, groupDaysLeft, diasMusculo,
+        ...(t ? { tipo: t, letra: letraDe(antes.length), enfase: enfaseDoDia(t, antes.length, inp.profile.priorities), musculos: musculosDoTipo(t),
+          extras: extras.get(d.date) ?? [], variarDe: [...new Set(antes.flatMap((x) => feitosOuPlano(inp, x)))] } : {}),
         ...(rp ? { repor: Object.fromEntries(rp.map((x) => [x.m, { sub: x.troca.parte, sets: x.sets }])) } : {}) });
       if (rp) {
         const feitas = rp.filter((x) => plan.items.some((i) => partePrincipal(EXERCISE_BY_ID[i.exerciseId] ?? {}) === x.troca.parte));

@@ -42,7 +42,8 @@ test("aparelhos: a escolha vale só naquele dia (os outros dias continuam com a 
   const i = inp(), w = planWeek(i);
   const r = ok(regenerarDia(w, i, D[0], { livres: ALL.filter((q) => q !== "polia") }));
   assert.ok(!eqOf(r.plan.days[0].plan!).has("polia"));
-  assert.deepEqual(r.plan.days[3].plan!.items.map((x) => x.exerciseId), w.days[3].plan!.items.map((x) => x.exerciseId));
+  // #90 a quinta (Superior B) varia dos exercícios da segunda, mas continua com a academia toda (a polia vale lá)
+  assert.ok(eqOf(r.plan.days[3].plan!).has("polia"), "quinta continua usando a polia");
   assert.deepEqual(r.overrides[D[0]].opts?.ocupados, ["polia"]);
 });
 
