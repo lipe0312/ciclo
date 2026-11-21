@@ -145,3 +145,8 @@ test("Fale com a IA: link interno para o Chat com o texto (nunca uma IA externa)
   assert.equal(new URLSearchParams(h.split("?")[1]).get("texto"), "Troque o exercício Rosca & <b>martelo</b> de hoje");
   for (const o of ["hoje", "treino", "semana", "comida", "diario"] as const) assert.match(hrefFale(o), /^#chat\?texto=/);
 });
+
+test("Fale com a IA: o link constante da Hoje é o mesmo do hrefFale", async () => {
+  const { HREF_FALE_HOJE } = await import("../src/index.ts");
+  assert.equal(HREF_FALE_HOJE, hrefFale("hoje"));
+});
