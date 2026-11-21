@@ -6,7 +6,6 @@ import { useEffect, useState } from "preact/hooks";
 import type { Route } from "../../lib/roteador/index.ts";
 import { SERVER, api } from "../../lib/api/index.ts";
 import { Icon } from "../../lib/ui/index.tsx";
-import { replace } from "../../lib/roteador/index.ts";
 import { PrivacidadeDados } from "./dados.tsx";
 import { Perfil } from "./perfil.tsx";
 import { Pessoas } from "./pessoas.tsx";
@@ -30,10 +29,7 @@ export default function Conta({ route }: { route: Route }) {
   const load = async () => { const r = await api<{ account: Account; setupPendente?: boolean }>("GET", "/api/account"); setAcc(r.account); setSetup(!!r.setupPendente); };
   useEffect(() => { if (SERVER) load().catch(() => setErro("Não deu para carregar a conta.")); }, []);
   const sub = route.parts[0] ?? "";
-  // #133 as telas antigas de conectar (Conectar Chat e Chaves de IA) viraram Perfil → Sua IA
-  const antiga = sub === "chat" || sub === "chaves" || sub === "ia";
-  useEffect(() => { if (antiga) replace("#perfil/ia"); }, [antiga]);
-  if (antiga) return null;
+  // #133 #conta/chat e #conta/chaves são redirecionadas pelo roteador (canonico) antes de chegar aqui
 
   if (!SERVER) return <div class="conta"><p class="kicker">Conta</p><h1>Conta</h1>
     <div class="note"><Icon id="info" />Na demonstração não há conta: os dados ficam só neste navegador.</div>

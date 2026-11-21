@@ -2,11 +2,13 @@
 // e o perfil de IA (perfil.ia) salvo por conta. Provedores falsos (fetch trocado); chaves fictícias montadas aqui.
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
+import { readFileSync, readdirSync } from "node:fs";
 import { call, makeEnv } from "./fakes.ts";
 
 const KEK = Buffer.alloc(32, 6).toString("base64");
 const OR_A = "sk-" + "or-v1-" + "CANARIO" + "a".repeat(57);
-const DS_B = "sk-" + "CANARIODS" + "b".repeat(30);
+const DS_B = "sk-" + "dead" + "beef".repeat(7); // 32 hex (formato DeepSeek)
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
 
@@ -72,7 +74,7 @@ test("DeepSeek: valida em api.deepseek.com e isola entre contas (B não vê nem 
   for (const [m, p, b] of [["PATCH", `/api/account/chaves/${rb.data.chave.id}`, { ativo: false }], ["DELETE", `/api/account/chaves/${rb.data.chave.id}`, undefined]] as const) {
     assert.equal((await call(env, m, p, { user: "ana", body: b })).status, 404);
   }
-  assert.ok(!rb.text.includes("CANARIO"));
+  assert.ok(!rb.text.includes(DS_B) && !rb.text.includes("beefbeef"));
   assert.equal(env.DB.raw.prepare("SELECT ativo FROM chave_ia WHERE id = ?1").get(rb.data.chave.id).ativo, 1);
 });
 
@@ -109,7 +111,26 @@ test("GET /api/account/ia: conexão e provedores com chave ativa, só da própri
   assert.equal((await call(env, "POST", "/api/account/chaves", { user: "bia", body: nova("deepseek", DS_B) })).status, 201);
   const b = await call(env, "GET", "/api/account/ia", { user: "bia" });
   assert.deepEqual(b.data, { conector: "nenhum", chaves: [{ provedor: "deepseek", ativo: true }] });
-  assert.ok(!b.text.includes("CANARIO"));
+  assert.ok(!b.text.includes(DS_B));
   const a = await call(env, "GET", "/api/account/ia", { user: "ana" });
   assert.deepEqual(a.data, { conector: "nenhum", chaves: [] }, "a conta A não vê a chave da B");
+});
+
+test("migration 0024: aplicada sobre uma chave já guardada pela 0023, a linha fica idêntica (envelope, metadados e índice)", () => {
+  const dir = new URL("../migrations/", import.meta.url);
+  const db = new DatabaseSync(":memory:"); db.exec("PRAGMA foreign_keys = ON");
+  const migs = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
+  const i24 = migs.findIndex((f) => f.startsWith("0024_133"));
+  assert.ok(i24 > 0);
+  for (const f of migs.slice(0, i24)) db.exec(readFileSync(new URL(f, dir), "utf8"));
+  db.prepare("INSERT INTO user (id, email, created_at) VALUES ('u-fict', 'ficticia@exemplo.invalid', 1)").run();
+  db.prepare(`INSERT INTO chave_ia (id, user_id, provedor, apelido, ultimos4, impressao, ciphertext, iv, dek_cifrada, kek_versao, modelos_json, modelo, esforco, teto_dia, teto_mes, criado_em, usado_em, ativo)
+    VALUES ('k-ficticia-1', 'u-fict', 'gemini', 'Chave fictícia', 'WXYZ', 'abcdef012345', 'Q0lQSEVSVEVYVA==', 'SVZJVklWSVZJVg==', 'REVLREVLREVL', 1, '["gemini-2.5-flash"]', 'gemini-2.5-flash', 'alto', 150, 900, 1700000000000, 1700000500000, 0)`).run();
+  const antes = JSON.stringify(db.prepare("SELECT * FROM chave_ia").all());
+  for (const f of migs.slice(i24, i24 + 1)) db.exec(readFileSync(new URL(f, dir), "utf8"));
+  assert.equal(JSON.stringify(db.prepare("SELECT * FROM chave_ia").all()), antes, "linha idêntica");
+  assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'chave_ia_user'").get(), "índice recriado");
+  assert.ok(!db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'chave_ia_133'").get(), "sem tabela temporária");
+  db.prepare("DELETE FROM user WHERE id = 'u-fict'").run();
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM chave_ia").get() as { n: number }).n, 0, "o ON DELETE CASCADE segue valendo");
 });

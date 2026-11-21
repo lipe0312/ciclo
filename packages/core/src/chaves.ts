@@ -32,12 +32,15 @@ export const CHAVE_TIMEOUT_MS = 15_000;
 
 // ---------- formato e metadados ----------
 const SO_CHAVE = /^[A-Za-z0-9_-]+$/;
+/** DeepSeek: "sk-" + 32 hex minúsculos (o formato que a plataforma emite hoje; conferir). */
+const DEEPSEEK_FMT = /^sk-[0-9a-f]{32}$/;
 const FORMATO: Record<ProvedorIa, (k: string) => boolean> = {
   anthropic: (k) => k.startsWith("sk-ant-") && k.length >= 40,
-  openai: (k) => k.startsWith("sk-") && !k.startsWith("sk-ant-") && !k.startsWith("sk-or-") && k.length >= 20,
+  // #133 sem sobreposição com a DeepSeek (sk- + 32 hex): a chave nunca vai ao host de outro fornecedor
+  openai: (k) => k.startsWith("sk-") && !k.startsWith("sk-ant-") && !k.startsWith("sk-or-") && !DEEPSEEK_FMT.test(k) && k.length >= 20,
   gemini: (k) => /^AIza[0-9A-Za-z_-]{35}$/.test(k),
   openrouter: (k) => k.startsWith("sk-or-") && k.length >= 30,
-  deepseek: (k) => k.startsWith("sk-") && !k.startsWith("sk-ant-") && !k.startsWith("sk-or-") && !k.startsWith("sk-proj-") && k.length >= 20,
+  deepseek: (k) => DEEPSEEK_FMT.test(k),
 };
 export const ehProvedorIa = (v: unknown): v is ProvedorIa => typeof v === "string" && (PROVEDORES_IA as readonly string[]).includes(v);
 

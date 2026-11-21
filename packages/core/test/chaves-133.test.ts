@@ -15,7 +15,12 @@ const ANT = "sk-" + "ant-api03-" + "x".repeat(40);
 test("formato: OpenRouter só sk-or-; DeepSeek sk- sem ser de outro provedor; OpenAI não aceita sk-or-; erro nunca ecoa", () => {
   assert.equal(validarChaveFormato("openrouter", OR).ok, true);
   assert.equal(validarChaveFormato("deepseek", DS).ok, true);
-  for (const [p, k] of [["openrouter", DS], ["deepseek", OR], ["deepseek", ANT], ["deepseek", OAI], ["openai", OR], ["openrouter", "sk-or-curta"]] as const) {
+  const OAI_LEGADO = "sk-" + "A1b2".repeat(12); // formato antigo da OpenAI (48 alfanuméricos)
+  assert.equal(validarChaveFormato("openai", OAI).ok, true);
+  assert.equal(validarChaveFormato("openai", OAI_LEGADO).ok, true);
+  // os dois sentidos: chave de um nunca passa como do outro (iria ao host errado)
+  for (const [p, k] of [["openai", DS], ["deepseek", OAI], ["deepseek", OAI_LEGADO], ["deepseek", "sk-" + "B".repeat(32)], ["deepseek", DS + "0"],
+    ["openrouter", DS], ["deepseek", OR], ["deepseek", ANT], ["openai", OR], ["openrouter", "sk-or-curta"]] as const) {
     const r = validarChaveFormato(p, k);
     assert.equal(r.ok, false, `${p}`);
     if (!r.ok) assert.ok(!r.erro.includes("sk-"), "erro não ecoa");
