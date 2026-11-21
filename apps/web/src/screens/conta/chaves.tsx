@@ -1,14 +1,16 @@
-// #88 Conta → Chaves de IA (BYOK, ADR-0015). A pessoa usa o Chat conectado (assinatura), a própria chave de API, ou os dois.
+// #88 Chaves de API (BYOK, ADR-0015), dentro de Perfil → Sua IA (#133). A pessoa usa o Chat conectado (assinatura), a própria chave de API, ou os dois.
 // A chave só sai deste aparelho no POST/PUT: o campo é password, sem autocomplete, nunca vai para estado, URL, query,
 // localStorage ou IndexedDB, e é limpo do DOM logo depois de lido. Depois de salva, a tela só vê
 // provedor · apelido · ••••últimos4 · impressão · criada · último uso. Cadastrar, trocar, mudar e apagar pedem Face ID.
 import { useEffect, useRef, useState } from "preact/hooks";
+import * as C from "@ciclo/core";
 import { HttpError, api } from "../../lib/api/index.ts";
+import { recarregarContaIa } from "../../lib/sua-ia/estado.ts";
 import { Icon, Seg, toast } from "../../lib/ui/index.tsx";
 import { comFaceId, erroPasskey } from "../entrar/webauthn.ts";
 import { dia } from "./comum.tsx";
 
-type Provedor = "anthropic" | "openai" | "gemini";
+type Provedor = C.ProvedorIa;
 type Esforco = "baixo" | "medio" | "alto";
 interface ChaveIa {
   id: string; provedor: Provedor; nomeProvedor: string; apelido: string; mascara: string; impressao: string;
@@ -86,18 +88,22 @@ function Item({ k, busy, act, onMudou }: { k: ChaveIa; busy: string; act: (id: s
 
 /** Na demonstração (sem servidor): lista vazia fictícia, nada é enviado. */
 const DEMO: Lista = { chaves: [], max: 6, cofre: false, padraoServidor: { openai: false },
-  provedores: [{ id: "anthropic", nome: "Anthropic" }, { id: "openai", nome: "OpenAI" }, { id: "gemini", nome: "Google Gemini" }] };
+  provedores: C.PROVEDORES_IA.map((id) => ({ id, nome: C.NOME_PROVEDOR[id] })) };
 
-export function Chaves({ demo = false }: { demo?: boolean }) {
+export function Chaves({ demo = false, inicial }: { demo?: boolean; inicial?: Provedor }) {
   const [lista, setLista] = useState<Lista | null>(demo ? DEMO : null);
   const [erro, setErro] = useState("");
   const [busy, setBusy] = useState("");
-  const [prov, setProv] = useState<Provedor>("openai");
+  const [prov, setProv] = useState<Provedor>(inicial ?? "openai");
+  useEffect(() => { if (inicial) setProv(inicial); }, [inicial]);
+  // #133 nível grátis: 1 frase sobre o uso dos dados e "Entendi" antes de salvar
+  const [entendi, setEntendi] = useState<Partial<Record<Provedor, boolean>>>({});
+  const aviso = C.avisoChaveGratis(prov);
   const [apelido, setApelido] = useState("");
   const [tetoDia, setTetoDia] = useState("1");
   const [tetoMes, setTetoMes] = useState("10");
   const chaveRef = useRef<HTMLInputElement>(null);
-  const load = async () => setLista(await api<Lista>("GET", "/api/account/chaves"));
+  const load = async () => { setLista(await api<Lista>("GET", "/api/account/chaves")); void recarregarContaIa(); };
   useEffect(() => { if (!demo) load().catch(() => setErro("Não deu para carregar as chaves.")); }, []);
   const act = (id: string, f: () => Promise<void>) => {
     setErro(""); setBusy(id);
@@ -113,7 +119,8 @@ export function Chaves({ demo = false }: { demo?: boolean }) {
   // por que o botão está parado (dito ao lado dele, não só pela cor)
   const motivo = demo ? "Na demonstração não há servidor: crie sua conta para cadastrar uma chave."
     : lista && !lista.cofre ? "O cofre de chaves ainda não foi ligado neste servidor. Peça ao dono do app."
-    : cheia ? `Você já tem ${lista?.max} chaves: apague uma para cadastrar outra.` : "";
+    : cheia ? `Você já tem ${lista?.max} chaves: apague uma para cadastrar outra.`
+    : aviso && !entendi[prov] ? "Leia o aviso acima e toque em Entendi." : "";
 
   return <>
     <p class="small sub">Use o Chat conectado pela sua assinatura, a sua própria chave de API, ou os dois. A chave fica cifrada no servidor e só é usada pelo app, com o teto de gasto que você definir.</p>
@@ -130,7 +137,11 @@ export function Chaves({ demo = false }: { demo?: boolean }) {
     <form class="card conta-sec conta-form" aria-labelledby="chv-nova" onSubmit={(e) => { e.preventDefault(); salvar(); }} noValidate autocomplete="off">
       <h2 id="chv-nova">Cadastrar chave</h2>
       <span class="f">Provedor</span>
-      <Seg<Provedor> opts={(nomes.length ? nomes : [{ id: "openai", nome: "OpenAI" }]).map((p) => [p.id, p.nome] as [Provedor, string])} value={prov} label="Provedor" onPick={setProv} cls="chv-seg" />
+      <div class="chips" role="group" aria-label="Provedor">{(nomes.length ? nomes : DEMO.provedores).map((p) =>
+        <button type="button" key={p.id} class="chip tall" aria-pressed={prov === p.id} onClick={() => setProv(p.id)}>{p.nome}</button>)}</div>
+      {aviso && <div class="note warn" role="note"><Icon id="warn" /><span style="flex:1">{aviso}</span>
+        {entendi[prov] ? <span class="badge ok"><Icon id="check" />entendido</span>
+          : <button type="button" class="btn sm" onClick={() => setEntendi({ ...entendi, [prov]: true })}>Entendi</button>}</div>}
       <label class="f" for="chv-apelido">Apelido (opcional)</label>
       <input id="chv-apelido" class="input" value={apelido} maxLength={40} autocomplete="off" onInput={(e) => setApelido((e.currentTarget as HTMLInputElement).value)} />
       <CampoChave id="chv-chave" rotulo="Chave de API" refEl={chaveRef} />

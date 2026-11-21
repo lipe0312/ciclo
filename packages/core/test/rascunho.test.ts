@@ -77,7 +77,7 @@ test("montar o perfil do app: vazio + o que está salvo, sem DEFAULT_PROFILE por
 
 test("patch do passo: só os campos daquele passo e só o que foi respondido", () => {
   const p = perfilVazio();
-  assert.deepEqual(PASSOS_PP, ["objetivo", "musculos", "experiencia", "rotina", "onde", "dores", "corpo", "comovoce", "comida", "resumo"]);
+  assert.deepEqual(PASSOS_PP, ["objetivo", "musculos", "experiencia", "rotina", "onde", "dores", "corpo", "comovoce", "comida", "ia", "iaacesso", "resumo"]);
   const vazio: Record<string, unknown> = { musculos: { subPriorities: [] }, rotina: { daysUsual: [] } };
   for (const id of PASSOS_PP) assert.deepEqual(patchDoPasso(id, p), vazio[id] ?? {}, `${id}: nada respondido, nada enviado (listas vão como "nenhum")`);
   Object.assign(p.goal, goalDefaults("shape_v"));
@@ -99,6 +99,10 @@ test("patch do passo: só os campos daquele passo e só o que foi respondido", (
   assert.deepEqual(patchDoPasso("musculos", p), { subPriorities: ["ombro_lat", "dorsal"] });
   p.places = ["casa"];
   assert.deepEqual(patchDoPasso("onde", p), { places: ["casa"] });
+  // #133 as 2 telas de IA mandam o perfil de IA (pequeno, substitui inteiro)
+  (p as Record<string, unknown>).ia = { usa: [{ provedor: "gemini", acesso: ["gratis"] }], principal: "gemini" };
+  assert.deepEqual(patchDoPasso("ia", p), { ia: { usa: [{ provedor: "gemini", acesso: ["gratis"] }], principal: "gemini" } });
+  assert.deepEqual(patchDoPasso("iaacesso", p), patchDoPasso("ia", p));
   for (const id of PASSOS_PP) assert.equal(validateProfilePatch(patchDoPasso(id, p)).ok, true, id);
 });
 

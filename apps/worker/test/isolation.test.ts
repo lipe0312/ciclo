@@ -205,6 +205,8 @@ async function matriz(env: any, ana: string, bia: string) {
     ["GET /api/exercicios-personalizados", () => a("GET", "/api/exercicios-personalizados")],
     // #88 chaves de API: a A não lista, não troca, não muda e não apaga a da B (sem KEK aqui: cadastrar → 503)
     ["GET /api/account/chaves", () => a("GET", "/api/account/chaves")],
+    // #133 Sua IA: a A vê só a própria conexão e os próprios provedores (a resposta passa pela varredura dos segredos da B)
+    ["GET /api/account/ia", () => a("GET", "/api/account/ia")],
     ["POST /api/account/chaves", () => a("POST", "/api/account/chaves", { provedor: "openai", apelido: "x", chave: "sk-" + "y".repeat(30), tetoDia: 1, tetoMes: 1 }), 503],
     ["PUT /api/account/chaves/:id/segredo", () => a("PUT", `/api/account/chaves/${B.chave}/segredo`, { chave: "sk-" + "y".repeat(30) }), 404],
     ["PATCH /api/account/chaves/:id", () => a("PATCH", `/api/account/chaves/${B.chave}`, { ativo: false }), 404],

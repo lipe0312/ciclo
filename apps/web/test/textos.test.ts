@@ -1,13 +1,18 @@
-// #64 "Claude" vira "Chat" em toda a UI. Varre as strings do front (sem comentários) atrás da palavra "Claude".
-// Exceção: o passo a passo de conexão (Conta → Conectar meu Chat e a folha Como conectar), onde o nome é necessário para a pessoa achar o app certo.
+// #64/#133 Nenhuma marca de IA solta na UI. A marca só aparece no seletor de IA, no guia da IA, no cadastro da chave e
+// quando é a IA escolhida pela pessoa: esses nomes vêm do core (PROVEDORES_IA_APP, NOME_PROVEDOR), nunca escritos na tela.
+// Allowlist (arquivo → por quê). Varre as strings do front (sem comentários), o index.html e o manifest.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const WEB = join(import.meta.dirname, "..");
-// #66: + a folha "Como conectar o seu Claude" (o modal do passo a passo de conexão)
-const PERMITIDOS = new Set(["src/screens/conta/conectar.tsx", "src/screens/claude/conectar.tsx"]);
+const PERMITIDOS = new Map([
+  ["src/lib/sua-ia/escolha.tsx", "seletor de IA (exemplos de Outras)"],
+  ["src/screens/conta/chaves.tsx", "cadastro da chave (provedor da chave de reserva do dono)"],
+  ["src/screens/legal/index.tsx", "privacidade: quem recebe os dados"],
+]);
+export const MARCA = /\b(Claude|ChatGPT|Gemini|Anthropic|OpenAI|DeepSeek|OpenRouter|Grok|Kimi|Qwen|Mistral|Perplexity|Copilot)\b|claude\.ai|chatgpt\.com/;
 
 function arquivos(dir: string): string[] {
   return readdirSync(dir).flatMap((n) => {
@@ -24,19 +29,24 @@ test("remove comentários sem cortar URL", () => {
   assert.equal(semComentarios("a /* Claude */ b"), "a  b");
 });
 
-test("nenhum \"Claude\" na UI fora do passo a passo de conexão", () => {
+test("marca: o detector pega nome e domínio, mas não identificador de código (ClaudeCard, loadClaude, filledBy claude)", () => {
+  for (const t of ["Conectar meu Claude", "abra o ChatGPT", "chave do Gemini", "claude.ai/new", "use o DeepSeek"]) assert.match(t, MARCA, t);
+  for (const t of ["ClaudeCard()", "loadClaude()", "filledBy === \"claude\"", "useClaude", "porClaude"]) assert.doesNotMatch(t, MARCA, t);
+});
+
+test("nenhuma marca de IA solta na UI fora da allowlist (seletor, guia, cadastro da chave, privacidade)", () => {
   const achados: string[] = [];
   const todos = [...arquivos(join(WEB, "src")), join(WEB, "index.html"), join(WEB, "public", "manifest.webmanifest")];
   for (const f of todos) {
     const rel = relative(WEB, f).split("\\").join("/");
     if (PERMITIDOS.has(rel)) continue;
-    semComentarios(readFileSync(f, "utf8")).split("\n").forEach((l, i) => { if (/\bClaude\b/.test(l)) achados.push(`${rel}:${i + 1}: ${l.trim().slice(0, 120)}`); });
+    semComentarios(readFileSync(f, "utf8")).split("\n").forEach((l, i) => { if (MARCA.test(l)) achados.push(`${rel}:${i + 1}: ${l.trim().slice(0, 120)}`); });
   }
-  assert.deepEqual(achados, [], `troque por "Chat":\n${achados.join("\n")}`);
+  assert.deepEqual(achados, [], `use "Sua IA", "Chat" ou o nome vindo do core (PROVEDORES_IA_APP):\n${achados.join("\n")}`);
 });
 
-test("o passo a passo mantém o crédito discreto", () => {
-  assert.match(readFileSync(join(WEB, "src/screens/conta/conectar.tsx"), "utf8"), /Funciona com o Claude, da Anthropic/);
+test("a allowlist só tem arquivos que existem (não vira passe livre esquecido)", () => {
+  for (const f of PERMITIDOS.keys()) assert.ok(statSync(join(WEB, f)).isFile(), f);
 });
 
 // #63 O onboarding/questionário se chama "Perfil de treino" em toda a interface (a rota #primeiros-passos continua igual).

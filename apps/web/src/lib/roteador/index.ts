@@ -2,8 +2,13 @@
 import { useEffect, useState } from "preact/hooks";
 
 export interface Route { screen: string; parts: string[]; query: Record<string, string> }
+/** #133 Rotas antigas que viraram outra tela: Conectar Chat e Chaves de IA → Perfil → Sua IA. */
+const ANTIGAS: Record<string, string> = { "#conta/chat": "#perfil/ia", "#conta/chaves": "#perfil/ia", "#conta/ia": "#perfil/ia" };
+export const canonico = (hash: string) => ANTIGAS[hash.split("?")[0].replace(/\/+$/, "")] ?? hash;
+/** Troca a rota antiga na URL antes de pintar (sem entrada nova no histórico). */
+const corrigirUrl = () => { const c = canonico(location.hash); if (c !== location.hash) history.replaceState(null, "", location.pathname + location.search + c); };
 export function parse(hash = location.hash): Route {
-  const raw = hash.replace(/^#/, "");
+  const raw = canonico(hash).replace(/^#/, "");
   const [path, qs = ""] = raw.split("?");
   const [screen = "", ...parts] = path.split("/").filter(Boolean).map((p) => { try { return decodeURIComponent(p); } catch { return p; } });
   return { screen: screen || "hoje", parts, query: Object.fromEntries(new URLSearchParams(qs)) };
@@ -17,9 +22,9 @@ export function go(h: string) { location.hash = h; }
 export function replace(h: string) { history.replaceState(null, "", location.pathname + location.search + h); dispatchEvent(new Event("rota")); }
 
 export function useRoute(): Route {
-  const [r, set] = useState(parse());
+  const [r, set] = useState(() => { corrigirUrl(); return parse(); });
   useEffect(() => {
-    const f = () => set(parse());
+    const f = () => { corrigirUrl(); set(parse()); };
     addEventListener("hashchange", f); addEventListener("rota", f);
     return () => { removeEventListener("hashchange", f); removeEventListener("rota", f); };
   }, []);

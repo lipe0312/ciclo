@@ -113,7 +113,7 @@ export function CaixaClaude({ limit = 6 }: { limit?: number }) {
   const tier = (S.ui.tierOverride ?? cls?.tier ?? S.profile.tiers[S.ui.promptCat]) as Tier;
   const setDraft = (v: string) => { S.ui.inboxDraft = v; commit(); };
   const info = useClaude();
-  return <Card><div class="row between wrapx"><h2>Pedir ao Chat</h2><span class="badge">connector · sua assinatura</span></div>
+  return <Card><div class="row between wrapx"><h2>Pedidos da rotina</h2><span class="badge">sua IA responde depois</span></div>
     <p class="small sub" style="margin:4px 0 10px">Toque num pedido pronto ou escreva/fale. A resposta volta aqui com a mudança para aplicar.</p>
     <div class="tabs">{CATS.map((c) => <Chip key={c} on={S.ui.promptCat === c} onClick={() => { S.ui.promptCat = c; commit(); }}>{c}</Chip>)}</div>
     <div class="chips" style="margin-top:8px">{ps.map((p) => <button type="button" key={p.id} class="chip" onClick={() => sendInbox(p.text, p.id)}>{p.label} <span class={`tier ${p.tier}`}>{C.TIER_INFO[p.tier].nm}</span></button>)}</div>

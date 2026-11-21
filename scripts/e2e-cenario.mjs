@@ -153,7 +153,18 @@ async function primeiroAcesso(c) {
   }, c);
   await passo("5. Comida: responde", async () => {
     if (!(await marcados(c)).some((t) => t.includes("Leve"))) await c.clicar("Leve", ".pp-body");
-    await c.clicar("Continuar"); igual(await passoAtual(c), 9, "passo (Resumo)");
+    await c.clicar("Continuar"); igual(await passoAtual(c), 9, "passo (Qual IA você usa?)");
+  }, c);
+  // #133 as 2 telas de IA antes do Resumo: escolhe uma IA, diz como usa e segue
+  await passo("5b. Sua IA: nada pré-marcado; escolhe Gemini e segue", async () => {
+    igual(await marcados(c), [], "IA pré-marcada");
+    await c.clicar("Gemini", ".pp-body"); ok((await marcados(c)).some((t) => t.includes("Gemini")), "Gemini não ficou marcado");
+    await c.clicar("Continuar"); igual(await passoAtual(c), 10, "passo (Como você usa?)");
+  }, c);
+  await passo("5b. Como você usa: Gratuita mostra o caminho e segue para o Resumo", async () => {
+    await c.clicar("Gratuita", ".pp-body");
+    ok(await c.esperar("(document.querySelector('.pp-body')?.textContent ?? '').includes('Seu caminho')"), "sem o resumo do caminho");
+    await c.clicar("Continuar"); igual(await passoAtual(c), 11, "passo (Resumo)");
   }, c);
   await passo("7. Resumo: mostra 'Seu plano em uma frase' e a prévia do primeiro treino", async () => {
     await c.esperar("document.querySelector('#app')?.textContent.includes('Seu plano em uma frase')");

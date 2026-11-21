@@ -62,7 +62,7 @@ export function Autorizar({ req }: { req: string }) {
       </div>
       <ul class="aut-lista">{podeDe(info).map((t) => <li key={t}>{t}</li>)}</ul>
       {!(info.escopos ?? ["escrever"]).includes("escrever") && <p class="tiny sub aut-p">Só leitura: esta conexão não vai registrar nem mudar nada.</p>}
-      <p class="tiny sub aut-p">Nada é apagado pela conexão: apagar dados é só no app. Você desliga quando quiser em Conta → Conectar meu Chat.</p>
+      <p class="tiny sub aut-p">Nada é apagado pela conexão: apagar dados é só no app. Você desliga quando quiser em Perfil → Sua IA.</p>
       {info.conta && <p class="small aut-p">Conta: <b>{info.conta.nome ?? "sua conta"}</b></p>}
       {!temPasskey() && <p class="small aut-erro" role="alert">Este navegador não tem passkey. Use o Safari do iPhone ou um navegador atualizado.</p>}
       <button type="button" class="btn pri lg full aut-btn" disabled={busy} onClick={() => decidir(true)}>Permitir com Face ID</button>

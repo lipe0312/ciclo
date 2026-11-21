@@ -77,10 +77,33 @@ test("LGPD: toda tabela com user_id (lida do schema) é apagada com a conta; exp
   assert.ok(!JSON.stringify(exp).includes(tok), "export nunca traz o token");
 });
 
+/** #133 INSERTs de uma migration que contam como seed. Só o padrão "refazer tabela" copia (não é seed):
+ *  INSERT INTO X_<n> (…) SELECT … FROM X, sem VALUES, e no mesmo arquivo DROP TABLE X + ALTER TABLE X_<n> RENAME TO X. */
+function insertsDeSeed(sql: string): string[] {
+  const limpo = sql.replace(/--[^\n]*/g, "");
+  const refazer = (i: string) => {
+    const m = /^INSERT INTO\s+(\w+)_(\d+)\s*\([^)]*\)\s*SELECT\b[^;]*?\bFROM\s+(\w+)\s*$/i.exec(i.trim());
+    if (!m || m[1] !== m[3] || /\bVALUES\b/i.test(i)) return false;
+    return new RegExp(`DROP TABLE\\s+${m[1]}\\s*;`, "i").test(limpo) && new RegExp(`ALTER TABLE\\s+${m[1]}_${m[2]}\\s+RENAME TO\\s+${m[1]}\\s*;`, "i").test(limpo);
+  };
+  return (limpo.match(/INSERT INTO\s+\w+[^;]*/gi) ?? []).filter((i) => !refazer(i));
+}
+
+test("#133 refazer tabela: só INSERT INTO X_n (…) SELECT … FROM X com DROP e RENAME no mesmo arquivo passa; o resto é seed", () => {
+  const ok = "CREATE TABLE t_9 (a);\nINSERT INTO t_9 (a) SELECT a FROM t;\nDROP TABLE t;\nALTER TABLE t_9 RENAME TO t;";
+  assert.deepEqual(insertsDeSeed(ok), []);
+  assert.equal(insertsDeSeed("INSERT INTO t_9 (a) SELECT a FROM t;").length, 1, "sem DROP/RENAME");
+  assert.equal(insertsDeSeed("INSERT INTO user (id) SELECT 'x' FROM t;").length, 1, "destino não é cópia");
+  assert.equal(insertsDeSeed(ok.replace("FROM t;", "FROM outra;")).length, 1, "copia de outra tabela");
+  assert.equal(insertsDeSeed(ok.replace("RENAME TO t;", "RENAME TO u;")).length, 1, "renomeia para outro nome");
+  assert.equal(insertsDeSeed("INSERT INTO t (a) VALUES ('x');").length, 1, "VALUES é seed");
+  assert.deepEqual(insertsDeSeed(readMigrations().find((m) => m.name.startsWith("0024_133"))!.sql), []);
+});
+
 test("nada de dado real versionado: migrations não semeiam pessoas nem e-mails", () => {
   for (const { name, sql } of readMigrations()) {
-    const ins = sql.replace(/--[^\n]*/g, "").match(/INSERT INTO\s+(\w+)/gi) ?? [];
-    for (const i of ins) assert.match(i, /geocode_gate|busca/i, `${name}: seed inesperado (${i})`);
+    const ins = insertsDeSeed(sql);
+    for (const i of ins) assert.match(i.slice(0, 40), /geocode_gate|busca/i, `${name}: seed inesperado (${i.slice(0, 40)})`);
     assert.ok(!/@[a-z0-9-]+\.(com|br|net|org)/i.test(sql), `${name}: e-mail no SQL`);
   }
 });

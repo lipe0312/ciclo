@@ -19,6 +19,7 @@ import { lsGet, lsSet, setPath } from "../../lib/util.ts";
 import { garantirSemana } from "../semana/estado.ts";
 import { AvisoSemAcademia } from "../semana/aviso-sem-academia.tsx";
 import { classePulso, pararPulso } from "../../lib/pulso/index.ts";
+import { TelaIa, TelaIaAcesso } from "./ia.tsx";
 
 const KEY = "ciclo:pp";
 /** `semDor`: tocou em "Nenhuma dor" (sem isso, nada aparece marcado nesse passo). */
@@ -233,6 +234,10 @@ export const PASSOS: Passo[] = [
   { id: "corpo", title: "Seus dados básicos", sub: "Calibra o ritmo de ganho e as metas.", Tela: Corpo },
   { id: "comovoce", title: "Como você se vê hoje?", sub: "Ajuda a ajustar o ritmo e o alerta de cintura.", Tela: ComoVoce },
   { id: "comida", title: "E a comida, como quer registrar?", sub: "Dá para mudar quando quiser.", Tela: Comida },
+  // #133 Sua IA: as 2 telas no fim
+  { id: "ia", title: "Qual IA você usa?", sub: "Pode marcar mais de uma. Sem IA, o app funciona com o algoritmo.", Tela: () => <TelaIa onMudou={() => mudou("ia")} /> },
+  { id: "iaacesso", title: "Como você usa?", sub: "Para cada IA, pode marcar mais de um jeito.", Tela: () => <TelaIaAcesso onMudou={() => mudou("iaacesso")}
+    onDepois={() => { void salvarPasso("iaacesso"); go(href("primeiros-passos", [String(C.PASSOS_PP.indexOf("resumo"))])); }} /> },
   { id: "resumo", title: "Tudo pronto", sub: "Confira e gere a sua semana.", Tela: Resumo },
 ];
 const LAST = PASSOS.length - 1;
