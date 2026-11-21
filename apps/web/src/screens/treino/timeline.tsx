@@ -1,20 +1,20 @@
 // Modo treino: timeline em tela cheia. O exercício atual em destaque (imagem grande, séries, carga, médias), os próximos em
 // miniatura, descanso e "Concluir série" no rodapé (alcance do polegar). Sair (X) não encerra: a mini-barra leva de volta.
+import type { ItemSessao } from "@ciclo/core/sessao-dia";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { C, S, commit } from "../../lib/store/index.ts";
 import { EXB, mName, suggestFor } from "../../lib/store/regras.ts";
 import { Icon, Seg } from "../../lib/ui/index.tsx";
 import { fmt, img } from "../../lib/util.ts";
 import { ExImgs } from "./biblioteca.tsx";
+import { Relogio, useTick } from "./relogio.tsx";
 import { openEdit, openComoFazer, openFinish, openSkip, openSwap } from "./folhas.tsx";
 import { MediaBox } from "./midia.tsx";
 import { InfoPersonalizado, SeloPersonalizado } from "./personalizado.tsx";
 import { REASON_TXT, addSet, adjustRest, currentSets, curIdx, doneSets, dropSet, editedSet, ensureLogs, goEx, modoDe, nextSetOf, onTick, pastAll, pastOf, progress, refsOf, restFor, running, setCur, setModo, skipRest, toggleSet } from "./sessao.ts";
 
-export function useTick() { const [, set] = useState(0); useEffect(() => onTick(() => set((x) => x + 1)), []); }
 const kgReps = (kg: number, reps: number) => `${fmt(kg, kg % 1 ? 1 : 0)} kg × ${fmt(reps, reps % 1 ? 1 : 0)}`;
 
-export function Relogio() { useTick(); return <span class="clock num" role="timer" aria-label="Tempo de treino">{C.fmtClock(Date.now() - S.session.startedAt)}</span>; }
 
 /** Contagem do descanso: grande, +15/−15 e pular. */
 function Descanso() {
@@ -83,30 +83,30 @@ export function SetRows({ idx, it }: { idx: number; it: C.PlanItem }) {
       {logs.length > 1 && !logs[logs.length - 1].done && <button type="button" class="btn ghost" onClick={() => dropSet(idx)}>− série</button>}</div></div>;
 }
 
-function Atual({ it, idx }: { it: C.PlanItem; idx: number }) {
+function Atual({ it, idx }: { it: ItemSessao; idx: number }) {
   const cat = C.CATALOG_BY_ID[it.exerciseId], sg = suggestFor(it), skipped: string | undefined = S.session.skipped[it.exerciseId], ex = EXB[it.exerciseId];
   const ref = useRef<HTMLElement>(null);
   useEffect(() => { ref.current?.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }, [idx]);
   return <article class={`tl-cur ${skipped ? "skipped" : ""}`} ref={ref} aria-current="step" aria-label={`Exercício atual: ${it.nm}`}>
     {cat ? <ExImgs it={cat} size="big" /> : <div class="exim big vazio"><Icon id="edit" /></div>}
     <div class="row between start" style="margin-top:10px"><h2 style="font-size:20px">{it.nm}</h2>
-      <div class="row" style="gap:4px">{ex?.stretch && <span class="badge">alongado</span>}{it.manual && <span class="badge warn">seu · em revisão</span>}{it.personalizado && <SeloPersonalizado />}</div></div>
+      <div class="row" style="gap:4px">{it.trocado && <span class="badge">trocado</span>}{ex?.stretch && <span class="badge">alongado</span>}{it.manual && <span class="badge warn">seu · em revisão</span>}{it.personalizado && <SeloPersonalizado />}</div></div>
     <p class="meta num"><b style="color:var(--txt)">{alvoTxt(it)}</b> · {mName(it.muscle)} · descanso {restFor(S.session.plan, idx)}s{sg.kg && modoDe(it.exerciseId) !== "tempo" ? <> · sugestão <b style="color:var(--txt)">{fmt(sg.kg, 1)} kg × {sg.reps}</b></> : null}</p>
     {sg.note && modoDe(it.exerciseId) !== "tempo" && <p class="tiny sub" style="margin-top:2px">{sg.note}</p>}
     {it.personalizado && <InfoPersonalizado id={it.exerciseId} />}
     {skipped ? <p class="small" style="margin-top:8px;color:var(--warn)">Não feito · {REASON_TXT[skipped] ?? skipped} <button type="button" class="btn sm ghost" onClick={() => { delete S.session.skipped[it.exerciseId]; commit(); }}>desfazer</button></p>
       : <><Refs exId={it.exerciseId} /><SetRows idx={idx} it={it} /></>}
-    <div class="acts">{!it.personalizado && <button type="button" class="btn" onClick={() => openComoFazer(it.exerciseId)}><Icon id="info" />Ver como fazer</button>}
+    {!it.trocado && <div class="acts">{!it.personalizado && <button type="button" class="btn" onClick={() => openComoFazer(it.exerciseId)}><Icon id="info" />Ver como fazer</button>}
       {it.alts.length > 0 && <button type="button" class="btn" onClick={() => openSwap(idx)}><Icon id="swap" />Trocar</button>}
       <button type="button" class="btn" onClick={() => openEdit(idx)}><Icon id="edit" />Editar</button>
-      {!skipped && <button type="button" class="btn" onClick={() => openSkip(idx)}><Icon id="skip" />Não fiz</button>}</div>
+      {!skipped && <button type="button" class="btn" onClick={() => openSkip(idx)}><Icon id="skip" />Não fiz</button>}</div>}
     <MediaBox exId={it.exerciseId} />
   </article>;
 }
 
-function Mini({ it, idx, cur }: { it: C.PlanItem; idx: number; cur: number }) {
+function Mini({ it, idx, cur }: { it: ItemSessao; idx: number; cur: number }) {
   const logs = S.session.logs[it.exerciseId] ?? [], d = logs.filter((l: { done: boolean }) => l.done).length, n = Math.max(it.sets, logs.length), skipped = S.session.skipped[it.exerciseId];
-  const state = skipped ? "não fiz" : d >= n && n > 0 ? "feito" : d > 0 ? `${d}/${n}` : alvoTxt({ ...it, sets: n });
+  const state = it.trocado ? "trocado" : skipped ? "não fiz" : d >= n && n > 0 ? "feito" : d > 0 ? `${d}/${n}` : alvoTxt({ ...it, sets: n });
   return <button type="button" class={`tl-mini ${skipped ? "skipped" : ""} ${d >= n && n > 0 ? "feito" : ""}`} onClick={() => goEx(idx)} aria-label={`${it.nm}, ${state}. Abrir`}>
     <img class="thumb" src={img(it.exerciseId)} alt="" loading="lazy" width={56} height={56} />
     <span class="tl-mini-t"><b>{it.nm}</b><span class="tiny sub num">{mName(it.muscle)} · {state}</span></span>
@@ -136,7 +136,7 @@ export function Timeline({ idx }: { idx: number | null }) {
   const cur = idx != null && S.session ? Math.min(Math.max(idx, 0), S.session.plan.items.length - 1) : curIdx();
   useEffect(() => { if (running()) setCur(cur); }, [cur]);
   if (!running()) return <div class="card" style="margin-top:12px"><h1>Treino encerrado</h1><p class="small sub" style="margin:6px 0 12px">Não há treino em andamento.</p><a class="btn pri" href="#treino">Ver o treino de hoje</a></div>;
-  const s = S.session, items: C.PlanItem[] = s.plan.items, p = progress();
+  const s = S.session, items: ItemSessao[] = s.plan.items, p = progress();
   const vs = C.sessionVolumeVsAvg(currentSets(), pastAll());
   const vol = Object.values(currentSets()).flat().reduce((a, x) => a + x.kg * x.reps, 0);
   const pct = p.setsTotal ? Math.round((p.setsDone / p.setsTotal) * 100) : 0;
@@ -148,6 +148,8 @@ export function Timeline({ idx }: { idx: number | null }) {
         {vol > 0 && <span class="tiny sub num">volume {fmt(vol)} kg{vs.pct != null && <> ({vs.pct >= 0 ? "+" : ""}{vs.pct}% vs média)</>}</span>}</div>
       <button type="button" class="btn" onClick={openFinish}>Terminar</button></header>
     <div class="modo-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Séries concluídas"><i style={`width:${pct}%`} /></div>
+    {S.ui.avisoSessao && <div class="note warn tl-aviso" role="status"><Icon id="info" /><span>{S.ui.avisoSessao}</span>
+      <button type="button" class="btn sm ghost" onClick={() => { S.ui.avisoSessao = null; commit(); }}>Ok</button></div>}
     <div class="modo-list">{items.map((it, i) => i === cur ? <Atual key={it.exerciseId + i} it={it} idx={i} /> : <Mini key={it.exerciseId + i} it={it} idx={i} cur={cur} />)}</div>
     <Rodape cur={cur} />
   </div>;

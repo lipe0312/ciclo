@@ -52,3 +52,4 @@ export * from "./treino-do-dia.ts";
 export * from "./outro-aparelho.ts";
 export * from "./semana-variacao.ts";
 export * from "./historico.ts";
+export * from "./chaves.ts";

@@ -17,6 +17,10 @@ MCP_TOKEN=troque-por-um-token-de-64-caracteres-hex-gerado-com-openssl-rand
 # #80 porções faladas (opcional): sem nada, só Workers AI (binding AI) e a regra. O Haiku liga só com a chave E o teto mensal.
 # ANTHROPIC_API_KEY=
 # ANTHROPIC_MAX_USD=1
+# #88 cofre de chaves de API (opcional local; sem ela "Chaves de IA" fica desligado). 32 bytes aleatórios em base64:
+#   node -e "console.log(crypto.getRandomValues(Buffer.alloc(32)).toString('base64'))"
+# KEK_V1=
 # Produção: só por `npx wrangler secret put <NOME> --cwd apps/worker` (nunca em vars nem no git).
 # DEV_NO_AUTH e MCP_TOKEN NUNCA vão para produção (o token do Claude de produção é criado no app, em Conta).
+# KEK_V1=…   (#88: chave-mestra do cofre de chaves; gere como acima, guarde no gerenciador de senhas; nunca no git)
 # OWNER_SETUP_CODE=…   (#54: 1ª conta/owner) e OWNER_EMAIL=…   (#62: e-mail do dono; nunca no git)

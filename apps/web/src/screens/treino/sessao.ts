@@ -1,7 +1,8 @@
 // Sessão de treino: começar, séries (concluir, editar, desfazer), descanso (vibra/apita/notifica e agenda o push),
 // posição na timeline, médias, wake lock e fechamento automático (2 h). O estado vive em S.session e é salvo a cada commit().
-import { C, S, commit, today } from "../../lib/store/index.ts";
+import { C, S, commit, restoreSession, today } from "../../lib/store/index.ts";
 import { computePlan, suggestFor } from "../../lib/store/regras.ts";
+import type { PlanoSessao } from "@ciclo/core/sessao-dia";
 import { SERVER, api, send } from "../../lib/api/index.ts";
 import { syncPush } from "../../lib/notificacao/index.ts";
 import { toast } from "../../lib/ui/index.tsx";
@@ -37,18 +38,32 @@ export const running = () => !!(S.session && !S.session.finishedAt);
 type Log = { kg: string | number; reps: string | number; done: boolean; modo?: C.ModoSerie; seg?: string };
 
 // ---------- começar ----------
+// #122 Começar = cópia do treino do dia (com a assinatura de onde veio). Já há sessão aberta (aqui ou em outro aparelho)?
+// Retoma a mesma. Uma 2ª sessão no dia só nasce depois de terminar a 1ª ("Treinar de novo").
 export async function startSession() {
-  if (S.session && !S.session.finishedAt) return;
-  const plan = clone(computePlan());
+  unlockAudio(); // ainda no toque (iOS só libera o som no gesto)
+  if (running()) return retomar(S.session.id);
+  // regra no core, baixada em segundo plano no loadServer (sem sinal e sem cache: começa uma nova, como antes)
+  const m = await import("@ciclo/core/sessao-dia").catch(() => null);
+  const a = m?.acaoComecar({ local: S.session?.date === today ? S.session : null, sessoes: S.week.sessions, date: today, now: Date.now() }) ?? { tipo: "nova" };
+  if (a.tipo === "retomar") return retomar(a.id);
+  const plan: PlanoSessao = clone(computePlan()); plan.doDia = S.ui.treinoVisto ?? undefined; // de onde veio (sem: seguir.ts usa o próprio plano)
   S.session = { id: uid(), date: today, startedAt: Date.now(), finishedAt: null, plan, logs: {}, skipped: {}, rest: null, gymId: S.ui.gymId, format: S.ui.format, cur: 0 };
+  S.ui.avisoSessao = null;
   S.week.attendance[today] = "fui";
-  if (!S.week.sessions.some((s: any) => s.date === today)) S.week.sessions.push({ date: today, name: plan.name, groups: plan.groups });
+  S.week.sessions.push({ id: S.session.id, date: today, name: plan.name, groups: plan.groups, started_at: S.session.startedAt });
   unlockAudio(); keepAwake();
   void syncPush(); // se o aviso já foi permitido, garante a assinatura; o pedido de permissão é um botão na própria tela (gesto do usuário)
   toast("Começou · o dia já conta como “fui”");
   replace(href("treino", ["ativo", "0"])); commit();
   void loadRefs();
-  await send("POST", "/api/sessions", { id: S.session.id, date: today, gymId: S.ui.gymId, plan, startedAt: S.session.startedAt }).catch(() => {});
+  const r = await send("POST", "/api/sessions", { id: S.session.id, date: today, gymId: S.ui.gymId, plan, startedAt: S.session.startedAt }).catch(() => null);
+  if (r?.retomada) { S.session = null; await retomar(r.id); } // outro aparelho começou antes: segue a aberta
+}
+async function retomar(id: string) {
+  if (S.session?.id !== id) await restoreSession(id);
+  if (!running()) return toast("Sem internet");
+  replace(href("treino", ["ativo", String(curIdx())])); commit(); void loadRefs();
 }
 
 // ---------- médias e referências ----------

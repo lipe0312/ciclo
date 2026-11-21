@@ -5,8 +5,8 @@
 // `fetch` direto, sem SDK). Toda saída de IA passa pelo validador do core (hydrate + validateItems via saveCompact);
 // fora das regras, é descartada e o pedido segue para o Claude. Todo SQL com bind e por user_id; nada de dado em log.
 import {
-  OPENAI_COTA_DIA, OPENAI_MAX_SAIDA, configOpenai, custoUsd, escolherCerebro, estimarTokens, estimativaPiorUsd, intencaoRegra, lerSaidaOpenai,
-  mensagensOpenai, mesUtc, parsePlanoSalvo, planDay, respostaTreinoHoje,
+  OPENAI_COTA_DIA, OPENAI_MAX_SAIDA, ORCAMENTO_RACIOCINIO, configOpenai, custoIaUsd, custoUsd, escolherCerebro, estimarTokens, estimativaPiorUsd, fonteOpenai,
+  intencaoRegra, lerSaidaOpenai, mensagensOpenai, mesUtc, parametrosModelo, parsePlanoSalvo, planDay, respostaTreinoHoje,
 } from "@ciclo/core";
 import type { Action, ProvedorId } from "@ciclo/core";
 import type { Env } from "./env.ts";
@@ -16,6 +16,7 @@ import { sha256Hex } from "./auth.ts";
 import { contarJanela } from "./limites.ts";
 import { saveCompact } from "./mcp.ts";
 import { lerTreinoDoDia } from "./semana.ts";
+import { chamarProvedor, comChaveDoUsuario, temChaveAtiva } from "./chaves.ts";
 
 export interface PedidoCaixa { id: string; texto: string; acao: Action; hoje: string }
 export interface RespostaCerebro { response: string; change: unknown; cerebro: ProvedorId }
@@ -60,9 +61,11 @@ export const openaiApi: Cerebro = {
   id: "openai-api",
   async responder(env, uid, p) {
     const cfg = configOpenai(env);
-    if (!cfg.ligado) return null;
-    // cota diária por conta (além do teto mensal): a chave do contador é o hash do id, nunca o id
-    if (await contarJanela(env, `cerebro:${(await sha256Hex("cerebro:" + uid)).slice(0, 32)}`, { max: OPENAI_COTA_DIA, windowMs: 86_400_000 })) return null;
+    // #88: a chave da própria pessoa vence; a do dono (OPENAI_API_KEY) é só o padrão opcional do servidor
+    const fonte = fonteOpenai({ chaveUsuario: await temChaveAtiva(env, uid, "openai"), servidor: cfg });
+    if (!fonte) return null;
+    // cota diária por conta da chave do dono (além do teto mensal): a chave do contador é o hash do id, nunca o id
+    if (fonte === "servidor" && await contarJanela(env, `cerebro:${(await sha256Hex("cerebro:" + uid)).slice(0, 32)}`, { max: OPENAI_COTA_DIA, windowMs: 86_400_000 })) return null;
     // contexto: a fatia do pedido (a mesma do conector) + o treino base calculado pela regra, com IDs e alternativas
     const daysLeft = await diasRestantes(env, uid, p.hoje);
     const bi = await buildDayInput(env, uid, { date: p.hoje, daysLeft });
@@ -71,31 +74,47 @@ export const openaiApi: Cerebro = {
     const fatia = await ciclo_contexto({ pedido: PEDIDO_DA_ACAO[p.acao] ?? "gerar", date: p.hoje }, env, uid, p.hoje);
     const contexto = { fatia, base: base.items.map((i) => ({ id: i.exerciseId, nm: i.nm, sets: i.sets, reps: i.reps, alts: i.alts })) };
     const messages = mensagensOpenai({ texto: p.texto, acao: p.acao }, contexto);
-    // reserva o pior caso ANTES de chamar, no próprio UPDATE (atômico: duas chamadas juntas não furam o teto)
-    const mes = mesUtc(Date.now());
-    const est = Math.ceil(estimativaPiorUsd(cfg.modelo, estimarTokens(JSON.stringify(messages)), OPENAI_MAX_SAIDA) * 1e6);
-    const teto = Math.floor(cfg.maxUsd * 1e6);
-    const [, reserva] = await env.DB.batch([
-      env.DB.prepare("INSERT INTO cerebro_gasto (mes, usd_micro, chamadas) VALUES (?1, 0, 0) ON CONFLICT(mes) DO NOTHING").bind(mes),
-      env.DB.prepare("UPDATE cerebro_gasto SET usd_micro = usd_micro + ?2, chamadas = chamadas + 1 WHERE mes = ?1 AND usd_micro + ?2 <= ?3 RETURNING usd_micro").bind(mes, est, teto),
-    ]);
-    if (!reserva.results?.length) return null; // teto do mês: o pedido segue para o Claude
     let content: unknown = null;
-    try {
-      const r = await fetch(OPENAI_URL, {
-        method: "POST", signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
-        headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: cfg.modelo, messages, response_format: { type: "json_object" }, max_completion_tokens: OPENAI_MAX_SAIDA, temperature: 0.3 }),
+    if (fonte === "usuario") {
+      // #88: teto e rate limit da chave da pessoa; a chave só existe dentro deste callback (vai só no Authorization)
+      const tokensIn = estimarTokens(JSON.stringify(messages));
+      const r = await comChaveDoUsuario(env, uid, "openai", (modelo) => custoIaUsd("openai", modelo, tokensIn, OPENAI_MAX_SAIDA + ORCAMENTO_RACIOCINIO.alto), async (k) => {
+        const corpo = { ...parametrosModelo("openai", k.modelo, k.esforco, OPENAI_MAX_SAIDA), messages, response_format: { type: "json_object" } };
+        const res = await chamarProvedor(OPENAI_URL, { method: "POST", headers: { Authorization: `Bearer ${k.chave}`, "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+        if (!res.ok) return null;
+        const j = res.json as { choices?: { message?: { content?: unknown } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } } | null;
+        const u = j?.usage;
+        return { valor: j?.choices?.[0]?.message?.content ?? null, usdReal: u ? custoIaUsd("openai", k.modelo, u.prompt_tokens ?? 0, u.completion_tokens ?? 0) : null, tokensIn: u?.prompt_tokens, tokensOut: u?.completion_tokens };
       });
-      const j = (await r.json().catch(() => null)) as { choices?: { message?: { content?: unknown } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } } | null;
-      // acerta a reserva pelo uso real; sem `usage` (ou com erro/timeout) fica cobrada a estimativa de pior caso
-      if (j?.usage) {
-        const real = Math.ceil(custoUsd(cfg.modelo, j.usage) * 1e6);
-        await env.DB.prepare("UPDATE cerebro_gasto SET usd_micro = MAX(0, usd_micro - ?2 + ?3) WHERE mes = ?1").bind(mes, est, real).run();
-      }
-      if (!r.ok) return null;
-      content = j?.choices?.[0]?.message?.content ?? null;
-    } catch { return null; } // rede, tempo esgotado: a estimativa fica cobrada e o pedido segue para o Claude
+      if (!r.ok) return null; // sem cota, sem teto ou erro do provedor: o pedido segue para o Claude
+      content = r.valor;
+    } else {
+      if (!cfg.ligado) return null;
+      // reserva o pior caso ANTES de chamar, no próprio UPDATE (atômico: duas chamadas juntas não furam o teto)
+      const mes = mesUtc(Date.now());
+      const est = Math.ceil(estimativaPiorUsd(cfg.modelo, estimarTokens(JSON.stringify(messages)), OPENAI_MAX_SAIDA) * 1e6);
+      const teto = Math.floor(cfg.maxUsd * 1e6);
+      const [, reserva] = await env.DB.batch([
+        env.DB.prepare("INSERT INTO cerebro_gasto (mes, usd_micro, chamadas) VALUES (?1, 0, 0) ON CONFLICT(mes) DO NOTHING").bind(mes),
+        env.DB.prepare("UPDATE cerebro_gasto SET usd_micro = usd_micro + ?2, chamadas = chamadas + 1 WHERE mes = ?1 AND usd_micro + ?2 <= ?3 RETURNING usd_micro").bind(mes, est, teto),
+      ]);
+      if (!reserva.results?.length) return null; // teto do mês: o pedido segue para o Claude
+      try {
+        const r = await fetch(OPENAI_URL, {
+          method: "POST", signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
+          headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: cfg.modelo, messages, response_format: { type: "json_object" }, max_completion_tokens: OPENAI_MAX_SAIDA, temperature: 0.3 }),
+        });
+        const j = (await r.json().catch(() => null)) as { choices?: { message?: { content?: unknown } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } } | null;
+        // acerta a reserva pelo uso real; sem `usage` (ou com erro/timeout) fica cobrada a estimativa de pior caso
+        if (j?.usage) {
+          const real = Math.ceil(custoUsd(cfg.modelo, j.usage) * 1e6);
+          await env.DB.prepare("UPDATE cerebro_gasto SET usd_micro = MAX(0, usd_micro - ?2 + ?3) WHERE mes = ?1").bind(mes, est, real).run();
+        }
+        if (!r.ok) return null;
+        content = j?.choices?.[0]?.message?.content ?? null;
+      } catch { return null; } // rede, tempo esgotado: a estimativa fica cobrada e o pedido segue para o Claude
+    }
     const saida = lerSaidaOpenai(content);
     if (!saida.ok) return null;
     const change = await saveCompact(env, uid, { itens: saida.value.itens, motivo: saida.value.resposta, date: p.hoje, daysLeft }) as { salvo?: boolean };
@@ -108,7 +127,8 @@ const POR_ID: Record<ProvedorId, Cerebro> = { regra, "claude-assinatura": claude
 
 /** Tenta os provedores na ordem do core. null = ficou na fila para o Claude (rotina/conector). */
 export async function responderNaCaixa(env: Env, uid: string, p: PedidoCaixa): Promise<RespostaCerebro | null> {
-  for (const id of escolherCerebro({ acao: p.acao, texto: p.texto, openai: configOpenai(env) })) {
+  const openai = { ligado: configOpenai(env).ligado || await temChaveAtiva(env, uid, "openai") }; // #88: chave própria liga para a conta
+  for (const id of escolherCerebro({ acao: p.acao, texto: p.texto, openai })) {
     const r = await POR_ID[id].responder(env, uid, p).catch(() => null);
     if (r) {
       await env.DB.prepare("UPDATE inbox SET status = 'respondido', response = ?3, change = ?4, answered_at = ?5, cerebro = ?6 WHERE id = ?1 AND user_id = ?2 AND status = 'pendente'")

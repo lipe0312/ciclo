@@ -1,6 +1,6 @@
 // "Gerar outro treino" (#44): folha com até 4 perguntas de toque, todas opcionais. O core refaz o dia pelo orçamento da
 // semana (2× por músculo, sem compensar dobrado). #121 Substitui o treino do dia: o anterior não fica como alternativa.
-import { C, S, commit, today } from "../../lib/store/index.ts";
+import { C, S, commit, seguirTreinoDoDiaNaSessao, today } from "../../lib/store/index.ts";
 import { gymById, mName } from "../../lib/store/regras.ts";
 import { SheetHead, closeSheet, openSheet } from "../../lib/folha/index.tsx";
 import { Icon, Seg, Chip, toast } from "../../lib/ui/index.tsx";
@@ -45,14 +45,9 @@ async function gerar(todos: string[]) {
 export function aplicarHoje() {
   const d = diaDe(today), plan = d?.plan; if (!plan?.items.length) return;
   const ses = S.session;
-  if (ses && !ses.finishedAt) {
-    const feitos = ses.plan.items.filter((it: C.PlanItem) => (ses.logs[it.exerciseId] ?? []).some((l: { done: boolean }) => l.done) || ses.skipped[it.exerciseId]);
-    const musc = new Set(feitos.map((it: C.PlanItem) => it.muscle));
-    const ids = new Set(feitos.map((it: C.PlanItem) => it.exerciseId));
-    ses.plan = { ...plan, items: [...feitos, ...plan.items.filter((it) => !musc.has(it.muscle) && !ids.has(it.exerciseId))] };
-    ses.plan.setsTotal = ses.plan.items.reduce((a: number, it: C.PlanItem) => a + it.sets, 0);
-    ses.logs = Object.fromEntries(Object.entries(ses.logs).filter(([id]) => ses.plan.items.some((it: C.PlanItem) => it.exerciseId === id)));
-  } else { S.plan = plan; S.ui.locked = true; S.ui.planSource = "semana"; }
+  // #122 durante o treino: a mesma regra da mudança pela IA (na mesma sessão, sem perder séries, com aviso)
+  if (ses && !ses.finishedAt) void seguirTreinoDoDiaNaSessao(plan).then((m) => { if (m) commit(); });
+  else { S.plan = plan; S.ui.locked = true; S.ui.planSource = "semana"; }
   S.ui.swapsToday = {};
 }
 

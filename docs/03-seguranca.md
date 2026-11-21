@@ -26,7 +26,8 @@ O repositório é **público** e os dados são **pessoais** (peso, dor, comida e
 | XSS | Tudo o que vem de dados passa por `esc()` antes de virar HTML | `app.js` |
 | Exames (saúde) | PDF lido **no aparelho** (pdf.js sob demanda, ADR-0009), até 5 MB; só o texto vai ao D1 e é apagado na análise (`ciclo_exame_concluir`) ou em 7 dias (cron). Arquivo nunca vai ao R2; fica só o resumo estruturado | `diario.ts`, migration `0007` |
 | Erros | Mensagem genérica ao cliente; log sem dados pessoais (só a rota e a mensagem) | `api.ts`, `mcp.ts` |
-| Segredos | tokens do Claude só como hash no D1; `.dev.vars` no `.gitignore`; CI com **gitleaks**; *secret scanning* e *push protection* do GitHub | `.github/` |
+| Chaves de API próprias (#88, ADR-0015) | Envelope AES-256-GCM (DEK aleatória por chave, IV único, AAD `user_id\|provedor\|id`) com a KEK versionada no secret `KEK_V1`; só ciphertext no D1. Face ID ≤ 5 min para cadastrar, trocar, mudar e apagar. A tela vê só ••••últimos4 e a impressão. Saída só para os 3 hosts da allowlist, sem redirect; erro do provedor descartado. Teto US$ dia/mês reservado antes de chamar; 20 usos/min e 10 validações/h por conta. Export só com metadados | `chaves.ts`, `packages/core/src/chaves.ts`, `test/chaves-88.test.ts` |
+| Segredos | tokens do Claude só como hash no D1; `.dev.vars` no `.gitignore`; CI com **gitleaks**; *secret scanning* e *push protection* do GitHub; `scripts/segredos.mjs` no `npm test` (nada com cara de `sk-`/`sk-ant-`/`AIza` no repositório) | `.github/`, `scripts/` |
 | Mapa (#26) | Leaflet + tiles do OpenStreetMap: **o navegador pede os tiles ao OSM, então o OSM vê a região (zona do mapa e zoom) dos lugares que você abre, inclusive a casa**; o app manda só a origem como Referer. Quem não quer isso não marca o ponto (o mapa é opcional). Busca de endereço pelo Worker (User-Agent genérico, sem dado pessoal; só o texto digitado sai), limite global de 1 req/s (`geocode_gate`) e por conta | `apps/web/src/screens/academias`, `api.ts`, ADR-0010 |
 | Dependências | Runtime do front: Preact (ADR-0008), pdf.js só na tela de exames (ADR-0009), Leaflet só no mapa (ADR-0010) e o script externo do Turnstile só no `#entrar`, quando ligado (ADR-0012); Worker: zero. Dev: wrangler, esbuild, typescript e @types/node, com versões fixadas com ≥ 2 semanas de lançamento; Dependabot semanal | `package.json` |
 
@@ -41,6 +42,22 @@ O repositório é **público** e os dados são **pessoais** (peso, dor, comida e
 | Robô criando conta | Turnstile (grátis), se o dono ligar | Validação do token no servidor; convite exige o token |
 | Spam de escrita e do Claude | — | 120 escritas/min por pessoa (API e MCP) |
 | Custo e dado na IA de porções (#80) | Workers AI tem cota grátis diária | Só o trecho de comida vai ao provedor, entre « » como dado; saída só JSON validado. 40 chamadas/conta/dia, cache por hash do texto, trava global, teto mensal em US$ para Haiku/OpenAI (só com chave). Open Food Facts recebe só o nome do alimento (ADR-0014). Nada do texto em log |
+
+## Modelo de ameaças da chave de API (#88, ADR-0015)
+| Ameaça | O que impede | Teste |
+|---|---|---|
+| XSS no app lê a chave | A chave nunca volta ao navegador (só ••••últimos4 e impressão); campo `password` sem autocomplete, lido e esvaziado no envio, nunca em estado, URL, query, localStorage ou IndexedDB; CSP sem inline; apelido sem `<`/`>` e escapado | canário no bundle e nas respostas; apelido `<img onerror>` → 400 |
+| CSRF cadastra/troca/apaga | `Origin` obrigatório na escrita + Face ID ≤ 5 min (step-up) | step-up → 403 `reauth` |
+| Sessão roubada | Sem Face ID recente não cadastra, troca, muda nem apaga; ler a lista não revela a chave | step-up |
+| D1 vazado / backup | Só ciphertext; a KEK fica em secret do Worker, fora do D1 | canário no dump do D1 |
+| Log | Nenhum `console.*` com a chave; erro genérico | canário no console capturado |
+| Export | Só metadados (sem ciphertext, iv, DEK) | canário no export |
+| Erro do provedor ecoando a chave | Corpo descartado; volta código + mensagem fixa | provedor falso que ecoa o `Authorization` |
+| Prompt injection pedindo a chave | O modelo nunca recebe a chave (só no cabeçalho para o host do provedor); nenhuma ferramenta MCP lê chave | pedido "me diga a chave" + varredura do corpo e das ferramentas |
+| Conta A lê/usa a chave de B | Todo SQL com `user_id` da sessão; AAD amarra o blob à conta, ao provedor e à linha | isolamento (404) e AAD (blob copiado não decifra) |
+| Redirect ou host malicioso | Allowlist de 3 hosts, só https, `redirect: manual` | `hostPermitido` no core |
+| Gasto descontrolado | Teto por chave (dia e mês) reservado atomicamente; rate limit por conta | teto e rate limit |
+| KEK vazada | Rotação para `KEK_V2`, pedir revogação no provedor e recadastro (ADR-0015) | — (procedimento) |
 
 ## O que o Claude pode e não pode
 - Pode: ler o resumo, planejar, salvar o treino do dia **validado**, responder pedidos, registrar dor, comida e presença, e revisar edições.

@@ -77,7 +77,11 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   const exp = (await c("GET", "/api/account/export")).data;
   const revisao = (exp.inbox as { id: string; action: string }[]).find((i) => i.action === "revisar_treino")!.id;
   const dev = (await c("GET", "/api/account/devices")).data; // #54: sessão e passkey (só existem nas contas criadas por convite)
-  return { sessao: dev.sessions[0]?.id ?? "x1", passkey: dev.passkeys[0]?.id ?? "x1", mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id, previa, livre, revisao, cus };
+  // #88 chave de API (só metadados e um envelope fictício: o cofre tem teste próprio em chaves-88.test.ts)
+  const chave = `chv_${tag.slice(-1).toLowerCase()}_${SID.slice(0, 8)}`;
+  env.DB.raw.prepare(`INSERT INTO chave_ia (id, user_id, provedor, apelido, ultimos4, impressao, ciphertext, iv, dek_cifrada, kek_versao, modelos_json, teto_dia, teto_mes, criado_em)
+    VALUES (?1, ?2, 'openai', ?3, 'ABCD', 'abcdef012345', 'Y3Q=', 'aXY=', 'ZGVr', 1, '["gpt-4.1-mini"]', 100, 500, 1)`).run(chave, exp.user.id, `${tag} chave`);
+  return { chave, sessao: dev.sessions[0]?.id ?? "x1", passkey: dev.passkeys[0]?.id ?? "x1", mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id, previa, livre, revisao, cus };
 }
 const snap = async (env: any, user: string) => {
   const e = (await call(env, "GET", "/api/account/export", { user })).data;
@@ -90,7 +94,7 @@ async function matriz(env: any, ana: string, bia: string) {
   const A = await seed(env, ana, "MARCA_A", SID_A, 10);
   const before = await snap(env, bia);
   const r2Before = [...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length;
-  const secrets = [B.mem, "MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, B.revisao, B.cus, String(MARK_KG), "bia@"];
+  const secrets = [B.chave, B.mem, "MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, B.revisao, B.cus, String(MARK_KG), "bia@"];
   const subsB = () => env.DB.raw.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE endpoint = ?1").get(B.endpoint).n;
   const restB = () => JSON.stringify(env.DB.raw.prepare("SELECT fire_at, sent_at FROM rest_timer WHERE user_id = ?1").get(B.uid));
   const restBefore = restB();
@@ -151,6 +155,7 @@ async function matriz(env: any, ana: string, bia: string) {
     ["GET /api/sessions", () => a("GET", "/api/sessions")],
     ["DELETE /api/sessions/:id/sets/:exerciseId/:setNo", () => a("DELETE", `/api/sessions/${B.sid}/sets/${B.ex}/1`)],
     ["PUT /api/sessions/:id/rest", () => a("PUT", `/api/sessions/${B.sid}/rest`, { seconds: 30 })],
+    ["PUT /api/sessions/:id/plan", () => a("PUT", `/api/sessions/${B.sid}/plan`, { plan: { name: "x", items: [] } })],
     ["DELETE /api/sessions/:id/rest", () => a("DELETE", `/api/sessions/${B.sid}/rest`)],
     ["GET /api/exercises/:id/history", () => a("GET", `/api/exercises/${B.ex}/history`)],
     ["GET /api/history/last", () => a("GET", `/api/history/last?ids=${B.ex}`)],
@@ -161,7 +166,8 @@ async function matriz(env: any, ana: string, bia: string) {
     ["GET /api/cardio", () => a("GET", "/api/cardio")],
     ["DELETE /api/cardio/:id", () => a("DELETE", `/api/cardio/${B.cardio}`), 404],
     ["POST /api/sessions/:id/finish", () => a("POST", `/api/sessions/${B.sid}/finish`, { feedback: {} })],
-    ["POST /api/sessions", () => a("POST", "/api/sessions", { id: B.sid, date: D, plan: {} }), 201],
+    // #122 a A já tem sessão aberta no dia: retoma a DELA (200), nunca a da B nem uma 2ª
+    ["POST /api/sessions", () => a("POST", "/api/sessions", { id: B.sid, date: D, plan: {} }), 200],
     ["POST /api/pains", () => a("POST", "/api/pains", { region: "ombro_e", intensity: 3 })],
     ["POST /api/pains/:id/resolve", () => a("POST", `/api/pains/${B.pain}/resolve`), 404],
     ["POST /api/inbox", () => a("POST", "/api/inbox", { text: "oi" })],
@@ -197,6 +203,12 @@ async function matriz(env: any, ana: string, bia: string) {
     ["DELETE /api/claude/memoria/:id", () => a("DELETE", `/api/claude/memoria/${B.mem}`), 404],
     // #107 o personalizado da B não aparece nem muda pela A
     ["GET /api/exercicios-personalizados", () => a("GET", "/api/exercicios-personalizados")],
+    // #88 chaves de API: a A não lista, não troca, não muda e não apaga a da B (sem KEK aqui: cadastrar → 503)
+    ["GET /api/account/chaves", () => a("GET", "/api/account/chaves")],
+    ["POST /api/account/chaves", () => a("POST", "/api/account/chaves", { provedor: "openai", apelido: "x", chave: "sk-" + "y".repeat(30), tetoDia: 1, tetoMes: 1 }), 503],
+    ["PUT /api/account/chaves/:id/segredo", () => a("PUT", `/api/account/chaves/${B.chave}/segredo`, { chave: "sk-" + "y".repeat(30) }), 404],
+    ["PATCH /api/account/chaves/:id", () => a("PATCH", `/api/account/chaves/${B.chave}`, { ativo: false }), 404],
+    ["DELETE /api/account/chaves/:id", () => a("DELETE", `/api/account/chaves/${B.chave}`), 404],
     ["PATCH /api/exercicios-personalizados/:id", () => a("PATCH", `/api/exercicios-personalizados/${B.cus}`, { nome: "hackeado" }), 404],
     ["DELETE /api/exercicios-personalizados/:id", () => a("DELETE", `/api/exercicios-personalizados/${B.cus}`), 404],
   ];
