@@ -61,6 +61,8 @@ export interface WeekCtx {
   weekStart: string; today: string;
   sets: Record<string, Sets>;
   attendance: Record<string, Attendance>;
+  /** #123 dias com sessão aberta (começou e não terminou): as séries dela ainda não deixam o dia "feito" */
+  abertas?: readonly string[];
 }
 export interface WeekInput extends WeekCtx {
   profile: WeekProfile;
@@ -448,7 +450,10 @@ export function replanAfterMiss(inp: WeekInput, date: string, answer: Attendance
 
 export function dayStatus(d: WeekDay, ctx: WeekCtx): DayStatus {
   const att = ctx.attendance[d.date];
-  if (sum(ctx.sets[d.date]) > 0 || att === "fui") return d.kind === "treino" ? "feito" : "extra";
+  // #123 "feito" só ao terminar: série de sessão ainda aberta não marca (o dia segue "hoje", em andamento); Terminar grava a presença
+  const registrado = sum(ctx.sets[d.date]) > 0;
+  if (registrado && att !== "fui" && d.date === ctx.today && ctx.abertas?.includes(d.date)) return "hoje";
+  if (registrado || att === "fui") return d.kind === "treino" ? "feito" : "extra";
   if (att === "nao_fui") return "faltou";
   if (att === "folga") return "folga";
   if (d.date < ctx.today) return d.kind === "treino" ? "pendente" : "folga";

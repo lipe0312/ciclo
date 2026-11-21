@@ -1,7 +1,7 @@
 // Semana completa planejada (#24): monta a entrada do core a partir do D1, guarda versões (desfazer) e as escolhas
 // por dia. Todo SQL com bind e filtrado por user_id; o uid vem da autenticação.
 import {
-  EQUIPMENT_BY_ID, JANELA_MES, semBaseParaGerar, MUSCLE_IDS, altsDoBanco, applyDayAction, exerciciosCansados, parametrosDoPerfil, diffWeeks, empurrarTreinos, entradaTreinoAtual, formatoDe, mondayOf, resumirDia, avisosDaSemana, semanaComGerador, salvosSubstituidos, treinoDoDia, trocasDoDia,
+  EQUIPMENT_BY_ID, JANELA_MES, MAX_SESSION_MS, respostaTreinei, semBaseParaGerar, MUSCLE_IDS, altsDoBanco, applyDayAction, exerciciosCansados, parametrosDoPerfil, diffWeeks, empurrarTreinos, entradaTreinoAtual, formatoDe, mondayOf, planWeek, resumirDia, avisosDaSemana, semanaComGerador, salvosSubstituidos, treinoDoDia, trocasDoDia,
   weekDates, weekProgression, weekView, weeklyTargets,
 } from "@ciclo/core";
 import type { CardioEntry, DayAction, DayOpts, DayOverride, DayPlan, Intensity, MuscleId, Progression, Sets, WeekInput, WeekPlan, WeekProfile } from "@ciclo/core";
@@ -29,6 +29,8 @@ interface Ctx {
   uid: string; today: string; weekStart: string; dates: string[];
   profile: WeekProfile; base: Record<MuscleId, number>;
   sets: Record<string, Sets>; attendance: WeekInput["attendance"];
+  /** #123 dias com sessão aberta (começou, não terminou): ainda não é "feito" */
+  abertas: string[];
   overrides: Record<string, DayOverride>; fixed: NonNullable<WeekInput["fixed"]>;
   latest: { version: number; stored: Stored | null; createdAt: number } | null;
   versions: { version: number; source: Source; createdAt: number }[];
@@ -47,7 +49,7 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
   const [profile, gyms, week] = await Promise.all([getProfile(env, uid), listGyms(env, uid), weekState(env, uid, today)]);
   if (!profile || semBaseParaGerar(profile, gyms.length)) return { empty: "sem_perfil" };
   // #79 sem academia a semana sai com peso corporal (gyms vazio → equipamento [] no core) e gymId null
-  const [sets, ovr, fixed, vers, latest, cardio, porEx, mes] = await env.DB.batch([
+  const [sets, ovr, fixed, vers, latest, cardio, porEx, mes, abertas] = await env.DB.batch([
     env.DB.prepare(`SELECT s.date AS date, l.muscle AS muscle, COUNT(*) AS n FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
       WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 GROUP BY s.date, l.muscle`).bind(uid, from, to),
     env.DB.prepare("SELECT date, kind, opts FROM day_override WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3").bind(uid, from, to),
@@ -60,6 +62,7 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
     // #90 o que foi feito nas 4 semanas antes desta (data + exercício): anti-repetição
     env.DB.prepare(`SELECT DISTINCT s.date AS date, l.exercise_id AS ex FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
       WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 ORDER BY s.date DESC LIMIT 2000`).bind(uid, addDays(weekStart, -JANELA_MES), addDays(weekStart, -1)),
+    env.DB.prepare("SELECT DISTINCT date FROM session WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 AND finished_at IS NULL AND started_at > ?4").bind(uid, from, to, Date.now() - MAX_SESSION_MS),
   ]);
   const feitos: Record<string, Record<string, number>> = {};
   for (const r of porEx.results as { date: string; ex: string; n: number }[]) (feitos[r.date] ??= {})[r.ex] = r.n;
@@ -82,6 +85,7 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
     },
     base: weeklyTargets(([0, 1, 2, 3].includes(p.level) ? p.level : 1) as 0 | 1 | 2 | 3, (p.priorities ?? []).filter((m) => MUSCLE_IDS.includes(m))),
     sets: setsBy,
+    abertas: (abertas.results as { date: string }[]).map((r) => r.date),
     attendance: Object.fromEntries((week.attendance as { date: string; status: "fui" | "nao_fui" | "folga" }[]).map((a) => [a.date, a.status])),
     overrides: Object.fromEntries((ovr.results as { date: string; kind: DayOverride["kind"]; opts: string }[]).map((o) => [o.date, { kind: o.kind, opts: parse<DayOpts>(o.opts, {}) }])),
     fixed: Object.fromEntries((fixed.results as { date: string; plan: string; source: "claude" | "manual" }[]).flatMap((f) => {
@@ -138,7 +142,7 @@ async function progression(env: Env, c: Ctx): Promise<Progression> {
 }
 
 const input = (c: Ctx, s: { overrides: Record<string, DayOverride>; progression: Progression }, prev: WeekPlan | null): WeekInput => ({
-  weekStart: c.weekStart, today: c.today, sets: c.sets, attendance: c.attendance, profile: c.profile,
+  weekStart: c.weekStart, today: c.today, sets: c.sets, attendance: c.attendance, abertas: c.abertas, profile: c.profile,
   targets: s.progression.targets, overrides: s.overrides, fixed: c.fixed, cardioLog: c.cardioLog, prev, feitos: c.feitos, cansados: c.cansados, alternativasDe: altsDoBanco,
 });
 /** Assinatura das trocas forçadas da semana até hoje (o dia guardado tem o planejado; `feitos`, o que foi feito). */
@@ -320,10 +324,18 @@ export async function dayAction(env: Env, uid: string, d: string, b: Record<stri
   let overrides = c.overrides, source: Source = "ajuste", fora: string[] = [];
   if (action === "falta") {
     if (!c.dates.includes(day) || day > c.today) throw new HttpError(400, "falta só para dias desta semana até hoje");
-    const status = oneOf(b.resposta, "resposta", ["fui", "nao_fui", "folga"] as const);
-    await env.DB.prepare("INSERT INTO attendance (user_id, date, status, source, updated_at) VALUES (?1, ?2, ?3, 'app', ?4) ON CONFLICT(user_id, date) DO UPDATE SET status = ?3, source = 'app', updated_at = ?4")
-      .bind(uid, day, status, Date.now()).run();
-    c.attendance = { ...c.attendance, [day]: status };
+    const resp = oneOf(b.resposta, "resposta", ["fui", "nao_fui", "folga"] as const), now = Date.now();
+    // #123 "Treinei"/"Não treinei" atualiza o check-in do dia (foi treinar?); trocar Treinei → Não volta o dia a pendente
+    const r = resp === "folga" ? { presenca: "folga" as const, checkin: null } : respostaTreinei(c.attendance[day], resp === "fui");
+    await env.DB.batch([
+      r.presenca ? env.DB.prepare("INSERT INTO attendance (user_id, date, status, source, updated_at) VALUES (?1, ?2, ?3, 'app', ?4) ON CONFLICT(user_id, date) DO UPDATE SET status = ?3, source = 'app', updated_at = ?4")
+        .bind(uid, day, r.presenca, now) : env.DB.prepare("DELETE FROM attendance WHERE user_id = ?1 AND date = ?2").bind(uid, day),
+      ...(r.checkin == null ? [] : [env.DB.prepare(`INSERT INTO checkout (user_id, date, trained, source, updated_at) VALUES (?1, ?2, ?3, 'app', ?4)
+        ON CONFLICT(user_id, date) DO UPDATE SET trained = ?3, updated_at = ?4`).bind(uid, day, r.checkin ? 1 : 0, now)]),
+    ]);
+    const att = { ...c.attendance };
+    if (r.presenca) att[day] = r.presenca; else delete att[day];
+    c.attendance = att;
     source = "falta";
   } else {
     const a = (action === "gerar" ? { type: action, date: day, opts: opts(b.opts, c.gymIds) }

@@ -11,7 +11,7 @@ import { href, parse } from "../../lib/roteador/index.ts";
 import type { Route } from "../../lib/roteador/index.ts";
 import { fmt } from "../../lib/util.ts";
 import { OUTCOME_TXT, REASON_TXT, curIdx, running, startSession } from "./sessao.ts";
-import { openEdit, openPares, openSwap } from "./folhas.tsx";
+import { BotaoMenu, abrirCorrigir, openEdit, openPares, openSwap } from "./folhas.tsx";
 import { Biblioteca, ExImgs } from "./biblioteca.tsx";
 import { Detalhe } from "./detalhe.tsx";
 import { InfoPersonalizado, SeloPersonalizado } from "./personalizado.tsx";
@@ -93,10 +93,11 @@ function Hoje() {
   const s = S.session, run = running();
   const plan = activePlan();
   if (s?.finishedAt && s.date === today) {
-    return <><p class="kicker">Treino de hoje · encerrado {s.closedBy === "auto" ? "automaticamente (2 h)" : ""}</p><h1>{plan.name}</h1>
+    return <><div class="row between start"><div><p class="kicker">Treino de hoje · encerrado {s.closedBy === "auto" ? "automaticamente (2 h)" : ""}</p><h1>{plan.name}</h1></div><BotaoMenu /></div>
       <p class="small sub" style="margin-top:6px">{s.feedback ? "Feedback salvo. O Chat usa na revisão de domingo." : "Sem feedback (fechado sozinho)."}</p>
       <Resumo s={s} />
-      <button type="button" class="btn" style="margin-top:12px" onClick={() => { S.session = null; commit(); }}>Treinar de novo hoje</button></>;
+      <div class="row wrapx" style="gap:8px;margin-top:12px"><button type="button" class="btn" onClick={() => abrirCorrigir(s.id)}><Icon id="edit" />Corrigir séries</button>
+        <button type="button" class="btn" onClick={() => { S.session = null; commit(); }}>Treinar de novo hoje</button></div></>;
   }
   const pend = S.edits.filter((e) => e.review === "pendente");
   const lugar = S.gyms.length ? gymById(s?.gymId ?? S.ui.gymId)?.name : "peso corporal";
@@ -104,11 +105,11 @@ function Hoje() {
     <AvisoSemAcademia />
     <div class="row between wrapx start" style="margin-bottom:12px"><div><p class="kicker">Treino de hoje · {lugar}</p><h1>{plan.name}</h1>
       <p class="small sub num" style="margin-top:4px">{plan.setsTotal} séries · ~{plan.estMinutes} min · dupla progressão, sobrar 1–2 reps</p></div>
-      {run ? <a class="btn pri lg" href={href("treino", ["ativo", String(curIdx())])}><Icon id="play" />Continuar<span class="num"> · <Relogio /></span></a>
-        : <button type="button" class="btn pri lg" onClick={startSession} disabled={!plan.items.length}><Icon id="play" />Começar</button>}</div>
+      <div class="row" style="gap:8px">{run ? <a class="btn pri lg" href={href("treino", ["ativo", String(curIdx())])}><Icon id="play" />Continuar<span class="num"> · <Relogio /></span></a>
+        : <button type="button" class="btn pri lg" onClick={startSession} disabled={!plan.items.length}><Icon id="play" />Começar</button>}<BotaoMenu /></div></div>
     <div class="row wrapx" style="gap:8px;margin-bottom:12px"><button type="button" class="btn" onClick={() => abrirGerarOutro()}><Icon id="cycle" />Gerar outro treino</button></div>
     {plan.leve && <p class="small" style="margin-bottom:12px"><span class="badge warn">mais leve hoje</span> <span class="sub">sobrando 3 repetições em cada série.</span></p>}
-    {!run && <div class="note" style="margin-bottom:12px"><Icon id="info" /><span>Ao começar, o dia conta como <b>fui</b> e o treino abre em tela cheia: dá para sair, ver a comida ou falar com o Chat e voltar ao mesmo ponto. Esqueceu de terminar? Fecha sozinho em <b>2 h</b> com o que foi registrado.</span></div>}
+    {!run && <div class="note" style="margin-bottom:12px"><Icon id="info" /><span>O treino abre em tela cheia: dá para sair, ver a comida ou falar com o Chat e voltar ao mesmo ponto. O dia conta como <b>feito</b> quando você toca em <b>Terminar</b>; começou sem querer? Cancele no <b>⋯</b>. Esqueceu de terminar? Fecha sozinho em <b>2 h</b> com o que foi registrado.</span></div>}
     <div class="grid dash"><div class="stack">
       {plan.prehab.length > 0 && <Card><p class="kicker">Aquecimento · fortalecimento pela dor marcada</p>{plan.prehab.map((p) => <div class="row" key={p.exerciseId} style="margin-top:8px"><img class="thumb" style="width:48px;height:48px" src={`/img/ex/${encodeURIComponent(p.exerciseId)}.webp`} alt="" loading="lazy" /><div><b>{p.nm}</b><p class="small sub">2 × {p.reps[0]}–{p.reps[1]}, leve</p></div></div>)}</Card>}
       {plan.items.length ? plan.items.map((it, i) => <CardDia key={it.exerciseId + i} it={it} idx={i} run={run} />) : <Card><p class="sub">Nada para hoje com esses aparelhos.</p></Card>}</div>

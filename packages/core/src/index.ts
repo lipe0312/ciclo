@@ -58,3 +58,4 @@ export * from "./historico.ts";
 export * from "./chaves.ts";
 export * from "./ia.ts";
 export * from "./sem-academia.ts";
+export * from "./corrigir-treino.ts";

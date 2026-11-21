@@ -157,6 +157,9 @@ async function matriz(env: any, ana: string, bia: string) {
     ["PUT /api/sessions/:id/rest", () => a("PUT", `/api/sessions/${B.sid}/rest`, { seconds: 30 })],
     ["PUT /api/sessions/:id/plan", () => a("PUT", `/api/sessions/${B.sid}/plan`, { plan: { name: "x", items: [] } })],
     ["DELETE /api/sessions/:id/rest", () => a("DELETE", `/api/sessions/${B.sid}/rest`)],
+    // #123 tirar exercício (mesmo de sessão terminada) e cancelar o treino: a sessão da B é inalcançável
+    ["DELETE /api/sessions/:id/exercises/:exerciseId", () => a("DELETE", `/api/sessions/${B.sid}/exercises/${B.ex}`)],
+    ["DELETE /api/sessions/:id", () => a("DELETE", `/api/sessions/${B.sid}`)],
     ["GET /api/exercises/:id/history", () => a("GET", `/api/exercises/${B.ex}/history`)],
     ["GET /api/history/last", () => a("GET", `/api/history/last?ids=${B.ex}`)],
     ["GET /api/push/key", () => a("GET", "/api/push/key")],
@@ -228,7 +231,7 @@ async function matriz(env: any, ana: string, bia: string) {
     ["ciclo_comida_registrar", { confirmar: B.previa }, true], ["ciclo_comida_corrigir", { id: B.food, fator: 0.5 }, true], ["ciclo_comida_desfazer", {}], ["ciclo_comida_pendentes", {}],
     // #87: editar um registro da B (direto ou no meio de um lote) = não encontrado; os vagos da A não trazem os da B
     ["ciclo_comida_editar", { edicoes: [{ id: B.food, itens: [{ nome: "hackeado", kcal: 1, proteina: 1, fonte: "estimativa" }] }], simular: true }, true], ["ciclo_comida_vagos", { de: "2026-11-01", ate: D }],
-    ["ciclo_semana_ver", { date: D }], ["ciclo_semana_gerar", { date: D, simular: true }], ["ciclo_semana_empurrar", {}], ["ciclo_semana_empurrar", { confirmar: B.previa }, true], ["ciclo_treino_registrar", { exercicioId: B.ex, series: [{ kg: 1, reps: 1 }] }],
+    ["ciclo_semana_ver", { date: D }], ["ciclo_semana_gerar", { date: D, simular: true }], ["ciclo_semana_empurrar", {}], ["ciclo_semana_empurrar", { confirmar: B.previa }, true], ["ciclo_treino_registrar", { exercicioId: B.ex, series: [{ kg: 1, reps: 1 }] }], ["ciclo_treino_corrigir", { date: D, descartarSessao: B.sid }, true], ["ciclo_treino_corrigir", { confirmar: B.previa }, true], ["ciclo_treino_corrigir", { date: D }],
     ["ciclo_treino_trocar", { exercicioId: B.ex, date: D }], ["ciclo_treino_atual_salvar", { treinoAtual: { divisoes: [{ nome: "A", grupos: ["biceps"], exercicios: [{ nome: "Rosca livre", grupo: "biceps" }] }] } }],
     // #95: o treino atual e as academias lidos pelo MCP são só da A; academia da B no gymId = não encontrada
     ["ciclo_treino_atual", {}], ["ciclo_planejar_dia", { date: D, daysLeft: 2, gymId: B.lug }, true], ["ciclo_salvar_treino_do_dia", { date: D, gymId: B.lug, itens: [{ id: B.ex, sets: 2 }], motivo: "t" }, true],
