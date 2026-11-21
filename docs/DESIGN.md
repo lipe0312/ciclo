@@ -64,6 +64,7 @@ Nada passa de 250 ms. `prefers-reduced-motion: reduce` desliga transição e ani
 | **Avatar** | Home (#62) | círculo 44 px, iniciais em `--sup-2` |
 | **Faixa** `showFaixa` | `lib/faixa` | aviso da casca (offline, ambiente de teste); uma linha, borda esquerda colorida |
 | **Toast** `toast()` | `lib/ui` | confirmação curta, 2,4 s |
+| **Chat** (#134) | `screens/claude` | balões (pessoa à direita em `--sup-3`, IA à esquerda com borda); composer fixo acima da barra inferior (e do teclado, via `visualViewport`) com `+`, campo de até 5 linhas, microfone e enviar, todos de 44 px; faixa de pedidos da rotina recolhida em 1 linha; "pensando…" com pontos que param em `prefers-reduced-motion`; o nome da IA vem sempre do perfil (#133) |
 
 ## Microcopy
 - pt-BR, frases curtas, verbo no começo do botão ("Registrar", "Gerar outro treino").
