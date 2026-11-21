@@ -35,6 +35,7 @@ export * from "./cerebro.ts";
 export * from "./pdf-texto.ts";
 export * from "./navegacao.ts";
 export * from "./treino-atual.ts";
+export * from "./divisao.ts";
 export * from "./treino-atual-lista.ts";
 export * from "./trocar.ts";
 export * from "./alternativas-banco.ts";

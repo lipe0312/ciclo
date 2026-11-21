@@ -10,6 +10,8 @@ import type { PriorityGroupId } from "./prioridades.ts";
 import { DOWS } from "./semana.ts";
 import { validarTreinoAtual } from "./treino-atual.ts";
 import type { TreinoAtual } from "./treino-atual.ts";
+import { assinaturaValida } from "./divisao.ts";
+import type { DivisaoEscolha } from "./divisao.ts";
 export const GOAL_IDS = ["bracos_ombros", "massa_geral", "definir", "recompor", "forca", "constancia", "shape_v", "perder_barriga", "saude", "retorno"] as const;
 export const PLACES = ["academia", "casa"] as const;
 export type PlaceChoice = (typeof PLACES)[number];
@@ -43,7 +45,7 @@ export const DEFAULT_PROFILE = {
   meta: { filledBy: "app" as "app" | "claude", confirmed: true } as { filledBy: "app" | "claude"; confirmed: boolean; checkup?: "feito" | "pulado"; assistentes?: Record<string, boolean> },
 };
 /** `treinoAtual` (#74) é opcional e não tem padrão: sem cadastro, o gerador funciona igual. */
-export type ProfileData = typeof DEFAULT_PROFILE & { treinoAtual?: TreinoAtual };
+export type ProfileData = typeof DEFAULT_PROFILE & { treinoAtual?: TreinoAtual; divisaoEscolha?: DivisaoEscolha };
 
 // ---------- prioridades ----------
 export interface Check { ok: boolean; errors: string[] }
@@ -176,6 +178,12 @@ const SCHEMA: Record<string, Rule> = {
   meta: objectKeys({ filledBy: oneOf(["app", "claude"]), confirmed: bool, checkup: oneOf(["feito", "pulado"]), assistentes: record(slug, yes, 12) }),
   // #74 "Meu treino atual" (opcional; nunca entra no faltaParaGerar): divisões por grupo grande, IDs só do catálogo
   treinoAtual: (v, p, err, ctx) => { const r = validarTreinoAtual(v, p, ctx?.personalizados); if (!r.ok) { r.errors.forEach(err); return undefined; } return r.value; },
+  // #82 "Manter minha divisão" / "Ajustar": vale só para a divisão (assinatura dos grupos) em que foi escolhido
+  divisaoEscolha: (v, p, err) => {
+    const r = shape({ escolha: oneOf(["manter", "ajustar"]), assinatura: (x, q, e) => (assinaturaValida(x) ? x : (e(`${q}: assinatura inválida`), undefined)) })(v, p, err) as Record<string, unknown> | undefined;
+    if (r && (r.escolha == null || r.assinatura == null)) return err(`${p}: escolha e assinatura são obrigatórias`), undefined;
+    return r;
+  },
 };
 /** `campos`: os campos (de 1º nível) com erro, para a mensagem humana (`mensagemPerfil`); `errors` é o texto técnico (Chat e console). */
 export type Validation<T> = { ok: true; value: T; errors: [] } | { ok: false; errors: string[]; campos: string[] };
@@ -208,7 +216,7 @@ export const PERFIL_ROTULO: Record<string, string> = {
   pinned: "exercícios fixos", avoid: "exercícios que você evita", dynamics: "formato do treino", crowdedStrategy: "academia cheia",
   mobility: "mobilidade", dayGym: "lugar de cada dia", diet: "comida", autonomy: "o que o Chat muda sozinho", tone: "tom do Chat",
   reviewTime: "horário da revisão", tiers: "modelos do Chat", places: "academia, casa ou os dois", meta: "dados do perfil",
-  treinoAtual: "meu treino atual",
+  treinoAtual: "meu treino atual", divisaoEscolha: "manter ou ajustar a divisão",
 };
 const juntar = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}`);
 const maiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
