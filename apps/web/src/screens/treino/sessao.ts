@@ -53,7 +53,7 @@ export async function startSession() {
   S.week.sessions.push({ id: S.session.id, date: today, name: plan.name, groups: plan.groups, started_at: S.session.startedAt });
   unlockAudio(); keepAwake();
   void syncPush(); // se o aviso já foi permitido, garante a assinatura; o pedido de permissão é um botão na própria tela (gesto do usuário)
-  toast("Começou · o dia conta como feito ao terminar");
+  toast("Começou · conta ao terminar");
   replace(href("treino", ["ativo", "0"])); commit();
   void loadRefs();
   const r = await send("POST", "/api/sessions", { id: S.session.id, date: today, gymId: S.ui.gymId, plan, startedAt: S.session.startedAt }).catch(() => null);

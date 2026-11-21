@@ -61,7 +61,7 @@ function Corrigir({ id }: { id: string }) {
     if (novo.kg != null && (novo.kg < 0 || novo.kg > 600)) return toast("Carga de 0 a 600 kg");
     void rodar(async () => {
       let summary: unknown;
-      if (SERVER) summary = (await api<{ summary?: unknown }>("POST", `/api/sessions/${encodeURIComponent(id)}/sets`, { exerciseId: x.exerciseId, muscle: musculo(x.exerciseId), setNo: x.setNo, kg: novo.kg,
+      if (SERVER) summary = (await api<{ summary?: unknown }>("POST", `/api/sessions/${encodeURIComponent(id)}/sets`, { corrigir: true, exerciseId: x.exerciseId, muscle: musculo(x.exerciseId), setNo: x.setNo, kg: novo.kg,
         ...(novo.segundos != null ? { segundos: novo.segundos } : { reps: novo.reps }) })).summary;
       espelhar(id, (logs) => { const l = logs[x.exerciseId]?.[x.setNo - 1]; if (l) { l.kg = novo.kg ?? ""; if (novo.segundos != null) l.seg = C.fmtSegundos(novo.segundos); else l.reps = novo.reps; } }, summary);
     }, "Série corrigida");
@@ -84,7 +84,7 @@ function Corrigir({ id }: { id: string }) {
     {[...porEx].map(([ex, sets]) => <div class="corr-ex" key={ex}>
       <div class="row between"><b class="small" style="min-width:0">{nome(ex)}</b>
         {tirar === ex ? <span class="row" style="gap:6px"><button type="button" class="btn sm" disabled={busy} onClick={() => setTirar(null)}>Voltar</button><button type="button" class="btn sm danger" disabled={busy} onClick={() => tirarEx(ex)}>Tirar</button></span>
-          : <button type="button" class="btn sm ghost" disabled={busy} onClick={() => setTirar(ex)}>Tirar do treino</button>}</div>
+          : <button type="button" class="btn sm" disabled={busy} onClick={() => setTirar(ex)}><Icon id="x" />Tirar do treino</button>}</div>
       {sets.map((x) => <div class="corr-serie" key={x.setNo}>
         <span class="num small sub">{x.setNo}</span>
         {x.segundos != null
