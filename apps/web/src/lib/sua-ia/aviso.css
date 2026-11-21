@@ -1,0 +1,5 @@
+/* #133 aviso de IA (uma linha, dispensável). Só tokens de app.css. */
+.aviso-ia{align-items:center;margin-bottom:var(--sp-3)}
+.aviso-ia-txt{flex:1;font-weight:600;color:var(--txt)}
+.aviso-ia-x{min-width:var(--alvo);justify-content:center;padding:0}
+.aviso-ia-x svg{color:var(--sub)}

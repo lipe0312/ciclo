@@ -1,0 +1,25 @@
+/* #133 Sua IA: escolha, guia e aviso. Só tokens de app.css; celular primeiro (390 px). Os cx-* vieram da folha #66. */
+.cx-url{display:block;padding:8px 10px;border-radius:8px;background:var(--sup-2);font-size:12px;overflow-wrap:anywhere;user-select:all}
+.cx-copiar{margin-top:2px}
+.cx-mais{margin-top:var(--sp-3);border:1px solid var(--borda);border-radius:var(--r);padding:0 var(--sp-3)}
+.cx-mais summary{min-height:var(--alvo);display:flex;align-items:center;font-weight:600;cursor:pointer}
+.cx-mais[open]{padding-bottom:var(--sp-3);display:block}
+.cx-mais[open]>*+*{margin-top:var(--sp-2)}
+.cx-lista{margin:0;padding-left:20px;display:grid;gap:6px}
+.sia{display:grid;gap:var(--sp-4);min-width:0}
+.sia h1{margin:0}
+.sia-resumo{margin-top:calc(-1 * var(--sp-3))}
+.sia-campo{margin-top:var(--sp-3)}
+.sia-outra,.sia-sem,.sia-principal{margin-top:var(--sp-3)}
+.sia-como{display:grid;gap:var(--sp-3)}
+.sia-ia{border:0;padding:0;margin:0;min-width:0}
+.sia-ia legend{padding:0;margin-bottom:var(--sp-2)}
+.sia-topo{gap:var(--sp-2);margin-bottom:var(--sp-2)}
+.sia-guia{display:grid;gap:var(--sp-2);min-width:0}
+.sia-guia h3{margin:0}
+.sia-bloco{display:grid;gap:6px}
+.sia-links{list-style:none;margin:0;padding:0;display:grid}
+.sia-links a{overflow-wrap:anywhere}
+.sia-chaves{display:grid;gap:var(--sp-3);scroll-margin-top:var(--sp-4)}
+.sia-chaves h2{margin:0}
+.sia-rodape{text-align:center}

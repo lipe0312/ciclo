@@ -5,6 +5,7 @@ import { Card, Icon } from "../../lib/ui/index.tsx";
 import { BarraSimples } from "../../lib/grafico/index.tsx";
 import { fmt } from "../../lib/util.ts";
 import { Painel } from "./paineis.tsx";
+import { AvisoIa } from "../../lib/sua-ia/aviso.tsx";
 
 const Linha = ({ nome, valor, meta, pct, un }: { nome: string; valor: number | null; meta: number; pct: number | null; un: string }) =>
   <div class="hm-linha"><div class="row between wrapx" style="gap:6px"><span class="small">{nome}</span>
@@ -33,6 +34,7 @@ export function ClaudeCard() {
   return <Card cls="hm-painel"><div class="row between wrapx" style="gap:8px"><h2>Chat</h2>{pend ? <span class="badge warn">pedido pendente</span> : resp ? <span class="badge ok">respondido</span> : null}</div>
     {pend ? <><p class="small" style="margin-top:6px">Você pediu: “{curto(pend.text, 110)}”</p><p class="small sub">O Chat responde quando você abrir o chat dele e processar a caixa.</p></>
       : resp ? <><p class="small sub" style="margin-top:6px">Última resposta</p><p class="small">{curto(resp.response ?? "")}</p></>
-        : <p class="small sub" style="margin-top:6px">Peça ajustes de treino, comida ou dor. Os pedidos ficam numa caixa que o Chat lê pelo connector.</p>}
-    <div class="hm-ctas"><a class="btn sm pri" href="#chat"><Icon id="chat" />Abrir o chat</a></div></Card>;
+        : <p class="small sub" style="margin-top:6px">Peça ajustes de treino, comida ou dor. Os pedidos ficam guardados até a sua IA responder.</p>}
+    <div style="margin-top:10px"><AvisoIa /></div>
+    <div class="hm-ctas"><a class="btn sm pri" href="#chat"><Icon id="chat" />Fale com a IA</a></div></Card>;
 }

@@ -1,12 +1,12 @@
-// Conta (#54/#55/#62): menu com as subtelas Perfil, Segurança, Pessoas e Convidar (só dono), Conectar Chat,
-// Privacidade e dados, e Sair sempre visível. Rotas: #conta, #conta/perfil, #conta/seguranca, #conta/pessoas, #conta/chat, #conta/chaves (#88), #conta/dados.
+// Conta (#54/#55/#62): menu com as subtelas Perfil, Segurança, Pessoas e Convidar (só dono), Sua IA (#133: em Perfil),
+// Privacidade e dados, e Sair sempre visível. Rotas: #conta, #conta/perfil, #conta/seguranca, #conta/pessoas, #conta/dados.
+// #133 #conta/chat e #conta/chaves (as duas telas antigas de conectar) redirecionam para #perfil/ia.
 // Nada de dado de saúde de outra conta passa por aqui.
-import type { ComponentType } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { Route } from "../../lib/roteador/index.ts";
 import { SERVER, api } from "../../lib/api/index.ts";
 import { Icon } from "../../lib/ui/index.tsx";
-import { Conectar } from "./conectar.tsx";
+import { replace } from "../../lib/roteador/index.ts";
 import { PrivacidadeDados } from "./dados.tsx";
 import { Perfil } from "./perfil.tsx";
 import { Pessoas } from "./pessoas.tsx";
@@ -19,8 +19,7 @@ const ITENS: { id: string; nm: string; desc: string; icon: string; dono?: boolea
   { id: "perfil", nm: "Perfil", desc: "Nome, sexo, nascimento, altura e peso", icon: "user" },
   { id: "seguranca", nm: "Segurança", desc: "Aparelhos, passkeys e códigos de recuperação", icon: "key" },
   { id: "pessoas", nm: "Pessoas e Convidar", desc: "Convites, vagas e acessos", icon: "grid", dono: true },
-  { id: "chat", nm: "Conectar Chat", desc: "Use o Ciclo pelo Chat", icon: "chat" },
-  { id: "chaves", nm: "Chaves de IA", desc: "Sua chave de API, modelo, esforço e teto de gasto", icon: "key" },
+  { id: "ia", nm: "Sua IA", desc: "Qual IA você usa, conector, chaves de API e guias", icon: "chat" },
   { id: "dados", nm: "Privacidade e dados", desc: "Termos, privacidade, exportar e apagar", icon: "book" },
 ];
 
@@ -31,20 +30,18 @@ export default function Conta({ route }: { route: Route }) {
   const load = async () => { const r = await api<{ account: Account; setupPendente?: boolean }>("GET", "/api/account"); setAcc(r.account); setSetup(!!r.setupPendente); };
   useEffect(() => { if (SERVER) load().catch(() => setErro("Não deu para carregar a conta.")); }, []);
   const sub = route.parts[0] ?? "";
-  // #88: Chaves de IA em chunk à parte (orçamento de JS inicial), baixa só ao abrir a subtela
-  const [Chaves, setChaves] = useState<ComponentType<{ demo?: boolean }> | null>(null);
-  useEffect(() => { if (sub === "chaves" && !Chaves) import("./chaves.tsx").then((m) => setChaves(() => m.Chaves)).catch(() => setErro("Não deu para abrir as chaves.")); }, [sub]);
+  // #133 as telas antigas de conectar (Conectar Chat e Chaves de IA) viraram Perfil → Sua IA
+  const antiga = sub === "chat" || sub === "chaves" || sub === "ia";
+  useEffect(() => { if (antiga) replace("#perfil/ia"); }, [antiga]);
+  if (antiga) return null;
 
-  if (!SERVER && sub === "chaves") return <Sub titulo="Chaves de IA">{Chaves ? <Chaves demo /> : <p class="small sub" aria-busy="true">{erro || "Carregando…"}</p>}</Sub>;
   if (!SERVER) return <div class="conta"><p class="kicker">Conta</p><h1>Conta</h1>
     <div class="note"><Icon id="info" />Na demonstração não há conta: os dados ficam só neste navegador.</div>
-    <Conectar demo /></div>;
+    <a class="btn full" href="#perfil/ia"><Icon id="chat" />Sua IA</a></div>;
 
   if (sub === "perfil") return <Sub titulo="Perfil"><Perfil acc={acc} onSalvo={setAcc} /></Sub>;
   if (sub === "seguranca") return <Sub titulo="Segurança"><Seguranca /></Sub>;
   if (sub === "pessoas" && acc?.role === "owner") return <Sub titulo="Pessoas e Convidar"><Pessoas /></Sub>;
-  if (sub === "chat") return <Sub titulo="Conectar Chat"><Conectar demo={false} /></Sub>;
-  if (sub === "chaves") return <Sub titulo="Chaves de IA">{Chaves ? <Chaves /> : <p class="small sub" aria-busy="true">{erro || "Carregando…"}</p>}</Sub>;
   if (sub === "dados") return <Sub titulo="Privacidade e dados"><PrivacidadeDados dona={acc?.role === "owner"} /></Sub>;
 
   return <div class="conta">
@@ -57,7 +54,7 @@ export default function Conta({ route }: { route: Route }) {
     {erro && <div class="note entrar-erro" role="alert"><Icon id="warn" />{erro}</div>}
     {setup && <div class="note warn" role="alert"><Icon id="warn" /><span>O código do primeiro acesso ainda existe no servidor. Apague agora: <code class="mono">npx wrangler secret delete OWNER_SETUP_CODE --cwd apps/worker</code>. Enquanto ele existir, apagar a sua conta reabriria o primeiro acesso.</span></div>}
     <nav class="card conta-menu" aria-label="Conta">
-      {ITENS.filter((i) => !i.dono || acc?.role === "owner").map((i) => <a key={i.id} class="conta-item" href={`#conta/${i.id}`}>
+      {ITENS.filter((i) => !i.dono || acc?.role === "owner").map((i) => <a key={i.id} class="conta-item" href={i.id === "ia" ? "#perfil/ia" : `#conta/${i.id}`}>
         <Icon id={i.icon} /><span><b>{i.nm}</b><small class="sub">{i.desc}</small></span><Icon id="arrow" /></a>)}
     </nav>
     <button type="button" class="btn danger lg full" onClick={() => void sair()}>Sair</button>

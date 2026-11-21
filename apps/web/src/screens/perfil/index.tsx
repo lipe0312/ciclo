@@ -13,6 +13,10 @@ import { DOW, DOW_NM, fmt, getPath, setPath } from "../../lib/util.ts";
 import { CATS } from "../claude/caixa.tsx";
 import TreinoAtual from "./treino-atual.tsx";
 import { classePulso, pararPulso } from "../../lib/pulso/index.ts";
+import { telaLenta } from "../../lib/tela-lenta/index.tsx";
+
+// #133 Perfil → Sua IA em chunk à parte (orçamento de JS por tela)
+const SuaIa = telaLenta<object>(() => import("./sua-ia.tsx"));
 
 const pr = () => S.profile;
 const pset = (k: string, v: unknown) => { pararPulso(); setPath(S.profile, k, v); profileChanged(); commit(); };
@@ -38,6 +42,7 @@ const BLOCOS: Bloco[] = [
   { id: "treino-atual", nm: "Meu treino atual", icon: "dumb", why: "Opcional: o treino gerado prioriza os exercícios que você já faz.", resumo: () => { const t = pr().treinoAtual; if (!t) return "não informado"; if (!t.divisoes.length) return "estou começando"; const n = t.divisoes.reduce((a, d) => a + d.exercicios.length, 0); return `${t.divisoes.length} treino(s) · ${n} exercício(s) · ${t.divisoes.map((d) => d.nome).join(", ")}`; } },
   { id: "preferencias", nm: "Preferências por músculo", icon: "swap", key: "preferencias", why: "Muda quais exercícios entram e em que aparelho.", resumo: () => `${Object.values(pr().prefs).filter((v) => v && v !== "tanto_faz").length} músculo(s) com preferência · formato ${ou(pr().dynamics)}` },
   { id: "mobilidade", nm: "Mobilidade", icon: "body", key: "mobilidade", why: "Tira os exercícios que doem ao agachar fundo ou levantar o braço.", resumo: () => `agachar ${pr().mobility.squat == null ? "—" : pr().mobility.squat ? "sem dor" : "com dor"} · braço acima da cabeça ${pr().mobility.overhead == null ? "—" : pr().mobility.overhead ? "sem dor" : "com dor"}` },
+  { id: "ia", nm: "Sua IA", icon: "chat", why: "Qual IA você usa e como: conector, chave de API ou sem IA.", resumo: () => C.resumoCaminho(pr().ia).replace(/^Seu caminho: /, "") },
   { id: "claude", nm: "Como o Chat trabalha com você", icon: "chat", key: "claude", why: "Define o que ele muda sozinho, o tom e qual modelo responde cada pedido.", resumo: () => `${({ so_sugere: "só sugere", carga_sozinho: "carga sozinho, plano com aprovação", tudo: "tudo automático" } as Record<string, string>)[pr().autonomy]} · tom ${pr().tone}` },
 ];
 const FORA: Bloco = { id: "comida", nm: "Comida e registro", icon: "food", why: "Define como você registra o que come (a tela Comida usa isto).", resumo: () => `registro ${ou(pr().diet.mode)} · ${ou(pr().diet.kcal, " kcal")} · ${ou(pr().diet.protein, " g")}` };
@@ -105,7 +110,7 @@ function Chat() {
     <div style="margin-top:16px"><span class="f">Modelo por tipo de pedido (economia × qualidade)</span>{CATS.map((c) => <div class="prefrow" key={c}><span class="small"><b>{c}</b></span><PSeg k={`tiers.${c}`} label={`Modelo de ${c}`} opts={[["haiku", "Haiku"], ["sonnet", "Sonnet"], ["opus", "Opus"]]} /></div>)}
       <p class="tiny sub" style="margin-top:8px">Haiku: registro e trocas simples · Sonnet: reorganizar o dia/semana · Opus: dor, revisão e novo bloco. Cada pedido pode trocar o modelo antes de enviar.</p></div>
     <div class="row wrapx" style="gap:16px;margin-top:16px"><div><span class="f">Tom</span><PSeg k="tone" label="Tom" opts={[["direto", "direto"], ["motivador", "motivador"], ["tecnico", "técnico"]]} /></div><div><span class="f">Revisão semanal</span><PSeg k="reviewTime" label="Revisão semanal" opts={[["dom20", "dom 20h"], ["seg7", "seg 7h"]]} /></div></div>
-    <div class="note" style="margin-top:16px"><Icon id="info" /><span>Para ligar o Chat ao app, siga o passo a passo em <a class="link44" href="#conta">Conta → Conectar meu Chat</a>.</span></div></>;
+    <div class="note" style="margin-top:16px"><Icon id="info" /><span>Para escolher e ligar a sua IA, veja <a class="link44" href="#perfil/ia">Perfil → Sua IA</a>.</span></div></>;
 }
 
 function Comida() {
@@ -132,6 +137,7 @@ const Selo = ({ ok }: { ok: boolean }) => <span class={`badge ${ok ? "ok" : "war
 export default function Perfil({ route }: { route: Route }) {
   ensureBaseline();
   const cp = C.profileCompleteness(S.profile);
+  if (route.parts[0] === "ia") return <SuaIa />;
   const id = route.parts[0], bloco = [...BLOCOS, FORA].find((b) => b.id === id);
   const porClaude = S.profile.meta?.filledBy === "claude" && !S.profile.meta.confirmed;
   const Tela = bloco && CORPO_BLOCO[bloco.id];

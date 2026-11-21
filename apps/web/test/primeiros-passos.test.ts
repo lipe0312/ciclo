@@ -166,7 +166,7 @@ test("Pular por agora: salva o respondido, marca 'pulado', conclui e vai para o 
 });
 
 test("Gerar semana: sem o mínimo, mostra a lista do que falta; com ele, gera sem corpo nem comida", async () => {
-  contaNova(); abrir(9);
+  contaNova(); abrir(M.PASSOS.length - 1); // #133 resumo (as 2 telas de IA entraram antes)
   await clicar("Gerar minha semana e abrir o Hoje"); await tick(); redesenhar();
   const falta = raiz.porClasse("pp-falta")[0];
   assert.ok(falta, "sem a lista do que falta");
@@ -178,7 +178,7 @@ test("Gerar semana: sem o mínimo, mostra a lista do que falta; com ele, gera se
   await M.garantirSemana(true); assert.ok(M.getVazio(), "sem semana antes de concluir"); chamadas.length = 0;
   Object.assign(M.S.profile.goal, M.C.goalDefaults("bracos_ombros"), { statement: "Ombros largos para o verão (teste)" });
   Object.assign(M.S.profile, { level: 1, daysUsual: ["seg", "qua", "sex"], daysTarget: 3, minutes: 60, places: ["academia"] });
-  abrir(9);
+  abrir(M.PASSOS.length - 1); // #133 resumo (as 2 telas de IA entraram antes)
   assert.match(texto(raiz), /Ombros largos para o verão \(teste\)\. 3 dias por semana, cerca de 60 min por treino/);
   assert.match(texto(raiz), /Objetivo: Braços e ombros maiores/);
   await clicar("Gerar minha semana e abrir o Hoje");
