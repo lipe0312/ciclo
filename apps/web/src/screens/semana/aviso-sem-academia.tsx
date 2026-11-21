@@ -15,21 +15,19 @@ const dispensadaEm = (): string | null => {
   const s = S.profile.meta?.avisos?.semAcademia ?? null, l = lsGet<string | null>(KEY(), null);
   return l && (!s || l > s) ? l : s;
 };
-export const faixaSemAcademiaVisivel = () => C.faixaSemAcademia({ academias: S.gyms.length, dispensadaEm: dispensadaEm(), hoje: today }) === "mostrar";
-
-export const TEXTO_SEM_ACADEMIA = "Treino montado com peso corporal e o que você marcou. Falta algum aparelho?";
+const visivel = () => C.faixaSemAcademia({ academias: S.gyms.length, dispensadaEm: dispensadaEm(), hoje: today }) === "mostrar";
 
 /** `fixa`: a tela de pronto dos Primeiros passos repete o aviso uma vez, sem "Dispensar" nem "Refazer". */
 export function AvisoSemAcademia({ fixa }: { fixa?: boolean }) {
-  if (fixa ? S.gyms.length > 0 : !faixaSemAcademiaVisivel()) return null;
+  if (fixa ? S.gyms.length > 0 : !visivel()) return null;
   const dispensar = () => {
     lsSet(KEY(), today);
     S.profile.meta = { ...S.profile.meta, avisos: { ...S.profile.meta?.avisos, semAcademia: today } };
     profileChanged(); commit();
   };
-  return <div class="note sem-academia" role="status" aria-label="Treino sem academia">
+  return <div class="note sem-academia" role="status">
     <Icon id="gym" /><div class="sem-academia-t">
-      <p class="small">{TEXTO_SEM_ACADEMIA} <b>Cadastre sua academia</b> e <b>refaça o treino</b>.</p>
+      <p class="small">Treino montado com peso corporal e o que você marcou. Falta algum aparelho? <b>Cadastre sua academia</b> e <b>refaça o treino</b>.</p>
       {!fixa && <div class="sem-academia-a">
         <a class="btn sm" href={href("academias", ["novo"])}><Icon id="plus" />Cadastrar academia</a>
         <button type="button" class="btn sm ghost" onClick={() => void regenerar(false)}><Icon id="cycle" />Refazer a semana</button></div>}</div>

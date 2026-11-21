@@ -113,7 +113,7 @@ function Hoje() {
       {plan.prehab.length > 0 && <Card><p class="kicker">Aquecimento · fortalecimento pela dor marcada</p>{plan.prehab.map((p) => <div class="row" key={p.exerciseId} style="margin-top:8px"><img class="thumb" style="width:48px;height:48px" src={`/img/ex/${encodeURIComponent(p.exerciseId)}.webp`} alt="" loading="lazy" /><div><b>{p.nm}</b><p class="small sub">2 × {p.reps[0]}–{p.reps[1]}, leve</p></div></div>)}</Card>}
       {plan.items.length ? plan.items.map((it, i) => <CardDia key={it.exerciseId + i} it={it} idx={i} run={run} />) : <Card><p class="sub">Nada para hoje com esses aparelhos.</p></Card>}</div>
       <div class="stack"><CardioHoje /><MeuTreinoAtual /><Card><h2>Como foi montado</h2><ul class="small" style="padding-left:18px;margin:10px 0 0;display:grid;gap:6px">{plan.why.map((w, i) => <li key={i}>{w}</li>)}
-        <li>{S.gyms.length ? `Só aparelhos de ${gymById(S.ui.gymId)?.name ?? ""}` : "Sem academia: só peso corporal e o que você marcou"}; trocas já vêm calculadas (sem gastar o Chat).</li></ul></Card>
+        <li>Só aparelhos de {lugar}; trocas já vêm calculadas (sem gastar o Chat).</li></ul></Card>
         <Card><h2>Mídia da sua academia</h2><p class="small sub" style="margin-top:4px">Grave 10–15 s mostrando a regulagem (pino, banco, pegada). Fica ligada ao exercício e ao aparelho; aparece nas próximas vezes e nas trocas.</p></Card>
         <Card><h2>Descanso com a tela bloqueada</h2><AvisoPush /></Card>
         {pend.length > 0 && <Card><h2>Edições em revisão</h2>{pend.map((e) => <div key={e.id}><p class="small" style="margin-top:6px">{e.label}</p>{e.issues.map((x: any, i: number) => <p key={i} class="tiny" style={`color:var(--${x.severity === "erro" ? "bad" : "warn"})`}>{x.msg}</p>)}</div>)}</Card>}
