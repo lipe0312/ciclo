@@ -79,8 +79,9 @@ test("LGPD: toda tabela com user_id (lida do schema) é apagada com a conta; exp
 
 test("nada de dado real versionado: migrations não semeiam pessoas nem e-mails", () => {
   for (const { name, sql } of readMigrations()) {
-    const ins = sql.replace(/--[^\n]*/g, "").match(/INSERT INTO\s+(\w+)/gi) ?? [];
-    for (const i of ins) assert.match(i, /geocode_gate|busca/i, `${name}: seed inesperado (${i})`);
+    // #133 refazer tabela (INSERT … SELECT, sem VALUES) copia o que já existe: não é seed
+    const ins = (sql.replace(/--[^\n]*/g, "").match(/INSERT INTO\s+\w+[^;]*/gi) ?? []).filter((i) => /\bVALUES\b/i.test(i) || !/\bSELECT\b[\s\S]*\bFROM\b/i.test(i));
+    for (const i of ins) assert.match(i.slice(0, 40), /geocode_gate|busca/i, `${name}: seed inesperado (${i.slice(0, 40)})`);
     assert.ok(!/@[a-z0-9-]+\.(com|br|net|org)/i.test(sql), `${name}: e-mail no SQL`);
   }
 });

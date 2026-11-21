@@ -3,13 +3,13 @@
 //   `comChaveDoUsuario` durante UMA chamada ao provedor. Nunca volta ao app (só ••••últimos4 e a impressão),
 //   nunca vai para log, env, cache, KV, mensagem de erro, export nem backup em claro.
 // - Cadastrar, trocar, mudar e apagar pedem Face ID dos últimos 5 min (step-up, exigirFaceId).
-// - Saída só para os três hosts da allowlist do core, sem seguir redirect; o corpo de erro do provedor é descartado.
+// - Saída só para os hosts da allowlist do core (#133: + openrouter.ai e api.deepseek.com), sem seguir redirect; o corpo de erro do provedor é descartado.
 // - Teto de gasto por chave (dia e mês) reservado num UPDATE atômico antes de chamar; rate limit por conta.
 // - Todo SQL com bind e filtrado por user_id.
 import {
   CHAVE_LIMITE_USO, CHAVE_LIMITE_VALIDAR, CHAVE_TIMEOUT_MS, ESFORCOS, MAX_CHAVES_POR_CONTA, NOME_PROVEDOR, PROVEDORES_IA, aadChave, cifrarChave,
-  classificarModelo, configOpenai, decifrarChave, diaUtc, filtrarModelos, hostPermitido, impressaoChave, importarKek, kekAtual, lerKeks, lerListaModelos,
-  mensagemErroProvedor, modeloPadrao, pedidoListarModelos, ultimos4, validarApelido, validarChaveFormato, validarTetos,
+  classificarModelo, configOpenai, decifrarChave, diaUtc, estadoConector, filtrarModelos, hostPermitido, impressaoChave, importarKek, kekAtual, lerKeks, lerListaModelos,
+  mensagemErroProvedor, modeloPadrao, pedidosValidar, ultimos4, validarApelido, validarChaveFormato, validarTetos,
 } from "@ciclo/core";
 import type { Esforco, ProvedorIa } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
@@ -60,8 +60,12 @@ export async function chamarProvedor(url: string, init: RequestInit): Promise<{ 
 
 /** Valida a chave com a chamada barata (listar modelos). Falhou → HttpError com mensagem fixa (nunca o corpo). */
 async function validarNoProvedor(env: Env, uid: string, chaveId: string, provedor: ProvedorIa, chave: string): Promise<string[]> {
-  const ped = pedidoListarModelos(provedor, chave);
-  const r = await chamarProvedor(ped.url, { method: "GET", headers: ped.headers });
+  // #133 OpenRouter: 1º o endpoint da chave (autentica), depois a lista de modelos; nos outros, a lista já autentica
+  let r: Awaited<ReturnType<typeof chamarProvedor>> = { ok: false, status: 0 };
+  for (const ped of pedidosValidar(provedor, chave)) {
+    r = await chamarProvedor(ped.url, { method: "GET", headers: ped.headers });
+    if (!r.ok) break;
+  }
   if (!r.ok) {
     const e = mensagemErroProvedor(r.status);
     await evento(env, uid, chaveId, "falhou", `${e.code}:${r.status}`).run();
@@ -96,6 +100,17 @@ export function registerChaves(on: (method: string, path: string, h: Handler) =>
       chaves: results.map((r) => meta(r, g.get(r.id))), max: MAX_CHAVES_POR_CONTA, cofre: !!kekAtual(lerKeks(env as unknown as Record<string, unknown>)),
       provedores: PROVEDORES_IA.map((id) => ({ id, nome: NOME_PROVEDOR[id] })), padraoServidor: { openai: configOpenai(env).ligado },
     });
+  });
+
+  // #133 Sua IA: o mínimo para o aviso e o status (estadoIA no core): conexão MCP (ativa, pendente, expirada) e quais
+  // provedores têm chave ativa. Nada de segredo, só da conta da sessão.
+  on("GET", "/api/account/ia", async (_req, env, _p, u) => {
+    const [toks, ks] = await Promise.all([
+      env.DB.prepare("SELECT created_at AS createdAt, last_used_at AS lastUsedAt, revoked_at AS revokedAt FROM mcp_token WHERE user_id = ?1 AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 50")
+        .bind(u.id).all<{ createdAt: number; lastUsedAt: number | null; revokedAt: number | null }>(),
+      env.DB.prepare("SELECT provedor, MAX(ativo) AS ativo FROM chave_ia WHERE user_id = ?1 GROUP BY provedor").bind(u.id).all<{ provedor: ProvedorIa; ativo: number }>(),
+    ]);
+    return json({ conector: estadoConector(toks.results, Date.now()), chaves: ks.results.map((k) => ({ provedor: k.provedor, ativo: !!k.ativo })) });
   });
 
   on("POST", "/api/account/chaves", async (req, env, _p, u) => {

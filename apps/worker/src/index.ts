@@ -35,7 +35,7 @@ export default {
     if (url.pathname === "/mcp") {
       const u = await authenticateMcp(req, env);
       if (!u) return unauthorized(req);
-      if (u.aceitePendente) return json({ error: "aceite os termos e a privacidade atualizados no app do Ciclo antes de usar pelo Claude", code: "aceite" }, 403); // #62
+      if (u.aceitePendente) return json({ error: "aceite os termos e a privacidade atualizados no app do Ciclo antes de usar pela sua IA", code: "aceite" }, 403); // #62
       return handleMcp(req, env, u, ctx);
     }
 
