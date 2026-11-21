@@ -11,6 +11,7 @@ import { newMcpToken } from "./auth.ts";
 import { exigirCotaConta, exigirCotaGlobal, somarBytesR2 } from "./limites.ts";
 import { dayAction, empurrar, getWeek, lerTreinoDoDia, regenerate } from "./semana.ts";
 import { gerarTreinoDoDia } from "./treino-gerado.ts";
+import { cancelarSessao, removerExercicio, resumirSeTerminada } from "./treino-corrigir.ts";
 import { registerComida } from "./comida.ts";
 import { lerPersonalizado, listarPersonalizados, registerPersonalizados } from "./exercicio-personalizado.ts";
 import { registerHome } from "./home.ts";
@@ -342,7 +343,7 @@ function planoSessao(v: unknown): Record<string, unknown> {
   return out;
 }
 
-// Iniciou = foi. A presença é gravada no "Começar".
+// #123 Começar NÃO marca o dia como feito: a presença é gravada no Terminar (finish).
 on("POST", "/api/sessions", async (req, env, _p, u) => {
   const b = await readJson<{ id?: string; date: string; gymId?: string; plan: DayPlan; startedAt?: number }>(req, 48 * 1024);
   // id gerado no aparelho permite registrar séries offline antes de a sessão chegar ao servidor (chave = user_id + id)
@@ -352,12 +353,9 @@ on("POST", "/api/sessions", async (req, env, _p, u) => {
   // #122 uma sessão aberta por dia: outro aparelho, recarregar ou o "Começar" repetido retomam a que está aberta (nunca uma 2ª).
   // A 2ª sessão do dia só nasce depois que a 1ª terminou ("Treinar de novo").
   const aberta = "SELECT id, started_at FROM session WHERE user_id = ?1 AND date = ?2 AND finished_at IS NULL AND started_at > ?3 ORDER BY started_at DESC LIMIT 1";
-  await env.DB.batch([
-    env.DB.prepare(`INSERT OR IGNORE INTO session (user_id, id, date, gym_id, plan, started_at) SELECT ?6, ?1, ?2, ?3, ?4, ?5
+  await env.DB.prepare(`INSERT OR IGNORE INTO session (user_id, id, date, gym_id, plan, started_at) SELECT ?6, ?1, ?2, ?3, ?4, ?5
       WHERE NOT EXISTS (SELECT 1 FROM session WHERE user_id = ?6 AND date = ?2 AND id <> ?1 AND finished_at IS NULL AND started_at > ?7)`)
-      .bind(sid, d, str(b.gymId, "gymId", 40, false), JSON.stringify(planoSessao(b.plan)), startedAt, u.id, now - MAX_SESSION_MS),
-    env.DB.prepare("INSERT INTO attendance (user_id, date, status, source, updated_at) VALUES (?3, ?1, 'fui', 'inicio', ?2) ON CONFLICT(user_id, date) DO UPDATE SET status='fui', source='inicio', updated_at=?2").bind(d, now, u.id),
-  ]);
+    .bind(sid, d, str(b.gymId, "gymId", 40, false), JSON.stringify(planoSessao(b.plan)), startedAt, u.id, now - MAX_SESSION_MS).run();
   const s = await env.DB.prepare(aberta).bind(u.id, d, now - MAX_SESSION_MS).first<{ id: string; started_at: number }>();
   if (s && s.id !== sid) return json({ id: s.id, startedAt: s.started_at, retomada: true });
   return json({ id: sid, startedAt }, 201);
@@ -384,10 +382,12 @@ on("POST", "/api/sessions/:id/sets", async (req, env, p, u) => {
   const erro = erroSerie(ex, { reps, segundos });
   if (erro) throw new HttpError(400, erro);
   const r = await env.DB.prepare(`INSERT INTO set_log (user_id, session_id, exercise_id, muscle, set_no, kg, reps, rir, created_at, segundos)
-    SELECT ?9, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?10 WHERE EXISTS (SELECT 1 FROM session WHERE user_id = ?9 AND id = ?1 AND (finished_at IS NULL OR closed_by = 'auto'))
+    SELECT ?9, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?10 WHERE EXISTS (SELECT 1 FROM session WHERE user_id = ?9 AND id = ?1)
     ON CONFLICT(user_id, session_id, exercise_id, set_no) DO UPDATE SET kg=?5, reps=?6, rir=?7, segundos=?10`)
     .bind(p.id, ex, muscle, int(b.setNo, "setNo", 1, 12), num(b.kg, "kg", 0, 600, false), reps, int(b.rir, "rir", 0, 6, false), Date.now(), u.id, segundos).run();
-  return json({ ok: true, saved: r.meta.changes > 0 });
+  // #123 dia feito não trava correção: série corrigida numa sessão terminada refaz o resumo dela
+  const summary = r.meta.changes > 0 ? await resumirSeTerminada(env, u.id, p.id) : null;
+  return json({ ok: true, saved: r.meta.changes > 0, ...(summary ? { summary } : {}) });
 });
 
 on("POST", "/api/sessions/:id/skip", async (req, env, p, u) => {
@@ -401,8 +401,12 @@ on("POST", "/api/sessions/:id/skip", async (req, env, p, u) => {
 
 on("POST", "/api/sessions/:id/finish", async (req, env, p, u) => {
   const b = await readJson<{ feedback: unknown }>(req, 16 * 1024);
+  const now = Date.now();
   const r = await env.DB.prepare("UPDATE session SET finished_at = ?2, closed_by = 'usuario', feedback = ?3 WHERE user_id = ?4 AND id = ?1 AND finished_at IS NULL")
-    .bind(p.id, Date.now(), JSON.stringify(b.feedback ?? {}), u.id).run();
+    .bind(p.id, now, JSON.stringify(b.feedback ?? {}), u.id).run();
+  // #123 só Terminar marca o dia como feito (presença "fim"); "Treinei" já marcado pela pessoa fica com a fonte dela
+  if (r.meta.changes) await env.DB.prepare(`INSERT INTO attendance (user_id, date, status, source, updated_at) SELECT user_id, date, 'fui', 'fim', ?3 FROM session WHERE user_id = ?1 AND id = ?2
+    ON CONFLICT(user_id, date) DO UPDATE SET source = CASE WHEN status = 'fui' THEN source ELSE 'fim' END, status = 'fui', updated_at = ?3`).bind(u.id, p.id, now).run();
   // terminou: não há mais descanso para avisar
   await env.DB.prepare("DELETE FROM rest_timer WHERE user_id = ?1 AND session_id = ?2").bind(u.id, p.id).run();
   return json({ ok: true, summary: r.meta.changes ? await summarizeSession(env, u.id, p.id) : null });
@@ -449,10 +453,15 @@ on("GET", "/api/sessions", async (req, env, _p, u) => {
 on("DELETE", "/api/sessions/:id/sets/:exerciseId/:setNo", async (_req, env, p, u) => {
   const n = Number(p.setNo);
   if (!Number.isInteger(n) || n < 1 || n > 12) throw new HttpError(400, "setNo fora de 1..12");
-  const r = await env.DB.prepare(`DELETE FROM set_log WHERE user_id = ?1 AND session_id = ?2 AND exercise_id = ?3 AND set_no = ?4
-    AND EXISTS (SELECT 1 FROM session WHERE user_id = ?1 AND id = ?2 AND (finished_at IS NULL OR closed_by = 'auto'))`).bind(u.id, p.id, exId(p.exerciseId), n).run();
-  return json({ ok: true, removed: r.meta.changes > 0 });
+  // #123 dia feito não trava correção: apaga também em sessão terminada (e refaz o resumo dela)
+  const r = await env.DB.prepare("DELETE FROM set_log WHERE user_id = ?1 AND session_id = ?2 AND exercise_id = ?3 AND set_no = ?4").bind(u.id, p.id, exId(p.exerciseId), n).run();
+  const summary = r.meta.changes > 0 ? await resumirSeTerminada(env, u.id, p.id) : null;
+  return json({ ok: true, removed: r.meta.changes > 0, ...(summary ? { summary } : {}) });
 });
+// #123 tirar um exercício registrado da sessão (mesmo terminada): séries, "não fiz" e o item do plano dela
+on("DELETE", "/api/sessions/:id/exercises/:exerciseId", async (_req, env, p, u) => json(await removerExercicio(env, u.id, p.id, exId(p.exerciseId))));
+// #123 cancelar o treino começado: descarta sessão, séries, cronômetro e push de descanso; o dia volta a pendente
+on("DELETE", "/api/sessions/:id", async (_req, env, p, u) => json(await cancelarSessao(env, u.id, p.id)));
 
 // Descanso: o app avisa "acaba em N s" e o cron de 1 min manda o Web Push se a tela estiver bloqueada.
 on("PUT", "/api/sessions/:id/rest", async (req, env, p, u) => {

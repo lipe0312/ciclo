@@ -88,6 +88,7 @@ test("treino num dia não planejado vira dia de treino feito e o resto da semana
   const plan = w1.extraToday ?? w1.days[0].plan;
   assert.equal((await a("POST", "/api/sessions", { id: SID, date: QUA, plan })).status, 201);
   for (const [k, it] of plan.items.slice(0, 3).entries()) await a("POST", `/api/sessions/${SID}/sets`, { exerciseId: it.exerciseId, setNo: k + 1, kg: 10, reps: 10 });
+  await a("POST", `/api/sessions/${SID}/finish`, { feedback: {} }); // #123 "feito" só ao terminar
   const w = (await a("GET", `/api/week?date=${QUA}`)).data.week;
   assert.equal(w.days[2].status, "feito");
   assert.equal(w.days[2].kind, "treino");
