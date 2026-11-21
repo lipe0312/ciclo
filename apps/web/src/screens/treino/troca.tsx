@@ -34,16 +34,16 @@ export function Swap({ idx }: { idx: number }) {
   const [outra, setOutra] = useState(false);
   const plan = activePlan(), it = plan.items[idx];
   if (!it) return null;
-  const gym = gymById(S.session?.gymId ?? S.ui.gymId);
+  const gym = gymById(S.session?.gymId ?? S.ui.gymId), nomeLugar = gym?.name ?? "peso corporal"; // #79 sem academia
   const alt = C.alternativas(it.exerciseId, dayInput());
   const parteNm = alt.parte ? C.SUB_MUSCLES[alt.parte].nm : mName(it.muscle);
   return <><SheetHead kicker={`Trocar · ${parteNm}`} title={it.nm} />
-    <p class="small sub" style="margin:8px 0 6px">Mesma parte do músculo ({parteNm.toLowerCase()}), da melhor troca para baixo; o que você já faz sobe. Só aparelho de {gym.name}; dor e "nunca" já contam.</p>
-    {alt.mesmaParte.length ? alt.mesmaParte.map((a) => <AltItem key={a.ex.id} a={a} idx={idx} />) : <p class="small" style="margin:10px 0">Sem outra opção para {parteNm.toLowerCase()} com os aparelhos de {gym.name}.</p>}
+    <p class="small sub" style="margin:8px 0 6px">Mesma parte do músculo ({parteNm.toLowerCase()}), da melhor troca para baixo; o que você já faz sobe. Só aparelho de {nomeLugar}; dor e "nunca" já contam.</p>
+    {alt.mesmaParte.length ? alt.mesmaParte.map((a) => <AltItem key={a.ex.id} a={a} idx={idx} />) : <p class="small" style="margin:10px 0">Sem outra opção para {parteNm.toLowerCase()} com os aparelhos de {nomeLugar}.</p>}
     {alt.outraParte.length > 0 && (!outra
       ? <button type="button" class="link44 alt-outra" aria-expanded={false} onClick={() => setOutra(true)}>Trocar por outra parte do músculo</button>
       : <><div class="note warn" role="note" style="margin-top:12px"><Icon id="warn" /><span>Isso não trabalha {parteNm.toLowerCase()}. A semana vai repor essa parte em outro dia.</span></div>
         {alt.outraParte.map((a) => <AltItem key={a.ex.id} a={a} idx={idx} outra />)}</>)}
-    {alt.semAparelho.length > 0 && <><h3 class="kicker alt-sec">Precisa de aparelho · não tem em {gym.name}</h3><ul class="small sub alt-falta">{alt.semAparelho.map((e) => <li key={e.id}>{e.nm}</li>)}</ul></>}</>;
+    {alt.semAparelho.length > 0 && <><h3 class="kicker alt-sec">Precisa de aparelho · não tem em {nomeLugar}</h3><ul class="small sub alt-falta">{alt.semAparelho.map((e) => <li key={e.id}>{e.nm}</li>)}</ul></>}</>;
 }
 
