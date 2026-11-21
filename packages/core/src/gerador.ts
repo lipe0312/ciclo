@@ -12,9 +12,11 @@ import type { DayInput, Pain, PlanItem } from "./plan-day.ts";
 import { DOWS, trainingDows } from "./semana.ts";
 import type { Dow, Split } from "./semana.ts";
 import { MAX_PRIORITIES } from "./prioridades.ts";
+import { avisosSaude } from "./saude-avisos.ts";
+import type { AvisoSaude } from "./saude-avisos.ts";
 
 type Sexo = "m" | "f";
-export type AvisoSaude = "gestacao" | "pos_parto" | "red_s";
+export type { AvisoSaude } from "./saude-avisos.ts";
 export interface PerfilGerador {
   sexo: Sexo | string | null;
   nivel: 0 | 1 | 2 | 3;
@@ -32,6 +34,8 @@ export interface PerfilGerador {
   familiar?: string[];
   /** sinais de saúde informados pela pessoa: só geram aviso para procurar um profissional (nada de diagnóstico) */
   saude?: AvisoSaude[];
+  /** #105 alvo semanal por músculo já com a progressão e o deload da semana (weekProgression); sem ele, weeklyTargets */
+  alvos?: Partial<Record<MuscleId, number>>;
 }
 export type MotivoFora = "aparelho" | "dor" | "variedade" | "tempo";
 export interface DiaGerado { dow: Dow; split: Split; itens: PlanItem[] }
@@ -129,8 +133,9 @@ function opcoes(m: MuscleId, p: PerfilGerador, equip: string[], comDor = true) {
   }).filter((c) => !c.blockedByPain && !ISOMETRICOS.includes(c.ex.id) && !(c.ex.fam && DONO_FAMILIA[c.ex.fam] !== m)).map((c) => c.ex);
 }
 
-const alvoDe = (m: MuscleId, nivel: PerfilGerador["nivel"], prioridades: MuscleId[], sexo: Sexo) => {
-  const t = weeklyTargets(nivel, prioridades)[m];
+const alvoDe = (m: MuscleId, p: PerfilGerador, prioridades: MuscleId[], sexo: Sexo) => {
+  const a = p.alvos?.[m];
+  const t = typeof a === "number" && Number.isFinite(a) ? Math.max(0, Math.round(a)) : weeklyTargets(p.nivel, prioridades)[m];
   return Math.min(VOLUME_TETO[sexo], sexo === "f" ? Math.round(t * FATOR_VOLUME_F) : t);
 };
 
@@ -146,9 +151,11 @@ export function faixasSemana(p: PerfilGerador): Faixas {
 
   const musculos = {} as Record<MuscleId, FaixaMusculo>;
   for (const m of ordem) {
-    const alvo = alvoDe(m, p.nivel, z.prioridades, z.sexo);
+    const alvo = alvoDe(m, p, z.prioridades, z.sexo);
     const f: FaixaMusculo = { alvo, min: 0, max: alvo, series: 0, sessoes: [], porSessao: {}, fora: null, prioridade: prio(m) };
     musculos[m] = f;
+    // #105 alvo da semana abaixo de 2× (deload, músculo zerado pela progressão): fica de fora, sem motivo a cobrar
+    if (alvo < FREQ_MIN) continue;
     const ok = opcoes(m, p, z.equip);
     if (!ok.length) { f.fora = opcoes(m, p, z.equip, false).length ? "dor" : "aparelho"; continue; }
     const doGrupo = dias.filter((d) => d.split === "full" || d.split === MUSCLES[m].group).map((d) => d.dow);
@@ -167,7 +174,8 @@ export function faixasSemana(p: PerfilGerador): Faixas {
   }
   const ativos = ordem.filter((m) => !musculos[m].fora);
   // 2ª série em cada sessão (prioridades primeiro)
-  for (const m of ativos) for (const d of musculos[m].sessoes) if (resta[d] >= 1 && n(musculos[m].porSessao[d]) < 2) { musculos[m].porSessao[d] = 2; resta[d]--; }
+  const totalDe = (f: FaixaMusculo) => Object.values(f.porSessao).reduce((a: number, b) => a + n(b), 0);
+  for (const m of ativos) for (const d of musculos[m].sessoes) if (resta[d] >= 1 && n(musculos[m].porSessao[d]) < 2 && totalDe(musculos[m]) < musculos[m].alvo) { musculos[m].porSessao[d] = 2; resta[d]--; }
   // completa até o alvo: rodadas só de prioridades, depois as demais; sempre no dia com mais tempo sobrando
   for (const grupo of [ativos.filter(prio), ativos.filter((m) => !prio(m))]) {
     for (let mudou = true; mudou;) {
@@ -218,9 +226,7 @@ function avisosDe(p: PerfilGerador, sexo: Sexo, fora: SemanaGerada["fora"]): str
     out.push(`Ponto de partida para mulher: ${Math.round((FATOR_VOLUME_F - 1) * 100)}% mais volume, mais repetições e descanso de ${DESCANSO_ISOLADO_F[0]}–${DESCANSO_ISOLADO_F[1]} s nos isolados; os check-ins ajustam.`);
     out.push("Ciclo menstrual: se os sintomas pesarem, use o \"mais leve hoje\"; o treino não muda pela fase.");
   }
-  const s = new Set(p.saude ?? []);
-  if (s.has("gestacao") || s.has("pos_parto")) out.push("Gestação ou pós-parto: converse com um profissional de saúde antes de seguir este treino (inclui o assoalho pélvico).");
-  if (s.has("red_s")) out.push("Cansaço que não passa, menstruação que some ou comer pouco para o treino pedem um profissional de saúde (baixa energia, RED-S).");
+  out.push(...avisosSaude(p.saude));
   return out;
 }
 

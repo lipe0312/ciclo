@@ -49,12 +49,11 @@ export async function startSession() {
   if (a.tipo === "retomar") return retomar(a.id);
   const plan: PlanoSessao = clone(computePlan()); plan.doDia = S.ui.treinoVisto ?? undefined; // de onde veio (sem: seguir.ts usa o próprio plano)
   S.session = { id: uid(), date: today, startedAt: Date.now(), finishedAt: null, plan, logs: {}, skipped: {}, rest: null, gymId: S.ui.gymId, format: S.ui.format, cur: 0 };
-  S.ui.avisoSessao = null;
-  S.week.attendance[today] = "fui";
+  S.ui.avisoSessao = null; // #123 começar NÃO marca o dia como feito: só o Terminar
   S.week.sessions.push({ id: S.session.id, date: today, name: plan.name, groups: plan.groups, started_at: S.session.startedAt });
   unlockAudio(); keepAwake();
   void syncPush(); // se o aviso já foi permitido, garante a assinatura; o pedido de permissão é um botão na própria tela (gesto do usuário)
-  toast("Começou · o dia já conta como “fui”");
+  toast("Começou · conta ao terminar");
   replace(href("treino", ["ativo", "0"])); commit();
   void loadRefs();
   const r = await send("POST", "/api/sessions", { id: S.session.id, date: today, gymId: S.ui.gymId, plan, startedAt: S.session.startedAt }).catch(() => null);
@@ -187,7 +186,22 @@ export function autoClose() {
   const s = S.session; if (!s || s.finishedAt) return;
   s.finishedAt = s.startedAt + C.MAX_SESSION_MS; s.closedBy = "auto"; s.rest = null;
   s.summary = buildSummary(s.finishedAt);
-  toast("Treino fechado sozinho (2 h). Presença mantida."); commit();
+  toast("Treino fechado sozinho (2 h) com o que foi registrado."); commit();
+}
+
+// ---------- #123 cancelar o treino começado ----------
+/** Descarta a sessão (séries, cronômetro e push de descanso) e o dia volta a pendente. O servidor apaga tudo dela. */
+export async function cancelarTreino() {
+  const s = S.session; if (!s || s.finishedAt) return;
+  const r = C.cancelarSessaoLocal(s, S.week);
+  S.session = r.sessao; S.week = r.week; S.ui.avisoSessao = null;
+  try { await wakeLock?.release(); } catch { /* ok */ }
+  wakeLock = null;
+  replace("#treino"); commit(); toast("Treino cancelado · o dia voltou a pendente");
+  if (SERVER) {
+    await send("DELETE", `/api/sessions/${encodeURIComponent(s.id)}`).catch(() => {});
+    void import("../semana/estado.ts").then((m) => m.garantirSemana(true)).catch(() => {});
+  }
 }
 
 // relógio global: dispara o fim do descanso e o fechamento automático mesmo fora da tela de Treino

@@ -162,8 +162,11 @@ export function adotarTreinoDeHoje(plan: C.DayPlan | null, fp?: string | null): 
  *  o que faltar (o que está no aparelho e ainda não foi concluído vence; o descanso local também). */
 export async function restoreSession(id: string) {
   let r: any = null;
-  try { r = await api("GET", `/api/sessions/${encodeURIComponent(id)}`); } catch { /* offline: segue com a cópia local */ }
+  let sumiu = false;
+  try { r = await api("GET", `/api/sessions/${encodeURIComponent(id)}`); } catch (e: any) { sumiu = e?.status === 404; /* offline: segue com a cópia local */ }
   const local = S.session && S.session.id === id ? S.session : null;
+  // #123 cancelada em outro aparelho (ou pela IA): a cópia local some também (cronômetro e descanso param)
+  if (sumiu && local && !local.finishedAt) { S.session = null; return; }
   if (!r) { if (!local) S.session = null; return; }
   // #122 terminada (aqui ou lá) fica terminada: cronômetro parado e sem descanso; o fim que ficou na fila vai de novo
   const t = (await import("@ciclo/core/sessao-dia")).terminadaVence(local, r);

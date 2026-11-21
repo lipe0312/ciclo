@@ -47,12 +47,20 @@ const BLOCOS: Bloco[] = [
 ];
 const FORA: Bloco = { id: "comida", nm: "Comida e registro", icon: "food", why: "Define como você registra o que come (a tela Comida usa isto).", resumo: () => `registro ${ou(pr().diet.mode)} · ${ou(pr().diet.kcal, " kcal")} · ${ou(pr().diet.protein, " g")}` };
 
+// #105 saúde (opcional): só avisos que encaminham a um profissional; não muda o treino e não é diagnóstico
+const SAUDE: [C.AvisoSaude, string][] = [["gestacao", "Gestação"], ["pos_parto", "Pós-parto"], ["red_s", "Baixa energia (RED-S)"]];
+const toggleSaude = (v: C.AvisoSaude) => { const cur = pr().saude ?? []; pset("saude", C.AVISOS_SAUDE.filter((x) => (x === v ? !cur.includes(x) : cur.includes(x)))); };
+
 function Corpo() {
   const p = pr();
   return <><span class="f">Sexo</span><PSeg k="sex" label="Sexo" opts={[["m", "masculino"], ["f", "feminino"]]} />
     <div class="pp-steppers"><div><span class="f">Idade</span><Stepper value={p.age} step={1} onStep={(d) => step("age", d)} /></div><div><span class="f">Altura</span><Stepper value={p.heightCm} step={1} unit=" cm" onStep={(d) => step("heightCm", d)} /></div><div><span class="f">Peso</span><Stepper value={p.weightKg} step={0.5} unit=" kg" onStep={(d) => step("weightKg", d)} /></div></div>
     <div style="margin-top:16px"><span class="f">Como você se vê hoje</span><div class="opts two">{BODY.map(([v, l, d]) => <Opt key={v} on={p.bodyType === v} onClick={() => pset("bodyType", v)} title={l} desc={d}><IlustCorpo id={v} /></Opt>)}</div></div>
-    <div style="margin-top:16px"><span class="f">Onde acumula gordura (pode marcar mais de um)</span><div class="chips">{C.FAT_WHERE.map((v) => <button type="button" key={v} class="chip tall" aria-pressed={p.fatWhere.includes(v)} onClick={() => ptoggle("fatWhere", v)}>{v}</button>)}</div></div></>;
+    <div style="margin-top:16px"><span class="f">Onde acumula gordura (pode marcar mais de um)</span><div class="chips">{C.FAT_WHERE.map((v) => <button type="button" key={v} class="chip tall" aria-pressed={p.fatWhere.includes(v)} onClick={() => ptoggle("fatWhere", v)}>{v}</button>)}</div></div>
+    <div class="saude-perfil" role="group" aria-labelledby="saude-rotulo"><span class="f" id="saude-rotulo">Saúde (opcional, pode marcar mais de um)</span>
+      <p class="small sub">Não marcar nada também vale. Serve só para avisar quando vale falar com um profissional de saúde: não muda o treino e não é diagnóstico.</p>
+      <div class="chips">{SAUDE.map(([v, l]) => <button type="button" key={v} class="chip tall" aria-pressed={(p.saude ?? []).includes(v)} onClick={() => toggleSaude(v)}>{l}</button>)}</div>
+      <div role="status" aria-live="polite">{C.avisosSaude(p.saude).map((a) => <div key={a} class="note"><Icon id="info" /><span>{a}</span></div>)}</div></div></>;
 }
 
 function Objetivo() {

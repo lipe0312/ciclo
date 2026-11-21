@@ -8,7 +8,7 @@ import { Icon, Seg } from "../../lib/ui/index.tsx";
 import { fmt, img } from "../../lib/util.ts";
 import { ExImgs } from "./biblioteca.tsx";
 import { Relogio, useTick } from "./relogio.tsx";
-import { openEdit, openComoFazer, openFinish, openSkip, openSwap } from "./folhas.tsx";
+import { BotaoMenu, openEdit, openComoFazer, openFinish, openSkip, openSwap } from "./folhas.tsx";
 import { MediaBox } from "./midia.tsx";
 import { InfoPersonalizado, SeloPersonalizado } from "./personalizado.tsx";
 import { REASON_TXT, addSet, adjustRest, currentSets, curIdx, doneSets, dropSet, editedSet, ensureLogs, goEx, modoDe, nextSetOf, onTick, pastAll, pastOf, progress, refsOf, restFor, running, setCur, setModo, skipRest, toggleSet } from "./sessao.ts";
@@ -146,7 +146,7 @@ export function Timeline({ idx }: { idx: number | null }) {
       <div class="modo-prog"><b class="num">{p.setsDone}/{p.setsTotal} séries</b>
         <span class="tiny sub num">{p.exDone} de {p.exTotal} exercícios · <Relogio /></span>
         {vol > 0 && <span class="tiny sub num">volume {fmt(vol)} kg{vs.pct != null && <> ({vs.pct >= 0 ? "+" : ""}{vs.pct}% vs média)</>}</span>}</div>
-      <button type="button" class="btn" onClick={openFinish}>Terminar</button></header>
+      <button type="button" class="btn" onClick={openFinish}>Terminar</button><BotaoMenu /></header>
     <div class="modo-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Séries concluídas"><i style={`width:${pct}%`} /></div>
     {S.ui.avisoSessao && <div class="note warn tl-aviso" role="status"><Icon id="info" /><span>{S.ui.avisoSessao}</span>
       <button type="button" class="btn sm ghost" onClick={() => { S.ui.avisoSessao = null; commit(); }}>Ok</button></div>}

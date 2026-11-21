@@ -3,7 +3,7 @@
 import * as C from "@ciclo/core";
 import { today } from "../../lib/store/index.ts";
 import { Icon } from "../../lib/ui/index.tsx";
-import { marcar, marcavel, planoDoDia, podeNaoTreinei } from "./estado.ts";
+import { desmarcar, marcar, marcavel, planoDoDia, podeDesmarcar, podeNaoTreinei } from "./estado.ts";
 import type { Dia } from "./estado.ts";
 import "./semana.css"; // o carrossel do Hoje usa as classes da Semana (status, Treinei)
 
@@ -23,6 +23,9 @@ export const semTreino = (d: Dia) => d.status === "livre" || (d.status === "folg
 /** #113 Treinei / Não treinei em qualquer dia até hoje (dentro ou fora do cadastro). Hoje: "Treinei" é a ação primária;
  *  nos outros dias, uma linha discreta (botões fantasma, toque ≥ 44 px). */
 export function Marcar({ d }: { d: Dia }) {
+  // #123 marcou "Treinei" sem querer: dá para trocar para Não (o dia volta a pendente e o check-in vira não)
+  if (podeDesmarcar(d)) return <div class="sem-acts sem-marcar leve"><span class="small sub"><Icon id="check" /> Treinei</span>
+    <button type="button" class="btn ghost" onClick={() => void desmarcar(d)}>Mudar para não treinei</button></div>;
   if (!marcavel(d)) return null;
   const hoje = d.date === today;
   return <div class={`sem-acts sem-marcar${hoje ? "" : " leve"}`}>

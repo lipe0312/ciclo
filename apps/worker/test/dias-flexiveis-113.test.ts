@@ -49,10 +49,12 @@ test("'treinei' pelo MCP num dia fora do cadastro conta como feito e a semana se
   assert.ok(dia(w, SAB).plan.setsTotal > 0, "o dia credita volume");
   assert.ok(w.version > antes.version);
   assert.match((await tool(env, a.token, "ciclo_marcar_presenca", { date: "2026-11-22", status: "fui" })).erro, /até hoje/);
-  // pelo app (mesmo caminho do aviso): "não treinei" num dia fora do cadastro
+  // pelo app (mesmo caminho do aviso): "não treinei" depois do "treinei" volta o dia a pendente (#123); de novo = faltou
   const b = await a.c("POST", `/api/week/day/${SAB}`, { action: "falta", resposta: "nao_fui", today: SAB });
   assert.equal(b.status, 200, b.text);
-  assert.equal(dia(b.data.week, SAB).status, "faltou");
+  assert.equal(dia(b.data.week, SAB).status, "livre");
+  const b2 = await a.c("POST", `/api/week/day/${SAB}`, { action: "falta", resposta: "nao_fui", today: SAB });
+  assert.equal(dia(b2.data.week, SAB).status, "faltou");
 });
 
 test("empurrar pelo app: prévia não grava; aplicar leva qua→qui, qui→sex, sex→sáb e hoje vira folga", async (t) => {

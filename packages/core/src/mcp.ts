@@ -5,7 +5,7 @@ import { divisoesDe, ehLivre } from "./treino-atual.ts";
 import type { ItemTreinoAtual } from "./treino-atual.ts";
 
 /** Versão do contrato (docs/12-mcp.md). Muda quando uma ferramenta muda de forma incompatível ou entra/sai. */
-export const MCP_CONTRATO = "1.3.0";
+export const MCP_CONTRATO = "1.4.0";
 /** Teto de bytes de uma resposta de ferramenta: nada de catálogo inteiro; o resto pagina. */
 export const MCP_ORCAMENTO_BYTES = 16_000;
 /** Teto do tools/list inteiro (todas as descrições e schemas) e das `instructions` do initialize. */

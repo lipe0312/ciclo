@@ -61,6 +61,8 @@ export interface WeekCtx {
   weekStart: string; today: string;
   sets: Record<string, Sets>;
   attendance: Record<string, Attendance>;
+  /** #123 dias com sessão aberta (começou e não terminou): as séries dela ainda não deixam o dia "feito" */
+  abertas?: readonly string[];
 }
 export interface WeekInput extends WeekCtx {
   profile: WeekProfile;
@@ -84,7 +86,11 @@ export interface WeekDay {
   /** #74 subparte que entrou neste dia para repor uma troca forçada de um dia anterior, com o porquê */
   repoe?: Reposicao[];
 }
-export interface WeekPlan { weekStart: string; targets: Record<MuscleId, number>; days: WeekDay[] }
+export interface WeekPlan {
+  weekStart: string; targets: Record<MuscleId, number>; days: WeekDay[];
+  /** #105 avisos do gerador da semana (músculo fora e por quê, ponto de partida por sexo, encaminhamento de saúde) */
+  avisos?: string[];
+}
 
 export interface CompOffer {
   date: string; muscles: MuscleId[];
@@ -252,7 +258,7 @@ function decideSplits(inp: WeekInput, days: WeekDay[], open: Set<string>) {
 /** #82 Dias de treino da semana pelo perfil (referência da divisão, como em trainingDows). */
 const diasDaSemana = (p: WeekProfile) => trainingDows(p.daysUsual, p.daysTarget).length;
 /** #82 A divisão que a semana segue: compatível com os dias e a frequência do método, ou incompatível com "Manter". */
-function divisaoSeguida(inp: WeekInput): { d: Divisao; inicio: number } | null {
+export function divisaoSeguida(inp: WeekInput): { d: Divisao; inicio: number } | null {
   const p = inp.profile, d = detectarDivisao(p.treinoAtual);
   return d && divisaoInfo(p, d)?.seguindo ? { d, inicio: inicioDoCiclo(d, diasDaSemana(p), inp.weekStart) } : null;
 }
@@ -444,7 +450,10 @@ export function replanAfterMiss(inp: WeekInput, date: string, answer: Attendance
 
 export function dayStatus(d: WeekDay, ctx: WeekCtx): DayStatus {
   const att = ctx.attendance[d.date];
-  if (sum(ctx.sets[d.date]) > 0 || att === "fui") return d.kind === "treino" ? "feito" : "extra";
+  // #123 "feito" só ao terminar: série de sessão ainda aberta não marca (o dia segue "hoje", em andamento); Terminar grava a presença
+  const registrado = sum(ctx.sets[d.date]) > 0;
+  if (registrado && att !== "fui" && d.date === ctx.today && ctx.abertas?.includes(d.date)) return "hoje";
+  if (registrado || att === "fui") return d.kind === "treino" ? "feito" : "extra";
   if (att === "nao_fui") return "faltou";
   if (att === "folga") return "folga";
   if (d.date < ctx.today) return d.kind === "treino" ? "pendente" : "folga";
