@@ -105,12 +105,16 @@ test("apagar e editar séries num dia feito (app) → volume da semana recalcula
   assert.equal((await a.done()).biceps, 3);
   assert.equal((await b.ok("DELETE", `/api/sessions/${S1}/sets/${EX}/3`)).removed, false);
   assert.equal((await b.ok("DELETE", `/api/sessions/${S1}/exercises/${EX2}`)).removed, 0);
-  assert.equal((await b.ok("POST", `/api/sessions/${S1}/sets`, { exerciseId: EX, setNo: 1, kg: 99, reps: 1 })).saved, false);
+  assert.equal((await b.ok("POST", `/api/sessions/${S1}/sets`, { corrigir: true, exerciseId: EX, setNo: 1, kg: 99, reps: 1 })).saved, false);
   const del = await a.ok("DELETE", `/api/sessions/${S1}/sets/${EX}/3`);
   assert.equal(del.removed, true);
   assert.equal(del.summary.sets, 3, "resumo refeito");
   assert.equal((await a.done()).biceps, 2);
-  assert.equal((await a.ok("POST", `/api/sessions/${S1}/sets`, { exerciseId: EX, setNo: 1, kg: 12, reps: 8 })).saved, true, "edita em sessão terminada");
+  assert.equal((await a.ok("POST", `/api/sessions/${S1}/sets`, { corrigir: true, exerciseId: EX, setNo: 1, kg: 12, reps: 8 })).saved, true, "edita em sessão terminada");
+  // série da fila offline (de antes da correção) chegando depois: não desfaz a correção nem volta a série apagada
+  assert.equal((await a.ok("POST", `/api/sessions/${S1}/sets`, { exerciseId: EX, setNo: 3, kg: 10, reps: 10 })).saved, false);
+  assert.equal((await a.ok("POST", `/api/sessions/${S1}/sets`, { exerciseId: EX, setNo: 1, kg: 10, reps: 10 })).saved, false);
+  assert.equal((await a.done()).biceps, 2, "volume segue o corrigido");
   const rem = await a.ok("DELETE", `/api/sessions/${S1}/exercises/${EX2}`);
   assert.equal(rem.removed, 1);
   assert.equal((await a.done()).ombro ?? 0, 0);
@@ -146,7 +150,7 @@ test("MCP corrigir: sem confirmar nada muda; com token muda uma vez; dia mudou �
   // descartar a sessão duplicada; o dia mudou entre a prévia e o sim → simular de novo
   const pd = await tool(env, a.token, "ciclo_treino_corrigir", { date: SEX, descartarSessao: S2 });
   assert.deepEqual(pd.volumeSemana, { biceps: "4 → 3" });
-  await a.serie(S1, 4);
+  await a.ok("POST", `/api/sessions/${S1}/sets`, { corrigir: true, exerciseId: EX, setNo: 4, kg: 10, reps: 10 }); // a pessoa corrigiu no app
   assert.match((await tool(env, a.token, "ciclo_treino_corrigir", { confirmar: pd.token })).erro, /mudou desde a prévia/);
   const pd2 = await tool(env, a.token, "ciclo_treino_corrigir", { date: SEX, descartarSessao: S2 });
   assert.equal((await tool(env, a.token, "ciclo_treino_corrigir", { confirmar: pd2.token })).corrigido, true);

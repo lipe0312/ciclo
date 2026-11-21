@@ -15,7 +15,7 @@ O Ciclo é um servidor MCP remoto (Streamable HTTP, respostas JSON, sem estado) 
 | Escopos OAuth | `ler` (ferramentas de leitura) e `escrever` (toda ferramenta que grava; sempre leva `ler`). Sem `scope` ou `scope=ciclo` = `ler escrever`. A tela `/autorizar` mostra o que será permitido. Tokens emitidos antes da v1.1.0 (escopo NULL) seguem com `ler escrever`. |
 | Escrita sem escopo | Chamada única → **HTTP 403** com `WWW-Authenticate: Bearer error="insufficient_scope", scope="ler escrever"`. Em lote → `isError`. `/mcp/media` também exige `escrever`. |
 | Prévia (simular → confirmar) | Token `prv_…` de **uso único**, **15 min**, **preso à conta** (guardado só como SHA-256; de outra conta = inexistente). Confirmar de novo devolve o mesmo resultado com `jaConfirmado: true` (idempotente). Falhou ao gravar → a prévia volta a valer. |
-| Destrutivas | `ciclo_comida_desfazer` e `ciclo_semana_gerar` (semana já treinada) só gravam com `confirmar`. `annotations.destructiveHint = true` só nelas. Não existe ferramenta que apague o resto: isso é só no app. |
+| Destrutivas | `ciclo_comida_desfazer`, `ciclo_semana_gerar` (semana já treinada), `ciclo_semana_empurrar` e `ciclo_treino_corrigir` (#123, ADR-0016: apaga/corrige séries e sessões de um dia, sem desfazer) só gravam com `confirmar`. `annotations.destructiveHint = true` só nelas. Fora isso, não existe ferramenta que apague: isso é só no app. |
 | Limites | Toda escrita conta no limite de escritas da #56 (120/min, 2.000/dia por pessoa). |
 | Logs | Nada de texto de comida, pedido ou dado pessoal; só o nome da ferramenta e o tamanho quando passa do orçamento. |
 

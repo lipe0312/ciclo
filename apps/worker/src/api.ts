@@ -382,9 +382,11 @@ on("POST", "/api/sessions/:id/sets", async (req, env, p, u) => {
   const erro = erroSerie(ex, { reps, segundos });
   if (erro) throw new HttpError(400, erro);
   const r = await env.DB.prepare(`INSERT INTO set_log (user_id, session_id, exercise_id, muscle, set_no, kg, reps, rir, created_at, segundos)
-    SELECT ?9, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?10 WHERE EXISTS (SELECT 1 FROM session WHERE user_id = ?9 AND id = ?1)
+    SELECT ?9, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?10 WHERE EXISTS (SELECT 1 FROM session WHERE user_id = ?9 AND id = ?1 AND (finished_at IS NULL OR closed_by = 'auto' OR ?11 = 1))
     ON CONFLICT(user_id, session_id, exercise_id, set_no) DO UPDATE SET kg=?5, reps=?6, rir=?7, segundos=?10`)
-    .bind(p.id, ex, muscle, int(b.setNo, "setNo", 1, 12), num(b.kg, "kg", 0, 600, false), reps, int(b.rir, "rir", 0, 6, false), Date.now(), u.id, segundos).run();
+    .bind(p.id, ex, muscle, int(b.setNo, "setNo", 1, 12), num(b.kg, "kg", 0, 600, false), reps, int(b.rir, "rir", 0, 6, false), Date.now(), u.id, segundos, b.corrigir === true ? 1 : 0).run();
+  // #123 sessão terminada pelo Terminar só aceita série da tela Corrigir (corrigir: true): uma série velha da fila offline
+  // chegando depois da correção não a desfaz (saved: false).
   // #123 dia feito não trava correção: série corrigida numa sessão terminada refaz o resumo dela
   const summary = r.meta.changes > 0 ? await resumirSeTerminada(env, u.id, p.id) : null;
   return json({ ok: true, saved: r.meta.changes > 0, ...(summary ? { summary } : {}) });

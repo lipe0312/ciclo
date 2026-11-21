@@ -6,6 +6,7 @@ import type { Env } from "./env.ts";
 import { HttpError, date, str } from "./http.ts";
 import { parse, summarizeSession } from "./db.ts";
 import { confirmar, criarPrevia } from "./mcp-previa.ts";
+import { sha256Hex } from "./auth.ts";
 import { S, addDays, hhmm, obj, today } from "./mcp-tipos.ts";
 import type { Args, Tool } from "./mcp-tipos.ts";
 
@@ -49,13 +50,14 @@ export async function removerExercicio(env: Env, uid: string, sid: string, ex: s
   if (!s) return { ok: true, removed: 0 };
   const plan = parse<{ items?: { exerciseId?: unknown }[] }>(s.plan, {});
   const items = Array.isArray(plan.items) ? plan.items.filter((i) => i?.exerciseId !== ex) : undefined;
-  const del = await env.DB.prepare("DELETE FROM set_log WHERE user_id = ?1 AND session_id = ?2 AND exercise_id = ?3").bind(uid, sid, ex).run();
-  await env.DB.batch([
+  const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM set_log WHERE user_id = ?1 AND session_id = ?2 AND exercise_id = ?3").bind(uid, sid, ex).first<{ n: number }>();
+  await env.DB.batch([ // tudo ou nada: séries, "não fiz" e o item do plano
+    env.DB.prepare("DELETE FROM set_log WHERE user_id = ?1 AND session_id = ?2 AND exercise_id = ?3").bind(uid, sid, ex),
     env.DB.prepare("DELETE FROM exercise_skip WHERE user_id = ?1 AND session_id = ?2 AND exercise_id = ?3").bind(uid, sid, ex),
     ...(items ? [env.DB.prepare("UPDATE session SET plan = ?3 WHERE user_id = ?1 AND id = ?2").bind(uid, sid, JSON.stringify({ ...plan, items }))] : []),
   ]);
   const summary = await resumirSeTerminada(env, uid, sid);
-  return { ok: true, removed: del.meta.changes ?? 0, summary };
+  return { ok: true, removed: n?.n ?? 0, summary };
 }
 
 // ---------- MCP: ciclo_treino_corrigir (prévia → confirmar) ----------
@@ -73,7 +75,8 @@ async function lerDia(env: Env, uid: string, d: string) {
   for (const r of sem.results as { m: MuscleId; n: number }[]) if (MUSCLE_IDS.includes(r.m)) semana[r.m] = r.n;
   const sessoes = ses.results as SesRow[], series = sets.results as SerieDia[];
   // o que a prévia mostrou: qualquer série nova, apagada ou mudada depois dela invalida o token
-  const assinatura = JSON.stringify([sessoes.map((s) => s.id), series.map((s) => [s.sessao, s.exercicio, s.serie, s.kg, s.reps, s.segundos, s.rir])]);
+  // só o SHA-256 vai na prévia (cabe no limite do payload, por maior que seja o dia)
+  const assinatura = await sha256Hex(JSON.stringify([sessoes.map((s) => s.id), series.map((s) => [s.sessao, s.exercicio, s.serie, s.kg, s.reps, s.segundos, s.rir])]));
   return { sessoes, series, semana, assinatura };
 }
 
