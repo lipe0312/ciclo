@@ -19,10 +19,21 @@ import { Historico } from "./historico.tsx";
 import { Cardio, cardioName } from "./cardio.tsx";
 import { abrirGerarOutro } from "./gerar.tsx";
 import { diaDe, garantirSemana } from "../semana/estado.ts";
-import { Relogio, Timeline, useTick } from "./timeline.tsx";
+import { Relogio, useTick } from "./relogio.tsx";
 import { AbasTreino } from "../../lib/abas-treino/index.tsx";
 
 export { MediaBox } from "./midia.tsx";
+
+// #122 o modo treino (timeline) baixa à parte, já no boot e em segundo plano: fica no cache para abrir sem sinal na academia
+type TL = typeof import("./timeline.tsx");
+let TLmod: TL | null = null;
+const carregarTL = () => import("./timeline.tsx").then((m) => { TLmod = m; return m; });
+void carregarTL().catch(() => {});
+function ModoTreino({ idx }: { idx: number | null }) {
+  const [m, set] = useState(TLmod);
+  useEffect(() => { if (!m) carregarTL().then(set).catch(() => {}); }, []);
+  return m ? <m.Timeline idx={idx} /> : <p class="sub" style="margin-top:12px" role="status">Abrindo o treino…</p>;
+}
 
 // mini-barra global: treino em andamento visto de qualquer tela (menos do próprio modo treino)
 registerMiniBar("treino", () => {
@@ -139,7 +150,7 @@ function CardDia({ it, idx, run }: { it: C.PlanItem; idx: number; run: boolean }
 export default function Treino({ route }: { route: Route }) {
   const sub = route.parts[0];
   const tab = sub === "exercicios" || sub === "exercicio" ? "ex" : sub === "historico" ? "hist" : sub === "cardio" ? "cardio" : "hoje";
-  if (sub === "ativo") return <Timeline idx={route.parts[1] != null && /^\d+$/.test(route.parts[1]) ? Number(route.parts[1]) : null} />;
+  if (sub === "ativo") return <ModoTreino idx={route.parts[1] != null && /^\d+$/.test(route.parts[1]) ? Number(route.parts[1]) : null} />;
   return <>
     {sub !== "exercicio" && <AbasTreino atual={tab} />}
     {sub === "exercicio" ? <Detalhe id={route.parts[1] ?? ""} /> : tab === "ex" ? <Biblioteca query={route.query} /> : tab === "hist" ? <Historico /> : tab === "cardio" ? <Cardio /> : <Hoje />}
