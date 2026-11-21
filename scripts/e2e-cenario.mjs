@@ -8,7 +8,7 @@ import { CENARIOS, urlAbertura } from "./cenarios/index.mjs";
 import { abrirChrome, sleep } from "./cenarios/cdp.mjs";
 
 const PORTA = Number(process.env.CENARIO_PORTA) || 8793;
-const ROTEIROS = { "primeiro-acesso": primeiroAcesso, pular, "treino-atual": treinoAtual, navegacao };
+const ROTEIROS = { "primeiro-acesso": primeiroAcesso, pular, "treino-atual": treinoAtual, navegacao, chat };
 /** Cenário de cada roteiro (padrão: vazio). #74: o "Meu treino atual" roda na conta em uso (semi). */
 const CENARIO_DO = { "treino-atual": "semi", navegacao: "semi" };
 const CENARIO = CENARIO_DO[process.argv[2]] ?? "vazio";
@@ -398,6 +398,79 @@ async function navegacao(c) {
     await naTela(c, "#semana", "Semana");
     await c.ev("sessionStorage.clear()"); await c.recarregar(); await naTela(c, "#semana", "Semana");
     await c.clicar("Voltar para Treino", ".top"); await naTela(c, "#treino", "Hoje");
+  }, c);
+}
+
+// #134 Chat no ?demo com cada estado de IA simulado (2 IAs por estado), em 390 px: composer com +, microfone e enviar
+// de 44 px, acima da barra inferior, sem rolagem lateral e visível com o "teclado" aberto (viewport encolhida).
+async function chat(c) {
+  const abrirChat = async (q) => {
+    for (let i = 0; i < 100 && (await fetch(`${BASE}/`).then((r) => r.status, () => 0)) !== 200; i++) await sleep(200);
+    await c.abrir(`${BASE}/?demo&${q}#chat`);
+    ok(await c.esperar("!!document.querySelector('.ch-composer textarea')", 10000), `o Chat não abriu (${q})`);
+  };
+  const enviarTexto = async (t) => {
+    await escrever(c, ".ch-composer textarea", t);
+    await c.ev("document.querySelector('.ch-composer').requestSubmit()"); await sleep(300);
+  };
+  const medidas = () => c.ev(`(() => { const r = (s) => document.querySelector(s)?.getBoundingClientRect();
+    const bs = ['[aria-label="Anexar foto ou PDF"]', '[aria-label="Falar a mensagem"]', '[aria-label="Enviar"]'].map((s) => { const b = r('.ch-composer ' + s); return b ? [Math.round(b.width), Math.round(b.height)] : null; });
+    const comp = r('.ch-composer'), barra = r('nav.bottom, .bottom');
+    return { bs, compTopo: comp.top, compFim: comp.bottom, altura: innerHeight, barraTopo: barra && getComputedStyle(document.querySelector('.bottom')).display !== 'none' ? barra.top : null,
+      lateral: document.documentElement.scrollWidth > innerWidth + 1 }; })()`);
+  await passo("390: composer com +, microfone e enviar de 44 px, acima da barra inferior, sem rolagem lateral", async () => {
+    await abrirChat("ia=chave&chave=gemini");
+    const m = await medidas();
+    for (const b of m.bs) ok(b && b[0] >= 44 && b[1] >= 44, `toque menor que 44 px: ${JSON.stringify(m.bs)}`);
+    ok(m.compFim <= m.altura + 1, `composer passa da tela: ${JSON.stringify(m)}`);
+    ok(m.barraTopo == null || m.compFim <= m.barraTopo + 1, `a barra inferior cobre o composer: ${JSON.stringify(m)}`);
+    ok(!m.lateral, "rolagem lateral em 390 px");
+  }, c);
+  await passo("teclado aberto (viewport de 390×420): o composer continua inteiro na tela e o campo com foco", async () => {
+    await c.ev("document.querySelector('.ch-composer textarea').focus()");
+    await c.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 420, deviceScaleFactor: 1, mobile: true }); await sleep(300);
+    const m = await medidas();
+    ok(m.compTopo >= 0 && m.compFim <= m.altura + 1, `o composer saiu da tela com o teclado: ${JSON.stringify(m)}`);
+    igual(await c.ev("document.activeElement?.classList.contains('ch-campo')"), true, "o campo perdeu o foco");
+    await c.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await sleep(200);
+  }, c);
+  for (const [rotina, nome] of [["claude", "Claude"], ["gemini", "Gemini"]]) {
+    await passo(`estado nenhum (${nome}): pensando, mensagem fixa e o rascunho fica no composer`, async () => {
+      await abrirChat(`ia=nenhum&rotina=${rotina}`);
+      await enviarTexto("o que treino hoje?");
+      ok(await c.esperar("(document.querySelector('.ch-thread')?.innerText ?? '').includes('ainda não conectou nenhuma IA')", 4000), "sem a mensagem fixa");
+      ok((await c.texto()).includes(`Configurar o ${nome}`), "sem o botão para Perfil → Sua IA");
+      igual(await c.ev("document.querySelector('.ch-composer textarea').value"), "o que treino hoje?", "rascunho");
+    }, c);
+  }
+  for (const [rotina, nome, link] of [["claude", "Claude", true], ["chatgpt", "ChatGPT", false]]) {
+    await passo(`estado só conector (${nome}): vira pedido na faixa e o mini prompt ${link ? "abre com o prompt fixo" : "vem para copiar"}`, async () => {
+      await abrirChat(`ia=conector&rotina=${rotina}`);
+      await enviarTexto("quero treinar ombro hoje");
+      // o demo guarda os pedidos do passo anterior no aparelho: a faixa conta todos
+      ok(await c.esperar("/\\d+ pedidos? na rotina/.test(document.querySelector('.ch-faixa')?.innerText ?? '') && (document.querySelector('.ch-thread')?.innerText ?? '').includes('Virou um pedido')", 4000), "sem a faixa de pedidos");
+      const externos = await c.ev("[...document.querySelectorAll('.ch-thread a[href^=\"http\"]')].map((a) => a.textContent.trim())");
+      if (link) igual(externos, [`Abrir no ${nome}`], "link do mini prompt");
+      else { igual(externos, [], "IA sem prompt na URL não ganha link"); ok((await c.texto()).includes("Copiar"), "sem o Copiar"); }
+    }, c);
+  }
+  for (const [ia, nome] of [["gemini", "Gemini"], ["deepseek", "DeepSeek"]]) {
+    await passo(`estado só chave (${nome}): a IA no topo e nada vai para a rotina`, async () => {
+      await abrirChat(`ia=chave&chave=${ia}`);
+      ok((await c.texto()).includes(`${nome} · modelo padrão`), "sem a IA no topo");
+      await enviarTexto("como foi minha semana?");
+      ok(await c.esperar("(document.querySelector('.ch-thread')?.innerText ?? '').includes('chave do " + nome + "')", 4000), "não foi pela chave");
+      ok(!(await c.texto()).includes("Virou um pedido"), "virou pedido");
+    }, c);
+  }
+  await passo("estado ambos (rotina do Claude + chave do Gemini): o padrão é a chave, o toggle manda para a rotina", async () => {
+    await abrirChat("ia=ambos&rotina=claude&chave=gemini");
+    await enviarTexto("primeira");
+    ok((await c.texto()).includes("Guardei na conversa"), "o padrão não foi a chave");
+    await c.ev("document.querySelector('.ch-rotina input').click()");
+    await enviarTexto("segunda");
+    ok(await c.esperar("(document.querySelector('.ch-thread')?.innerText ?? '').includes('Virou um pedido na rotina do Claude')", 4000), "o toggle não mandou para a rotina");
+    ok(/\d+ pedidos? na rotina/.test(await c.ev("document.querySelector('.ch-faixa')?.innerText ?? ''")), "sem a faixa");
   }, c);
 }
 

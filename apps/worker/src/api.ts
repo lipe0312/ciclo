@@ -18,6 +18,7 @@ import { registerClaude } from "./mcp-chat.ts";
 import { subirVersaoDepois, versaoDaConta } from "./versao.ts";
 import { exigirFaceId, perfilConta, registerConta } from "./auth-conta.ts";
 import { registerChaves } from "./chaves.ts";
+import { registerConversas } from "./conversas.ts";
 import { createExam, deleteExam, getDiary, openDiary, putCheckout, saveDaysSummary, saveRecap, setReminder } from "./diario.ts";
 
 type Handler = (req: Request, env: Env, p: Record<string, string>, u: AuthUser) => Promise<Response>;
@@ -583,6 +584,8 @@ registerClaude(on);
 registerConta(on);
 // #88 chaves de API próprias (cofre cifrado, step-up, teto e rate limit): ver chaves.ts
 registerChaves(on);
+// #134 histórico do Chat (conversas por conta): ver conversas.ts
+registerConversas(on);
 
 // Mídia do SEU aparelho → R2 privado, sob o prefixo da conta. Upload passa pelo Worker (simples, valida tipo e tamanho).
 // Mídia de aparelho (equipmentId) exige o lugar (gymId) e o lugar tem que ser desta conta.

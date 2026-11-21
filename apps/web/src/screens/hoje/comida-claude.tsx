@@ -36,5 +36,5 @@ export function ClaudeCard() {
       : resp ? <><p class="small sub" style="margin-top:6px">Última resposta</p><p class="small">{curto(resp.response ?? "")}</p></>
         : <p class="small sub" style="margin-top:6px">Peça ajustes de treino, comida ou dor. Os pedidos ficam guardados até a sua IA responder.</p>}
     <div style="margin-top:10px"><AvisoIa /></div>
-    <div class="hm-ctas"><a class="btn sm pri" href="#chat"><Icon id="chat" />Fale com a IA</a></div></Card>;
+    <div class="hm-ctas"><a class="btn sm pri" href={C.hrefFale("hoje")}><Icon id="chat" />Fale com a IA</a></div></Card>;
 }
