@@ -37,3 +37,5 @@
 .chv-acoes .btn{flex:1 1 auto}
 .chv-seg button{min-height:44px}
 @media (min-width:720px){.chv-grade{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.chv-acoes .btn{flex:0 0 auto}}
+/* botão parado legível (o motivo vem escrito ao lado; a cor não é o único sinal) */
+.btn.pri.chv-salvar:disabled{opacity:1;background:var(--sup-2);color:var(--sub);border-color:var(--borda-ctrl);box-shadow:none}

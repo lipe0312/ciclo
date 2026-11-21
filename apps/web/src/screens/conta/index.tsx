@@ -32,9 +32,10 @@ export default function Conta({ route }: { route: Route }) {
   useEffect(() => { if (SERVER) load().catch(() => setErro("Não deu para carregar a conta.")); }, []);
   const sub = route.parts[0] ?? "";
   // #88: Chaves de IA em chunk à parte (orçamento de JS inicial), baixa só ao abrir a subtela
-  const [Chaves, setChaves] = useState<ComponentType | null>(null);
+  const [Chaves, setChaves] = useState<ComponentType<{ demo?: boolean }> | null>(null);
   useEffect(() => { if (sub === "chaves" && !Chaves) import("./chaves.tsx").then((m) => setChaves(() => m.Chaves)).catch(() => setErro("Não deu para abrir as chaves.")); }, [sub]);
 
+  if (!SERVER && sub === "chaves") return <Sub titulo="Chaves de IA">{Chaves ? <Chaves demo /> : <p class="small sub" aria-busy="true">{erro || "Carregando…"}</p>}</Sub>;
   if (!SERVER) return <div class="conta"><p class="kicker">Conta</p><h1>Conta</h1>
     <div class="note"><Icon id="info" />Na demonstração não há conta: os dados ficam só neste navegador.</div>
     <Conectar demo /></div>;
