@@ -6,6 +6,7 @@ import { ACAO_REVISAR_TREINO, EQUIPAMENTO_SEM_ACADEMIA, EQUIPMENT, EXERCISES, al
 import type { Schema } from "@ciclo/core";
 import type { CompactItem, Mode, MuscleId } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
+import { validarPatchGerador } from "./gerador.ts";
 import { EMPTY_MSG, buildDayInput, closeStaleSessions, countGyms, getProfile, hitRateLimit, listGyms, saveProfile, upsertPain, weekState } from "./db.ts";
 import { HttpError, date, id, int, json, num, oneOf, str } from "./http.ts";
 import { FOOD_COLS, basePessoal, foodOut } from "./comida.ts";
@@ -81,6 +82,7 @@ export const TOOLS: Tool[] = [
     description: "Atualiza (patch, o mesmo do PATCH /api/profile) o perfil de treino da conta, para fazer os Primeiros passos conversando. Mande só o que o usuário disse. Campos: goal{id,statement,horizonWeeks 8|12|16}, subPriorities (até 3 IDs de subdivisão, em ordem; ex.: ombro_lat, biceps, triceps_longa), level 0-3, sex m|f, age, heightCm, weightKg, bodyType, daysUsual[seg..dom], daysTarget 1-7, minutes 20-180, weekStart seg..dom, hour, prefs{músculo:livre|maquina|cabo|tanto_faz}, pinned{músculo:idExercício}, avoid[idExercício], remembered[{exerciseId,kg,reps,confidence}], dynamics, diet{mode zero|leve|detalhado}, autonomy, tone. Valida tudo; qualquer erro recusa e nada é salvo. O app mostra 'preenchido pelo Claude — confira'.",
     inputSchema: obj({ perfil: { type: "object", description: "Campos parciais do perfil (só os que mudam)." }, concluirPrimeirosPassos: { type: "boolean", description: "true quando já cobriu o essencial (objetivo, prioridades, rotina, corpo)." } }, ["perfil"]),
     run: async (a, env, uid) => {
+      validarPatchGerador(a.perfil, false); // #105 campos do gerador conferidos com http.ts antes de salvar
       const { data, versao } = await saveProfile(env, uid, a.perfil, "merge", { meta: { filledBy: "claude", confirmed: false } });
       if (a.concluirPrimeirosPassos === true) await env.DB.prepare("UPDATE user SET onboarding_done_at = COALESCE(onboarding_done_at, ?2) WHERE id = ?1").bind(uid, Date.now()).run();
       return { salvo: true, contexto: contextSummary(data, versao) };
