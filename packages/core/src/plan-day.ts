@@ -44,8 +44,12 @@ export interface DayInput {
   familiarFraco?: string[];
   /** #74 iniciante (nunca treinou / "estou começando"): a popularidade desempata. */
   iniciante?: boolean;
-  /** #74 subparte alvo por músculo (padrão: ALVO_PADRAO; sem alvo = a melhor subparte do músculo). */
+  /** #74 subparte alvo explícita por músculo (acima da regra da #82; ver subAlvos). */
   subAlvo?: Partial<Record<MuscleId, SubMuscleId>>;
+  /** #82 prioridades finas do perfil (subPriorities, em ordem): a subparte-alvo de qualquer músculo vem daqui primeiro */
+  subPrioridades?: SubMuscleId[];
+  /** #82 volume da semana por subparte (crédito da #74): sem prioridade fina, o alvo é a subparte principal mais atrasada */
+  subVolume?: Partial<Record<SubMuscleId, number>>;
   /** #74 troca forçada: subparte que ficou sem estímulo e quantas séries repor (nunca passa do que falta na semana). */
   repor?: Partial<Record<MuscleId, { sub: SubMuscleId; sets: number }>>;
   /** #125 formato do dia: "superserie" = preferir pares (podeParear), nunca pela posição. */
@@ -119,8 +123,50 @@ export const EFICIENCIA_PESO = 1;
 export const POPULAR_PESO = 0.05;
 /** Exercício principal da subparte que uma troca forçada deixou sem estímulo (acima do familiar, abaixo do fixado). */
 export const REPOSICAO = 4.5;
-/** Alvo padrão: o orçamento "ombro" é o ombro LATERAL (o anterior já vem dos supinos e desenvolvimentos). */
-export const ALVO_PADRAO: Partial<Record<MuscleId, SubMuscleId>> = { ombro: "ombro_lat" };
+/** #82 Subpartes principais de cada músculo do orçamento, na ordem do padrão. Sem prioridade fina, a semana mira a mais
+ *  atrasada delas (trapézio, lombar, antebraço, adutores e oblíquos só entram como prioridade fina). docs/09-base-cientifica.md#subparte-alvo */
+export const SUB_PRINCIPAIS: Record<MuscleId, SubMuscleId[]> = {
+  peito: ["peito_sup", "peito_medio"], costas: ["dorsal", "costas_meio"], ombro: ["ombro_lat"], post: ["ombro_post"],
+  biceps: ["biceps"], triceps: ["triceps_longa", "triceps_lateral"], quad: ["quad"], isquio: ["isquio"], gluteo: ["gluteo"],
+  pant: ["pant"], core: ["abdomen"],
+};
+/** Alvo padrão de cada músculo (a 1ª subparte principal). O orçamento "ombro" é o ombro LATERAL (o anterior já vem dos
+ *  supinos e desenvolvimentos). docs/09-base-cientifica.md#subparte-alvo */
+export const ALVO_PADRAO: Record<MuscleId, SubMuscleId> = Object.fromEntries(MUSCLE_IDS.map((m) => [m, SUB_PRINCIPAIS[m][0]])) as Record<MuscleId, SubMuscleId>;
+/** #82 Bônus do exercício principal (nota 3) da subparte marcada como prioridade fina: ela recebe o melhor exercício para si. */
+export const PRIORIDADE_FINA = 3;
+
+export interface SubAlvoItem { sub: SubMuscleId; peso: number; fina: boolean }
+type AlvoCtx = Pick<DayInput, "subAlvo" | "repor" | "subPrioridades" | "subVolume">;
+/** #82 Subpartes-alvo do músculo, com o peso de cada uma: reposição (#74) > alvo explícito > prioridades finas do perfil
+ *  (peso pela ordem: a 1ª pesa mais) > a subparte principal mais atrasada na semana > o padrão do músculo. */
+export function subAlvos(m: MuscleId, ctx: AlvoCtx): SubAlvoItem[] {
+  const rp = ctx.repor?.[m];
+  if (rp && SUB_MUSCLES[rp.sub]) return [{ sub: rp.sub, peso: 1, fina: false }];
+  const ex = ctx.subAlvo?.[m];
+  if (ex && SUB_MUSCLES[ex]) return [{ sub: ex, peso: 1, fina: false }];
+  const finas = [...new Set(ctx.subPrioridades ?? [])].filter((s) => SUB_MUSCLES[s]?.muscle === m);
+  if (finas.length) return finas.map((s, i) => ({ sub: s, peso: finas.length - i, fina: true }));
+  const v = ctx.subVolume ?? {};
+  const atrasada = [...SUB_PRINCIPAIS[m]].sort((a, b) => n(v[a]) - n(v[b]))[0]; // sort estável: empate = ordem do padrão
+  return [{ sub: atrasada ?? ALVO_PADRAO[m], peso: 1, fina: false }];
+}
+/** #82 A subparte-alvo principal do músculo (a 1ª de subAlvos). */
+export const subAlvo = (m: MuscleId, ctx: AlvoCtx): SubMuscleId => subAlvos(m, ctx)[0].sub;
+
+/** #82 Divide as séries do músculo entre as subpartes prioritárias: primeiro 1 série para cada (quem está mais atrás na
+ *  semana, pelo volume ÷ peso, vem antes), depois o resto na proporção do peso. */
+export function dividirPorSubparte(sets: number, alvos: readonly SubAlvoItem[], vol: Partial<Record<SubMuscleId, number>>): Partial<Record<SubMuscleId, number>> {
+  const ordem = alvos.map((a, i) => ({ ...a, i })).sort((a, b) => n(vol[a.sub]) / a.peso - n(vol[b.sub]) / b.peso || a.i - b.i);
+  const out: Partial<Record<SubMuscleId, number>> = {};
+  let resto = Math.max(0, Math.floor(sets));
+  for (const a of ordem) { if (!resto) break; out[a.sub] = 1; resto--; }
+  while (resto > 0) {
+    const a = [...ordem].sort((x, y) => n(out[x.sub]) / x.peso - n(out[y.sub]) / y.peso || x.i - y.i)[0];
+    out[a.sub] = n(out[a.sub]) + 1; resto--;
+  }
+  return out;
+}
 
 /** Nota do exercício na subparte alvo; sem alvo, a melhor nota entre as subpartes que contam no músculo. */
 export function notaAlvo(ex: Exercise, m: MuscleId, alvo?: SubMuscleId | null): number {
@@ -143,13 +189,15 @@ export function painBlocks(ex: Exercise, pains: Pain[]): boolean {
   return false;
 }
 
-type CandInput = Pick<DayInput, "equipment" | "crowded" | "prefs" | "pains" | "pinned" | "avoid" | "estilo" | "familiar" | "familiarFraco" | "iniciante" | "subAlvo" | "repor" | "variarDe" | "alternativasDe" | "cansados">;
+type CandInput = Pick<DayInput, "equipment" | "crowded" | "prefs" | "pains" | "pinned" | "avoid" | "estilo" | "familiar" | "familiarFraco" | "iniciante" | "subAlvo" | "repor" | "variarDe" | "alternativasDe" | "cansados" | "subPrioridades" | "subVolume">;
 export interface Candidate { ex: Exercise; score: number; blockedByPain: boolean; familiar: boolean; nota: number }
-export function candidates(m: MuscleId, inp: CandInput): Candidate[] {
+/** `alvo`: a subparte mirada (padrão: a 1ª de subAlvos). */
+export function candidates(m: MuscleId, inp: CandInput, alvoItem?: SubAlvoItem): Candidate[] {
   const eq = new Set(inp.equipment);
   const pref = inp.prefs?.[m];
   const rp = inp.repor?.[m];
-  const alvo = rp?.sub ?? inp.subAlvo?.[m] ?? ALVO_PADRAO[m] ?? null;
+  const ai = alvoItem ?? subAlvos(m, inp)[0];
+  const alvo = ai.sub;
   const out: Candidate[] = [];
   EXERCISES.forEach((ex, idx) => {
     if (ex.m !== m || ex.id === "Scapular_Pull-Up" || ex.planOff) return; // só aquecimento / acessório
@@ -165,6 +213,7 @@ export function candidates(m: MuscleId, inp: CandInput): Candidate[] {
     if (ex.prehab) score -= 1.5; // prehab não é a 1ª escolha para hipertrofia
     const nota = notaAlvo(ex, m, alvo);
     score += EFICIENCIA_PESO * nota;
+    if (ai.fina && nota >= 3) score += PRIORIDADE_FINA; // #82 prioridade fina: o melhor exercício para aquela subparte
     const familiar = !!inp.familiar?.includes(ex.id);
     if (familiar) score += FAMILIAR; else if (inp.familiarFraco?.includes(ex.id)) score += FAMILIAR_FRACO;
     if (inp.iniciante && !inp.familiar?.length) score += POPULAR_PESO * (ex.popularidade ?? 0);
@@ -286,6 +335,28 @@ export function planDay(inp: DayInput): DayPlan {
   const missing: DayPlan["missing"] = [];
   const avoid = [...(inp.avoid ?? []), ...prehab.map((p) => p.exerciseId)]; // o fortalecimento do dia não se repete na lista
   for (const a of alloc) {
+    // #82 duas ou mais subpartes prioritárias no músculo: as séries se dividem na proporção da prioridade, e cada uma
+    // recebe o exercício de maior eficiência para si
+    const finas = subAlvos(a.m, inp).filter((x) => x.fina);
+    if (finas.length >= 2 && a.sets >= 2) {
+      const partes = dividirPorSubparte(a.sets, finas, inp.subVolume ?? {});
+      const usados: string[] = [];
+      let sobra = 0, ultimo: PlanItem | null = null, algum = false, bloqueado = false;
+      for (const x of finas) {
+        const k = n(partes[x.sub]);
+        if (!k) continue;
+        const all = candidates(a.m, { ...inp, avoid: [...avoid, ...usados] }, x);
+        const ok = all.filter((c) => !c.blockedByPain);
+        if (all.length) algum = true;
+        if (!ok.length) { if (all.length) bloqueado = true; sobra += k; continue; }
+        usados.push(ok[0].ex.id);
+        ultimo = item(ok[0].ex, k, ok.slice(1, 4).map((c) => c.ex.id));
+        items.push(ultimo);
+      }
+      if (ultimo) ultimo.sets += sobra;
+      else missing.push({ muscle: a.m, reason: algum || bloqueado ? "dor" : "aparelho" });
+      continue;
+    }
     const all = candidates(a.m, { ...inp, avoid });
     const ok = all.filter((c) => !c.blockedByPain);
     if (!ok.length) { missing.push({ muscle: a.m, reason: all.length ? "dor" : "aparelho" }); continue; }

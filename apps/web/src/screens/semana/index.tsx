@@ -1,5 +1,6 @@
 // Semana: todos os dias já planejados (gerados na segunda), cada um com detalhe, trocar geração, mover/trocar,
 // folga e regenerar com diff (#121 substitui, sem desfazer). Faltas perguntam inline; o compensatório só aparece quando a regra diz.
+// #82 a divisão da pessoa ("Seguindo a sua divisão" ou Manter / Ajustar). As peças que o Hoje usa ficam em comum.tsx.
 // Rotas: #semana · #semana/dia/<YYYY-MM-DD>
 import { useEffect } from "preact/hooks";
 import * as C from "@ciclo/core";
@@ -9,9 +10,12 @@ import type { Route } from "../../lib/roteador/index.ts";
 import { href } from "../../lib/roteador/index.ts";
 import { Card, Icon } from "../../lib/ui/index.tsx";
 import { DOW_NM, img, longDate } from "../../lib/util.ts";
-import { acaoDia, diaDe, garantirSemana, gerarTreino, getSemana, getVazio, marcar, marcavel, planoDoDia, podeNaoTreinei } from "./estado.ts";
+import { acaoDia, diaDe, garantirSemana, gerarTreino, getSemana, getVazio, marcavel, planoDoDia } from "./estado.ts";
 import type { Dia, Semana } from "./estado.ts";
 import { AvisoFalta } from "./aviso.tsx";
+import { DivisaoCard } from "./divisao.tsx";
+import { Marcar, STATUS, SeloOrigem, semTreino } from "./comum.tsx";
+export { Marcar, STATUS, SeloOrigem, semTreino } from "./comum.tsx";
 import { AvisoSemAcademia } from "./aviso-sem-academia.tsx";
 import { abrirEmpurrar, abrirMover, abrirRegenerar, abrirTrocar, aberto, diaCurto } from "./folhas.tsx";
 import { abrirGerarOutro } from "../treino/gerar.tsx";
@@ -19,9 +23,6 @@ import "./semana.css";
 import { Estado } from "../../lib/estado/index.tsx";
 import { AbasTreino } from "../../lib/abas-treino/index.tsx";
 
-export const STATUS: Record<C.DayStatus, string> = {
-  feito: "feito", extra: "extra", faltou: "faltou", folga: "folga", pendente: "sem resposta", hoje: "hoje", livre: "livre", planejado: "planejado",
-};
 const SEM_PLANO: Record<C.DayStatus, string> = {
   feito: "Treino feito", extra: "Treino extra", faltou: "Não treinou", folga: "Folga", pendente: "Treino planejado", hoje: "Treino", livre: "Livre", planejado: "Treino",
 };
@@ -30,28 +31,6 @@ const curto = (d: string) => `${Number(d.slice(8, 10))}/${Number(d.slice(5, 7))}
 
 function Legenda() {
   return <div class="legend sem-legenda" aria-label="Legenda">{LEGENDA.map(([s, l]) => <span key={s}><i class={`sem-sw st-${s}`} />{l}</span>)}</div>;
-}
-
-/** #108 Selo de quem montou o dia: revisão da IA (treino gerado pelo app), Chat ou você. */
-export function SeloOrigem({ d, p }: { d: Dia; p: C.DayPlan }) {
-  const txt = p.revisao === "pendente" ? "revisão da IA pendente" : p.revisao === "revisada" ? "revisado pela IA" : p.revisao === "mantida" ? "gerado pelo app · revisado"
-    : d.source === "claude" ? "montado pelo Chat" : d.source === "voce" ? "escolha sua" : null;
-  return txt ? <span class={`badge${p.revisao === "pendente" ? " warn" : ""}`}>{txt}</span> : null;
-}
-
-/** #108 Dia sem treino: o botão é Gerar treino (nada é gerado ao abrir a tela). */
-export const semTreino = (d: Dia) => d.status === "livre" || (d.status === "folga" && d.date >= today && !planoDoDia(d));
-
-/** #113 Treinei / Não treinei em qualquer dia até hoje (dentro ou fora do cadastro). Hoje: "Treinei" é a ação primária;
- *  nos outros dias, uma linha discreta (botões fantasma, toque ≥ 44 px). */
-export function Marcar({ d }: { d: Dia }) {
-  if (!marcavel(d)) return null;
-  const hoje = d.date === today;
-  return <div class={`sem-acts sem-marcar${hoje ? "" : " leve"}`}>
-    {!hoje && <span class="small sub">Treinou?</span>}
-    <button type="button" class={`btn${hoje ? " pri" : " ghost"}`} onClick={() => void marcar(d, true)}><Icon id="check" />Treinei</button>
-    {podeNaoTreinei(d) && <button type="button" class={`btn${hoje ? "" : " ghost"}`} onClick={() => void marcar(d, false)}>Não treinei</button>}
-  </div>;
 }
 
 /** #113 Hoje tem treino e não dá: empurra os treinos um dia (prévia antes de confirmar). */
@@ -126,6 +105,7 @@ function Lista({ s }: { s: Semana }) {
       <AvisoFalta />
       <HojeNaoDa s={s} />
       <Oferta s={s} />
+      <DivisaoCard s={s} />
       <Card><div class="row between wrapx" style="gap:8px"><h2>Dias</h2><Legenda /></div>
         <div class="sem-lista">{s.days.map((d) => <DiaCard key={d.date} d={d} />)}</div></Card>
     </div><div class="stack">
