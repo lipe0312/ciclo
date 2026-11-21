@@ -3,7 +3,7 @@
 import { CHAT, tituloConversa, validarMensagem } from "@ciclo/core/chat";
 import type { Env } from "./env.ts";
 import type { Handler } from "./comida.ts";
-import { HttpError, id, json, oneOf, readJson, str } from "./http.ts";
+import { HttpError, id, json, readJson, str } from "./http.ts";
 
 const ID = /^[A-Za-z0-9_-]{8,64}$/;
 const idConversa = (v: unknown) => { if (typeof v !== "string" || !ID.test(v)) throw new HttpError(404, "conversa não encontrada"); return v; };
@@ -47,7 +47,8 @@ export function registerConversas(on: (m: string, p: string, h: Handler) => void
     const b = await readJson<Record<string, unknown>>(req, 32 * 1024);
     const v = validarMensagem(b.texto);
     if (!v.ok) throw new HttpError(400, v.erro);
-    const papel = b.papel == null ? "usuario" : oneOf(b.papel, "papel", ["usuario", "aviso"] as const); // "ia" só o servidor grava (#89)
+    if (b.papel != null && b.papel !== "usuario") throw new HttpError(400, "papel: o app só grava mensagens da pessoa");
+    const papel = "usuario"; // aviso e ia só o servidor grava (#89); o cliente não escolhe
     const pedidoId = str(b.pedidoId, "pedidoId", 64, false);
     if (pedidoId && !(await env.DB.prepare("SELECT 1 AS x FROM inbox WHERE user_id = ?1 AND id = ?2").bind(u.id, pedidoId).first())) throw new HttpError(404, "pedido não encontrado");
     let c: Conversa | null;

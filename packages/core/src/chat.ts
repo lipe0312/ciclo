@@ -12,7 +12,6 @@ export const CHAT = {
   /** conversas guardadas por conta; a mais antiga sai quando passa disso */ conversasMax: 100,
   mensagensMax: 400,
   anexoMaxBytes: 10 * 1024 * 1024,
-  /** texto do usuário que ainda pode ir junto na URL do mini prompt */ urlTextoMax: 120,
   /** "pensando…" do estado sem IA */ pensandoMs: 1000,
 } as const;
 
@@ -76,23 +75,25 @@ export const rotuloTopo = (c: CaminhoChat) => (c.chave ? `${c.chave.nome} · mod
 
 // ---------- mini prompt ----------
 export const MINI_PROMPT = "Use o conector do Ciclo: processa minha caixa de pedidos.";
-// saúde, documento, contato e números longos: nada disso vai para a URL (fica no histórico do navegador e nos logs da IA)
-const SENSIVEL = /\b(dor(es)?|exame|laudo|rem[eé]dio|medica(mento|ção)|les[aã]o|cirurgia|press[aã]o|glicose|diabet\w*|colesterol|ansiedade|depress\w*|horm[oô]nio|testosterona|gr[aá]vida|gesta\w*|diagn[oó]stico|sangue|cpf|rg|senha|endere[cç]o|telefone|celular)\b|@|\d{5,}|\d{3}[.\s-]\d{3}/i;
-/** Texto que não pode ir para a URL de uma IA externa. */
-export const textoSensivel = (t: string) => SENSIVEL.test(t);
+// Allowlist: na URL (que fica no histórico do navegador e nos logs da IA) só vai texto FIXO do app. O texto livre da
+// pessoa nunca vai na URL: ele já está na caixa de pedidos (como dado) e no composer.
+/** Chips da conversa vazia (texto fixo do app). */
+export const SUGESTOES_CHAT = ["O que treino hoje?", "Registrar o almoço", "Como foi minha semana?"] as const;
+const TEXTO_FIXO: ReadonlySet<string> = new Set<string>(SUGESTOES_CHAT);
+/** O texto pode ir na URL? Só se for exatamente uma das sugestões fixas do app. */
+export const textoFixo = (t: string) => TEXTO_FIXO.has(t.replace(/\s+/g, " ").trim());
 
 export interface MiniPrompt { prompt: string; url: string | null; copiar: boolean; nome: string }
 /**
- * "Abrir no <IA>": o prompt é curto e fixo. O texto do pedido vai como dado (pela caixa) e só entra na URL quando é curto
- * e sem nada sensível; senão, e quando a IA não aceita texto na URL, fica só o bloco com Copiar.
+ * "Abrir no <IA>": o prompt é curto e fixo (MINI_PROMPT). Só uma sugestão fixa do app pode ir junto; texto livre da pessoa
+ * nunca entra na URL nem no bloco (o pedido já está na caixa). IA que não aceita texto na URL: bloco com Copiar.
  */
 export function miniPrompt(ia: IaDoCaminho | null, texto = ""): MiniPrompt {
   const t = texto.replace(/\s+/g, " ").trim();
   const nome = ia?.nome ?? NOME_GENERICO;
-  const seguro = !t || (t.length <= CHAT.urlTextoMax && !textoSensivel(t));
-  const prompt = t && seguro ? `${MINI_PROMPT} Pedido: "${t}"` : MINI_PROMPT;
+  const prompt = t && textoFixo(t) ? `${MINI_PROMPT} Pedido: "${t}"` : MINI_PROMPT;
   const aceita = !!ia?.id && !!PROVEDORES_IA_APP[ia.id === "alternativa" ? "claude" : ia.id].abrir?.promptNaUrl;
-  const url = aceita && seguro && ia?.id ? linkAbrirIa(ia.id, prompt) : null;
+  const url = aceita && ia?.id ? linkAbrirIa(ia.id, prompt) : null;
   return { prompt, url, copiar: !url, nome };
 }
 
@@ -115,7 +116,6 @@ export const resumoFaixa = (n: number) => (n === 1 ? "1 pedido na rotina" : `${n
 export const podeAplicar = (p: PedidoRotina) => statusPedido(p) === "respondido" && p.change != null;
 
 // ---------- composer ----------
-export const SUGESTOES_CHAT = ["O que treino hoje?", "Registrar o almoço", "Como foi minha semana?"] as const;
 /** Enter envia; Shift+Enter quebra a linha; durante a composição do teclado (acento, IME) não envia. */
 export const enterEnvia = (e: { key: string; shiftKey?: boolean; isComposing?: boolean }) => e.key === "Enter" && !e.shiftKey && !e.isComposing;
 

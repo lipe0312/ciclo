@@ -16,12 +16,12 @@ test("nova conversa com a 1ª mensagem, mais mensagens, lista por recência e ab
   const cid = r1.data.conversa.id;
   assert.equal(r1.data.conversa.titulo, "o que treino hoje? com 40 min");
   assert.equal(r1.data.mensagem.papel, "usuario");
-  assert.equal((await a("POST", "/api/conversas/mensagens", { conversaId: cid, papel: "aviso", texto: "virou pedido na rotina" })).status, 201);
+  assert.equal((await a("POST", "/api/conversas/mensagens", { conversaId: cid, texto: "segunda mensagem" })).status, 201);
   const r2 = await a("POST", "/api/conversas/mensagens", { texto: "outra conversa" });
   const lista = (await a("GET", "/api/conversas")).data.conversas.map((c: any) => c.id);
   assert.deepEqual(lista, [r2.data.conversa.id, cid]);
   const ab = await a("GET", `/api/conversas/${cid}`);
-  assert.deepEqual(ab.data.mensagens.map((m: any) => [m.papel, m.texto]), [["usuario", "o que   treino hoje?\ncom 40 min"], ["aviso", "virou pedido na rotina"]]);
+  assert.deepEqual(ab.data.mensagens.map((m: any) => [m.papel, m.texto]), [["usuario", "o que   treino hoje?\ncom 40 min"], ["usuario", "segunda mensagem"]]);
 });
 
 test("apagar a conversa apaga mesmo (mensagens juntas); de novo = 404", async () => {
@@ -51,7 +51,10 @@ test("ataques: XSS fica como texto puro no JSON; papel ia pelo app, vazio, longo
   assert.equal(r.status, 201);
   assert.equal(r.headers.get("content-type"), "application/json; charset=utf-8");
   assert.equal((await a("GET", `/api/conversas/${r.data.conversa.id}`)).data.mensagens[0].texto, xss);
-  assert.equal((await a("POST", "/api/conversas/mensagens", { texto: "oi", papel: "ia" })).status, 400);
+  // o cliente não escolhe papel: ia e aviso só o servidor grava
+  for (const papel of ["ia", "aviso", "sistema", 1]) assert.equal((await a("POST", "/api/conversas/mensagens", { texto: "oi", papel })).status, 400, String(papel));
+  const uid = await uidDe(env);
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM conversa_msg WHERE user_id = ?1 AND papel <> 'usuario'").get(uid).n, 0);
   assert.equal((await a("POST", "/api/conversas/mensagens", { texto: "   " })).status, 400);
   assert.equal((await a("POST", "/api/conversas/mensagens", { texto: "a".repeat(CHAT.textoMax + 1) })).status, 400);
   assert.equal((await a("POST", "/api/conversas/mensagens", { texto: "oi", conversaId: "x' OR 1=1 --" })).status, 404);

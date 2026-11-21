@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   CHAT, MINI_PROMPT, SUGESTOES_CHAT, caminhoChat, destinoEnvio, enterEnvia, mensagemSemIa, miniPrompt, pedidoFale,
-  hrefFale, pedidosDaFaixa, podeAplicar, resumoFaixa, rotuloTopo, statusPedido, textoSensivel, tituloConversa, validarAnexo, validarMensagem,
+  hrefFale, pedidosDaFaixa, podeAplicar, resumoFaixa, rotuloTopo, statusPedido, textoFixo, tituloConversa, validarAnexo, validarMensagem,
 } from "../src/chat.ts";
 import { estadoIA } from "../src/index.ts";
 import type { AcessoIa, ChaveResumo, EstadoConector, IaId, PerfilIa } from "../src/index.ts";
@@ -66,27 +66,28 @@ test("rotina de uma IA + chave de outra convivem (e trocar a chave no topo vale 
   assert.equal(caminhoChat(ia, { estado: "ambos" }, [chave("gemini"), chave("openai", false)], "openai").chave?.provedor, "gemini");
 });
 
-test("mini prompt: link com texto quando a IA aceita; senão bloco com Copiar", () => {
-  const cl = miniPrompt({ id: "claude", nome: "Claude" }, "quero treinar ombro hoje");
+test("mini prompt: link com o prompt fixo quando a IA aceita; senão bloco com Copiar", () => {
+  const cl = miniPrompt({ id: "claude", nome: "Claude" }, "O que treino hoje?");
   assert.ok(cl.url?.startsWith("https://claude.ai/new?q=")); assert.equal(cl.copiar, false);
-  assert.ok(decodeURIComponent(cl.url!).includes(MINI_PROMPT));
+  assert.equal(decodeURIComponent(cl.url!.split("?q=")[1]), `${MINI_PROMPT} Pedido: "O que treino hoje?"`);
   const gpt = miniPrompt({ id: "chatgpt", nome: "ChatGPT" }, "quero treinar ombro hoje");
-  assert.equal(gpt.url, null); assert.equal(gpt.copiar, true); assert.ok(gpt.prompt.startsWith(MINI_PROMPT));
+  assert.equal(gpt.url, null); assert.equal(gpt.copiar, true); assert.equal(gpt.prompt, MINI_PROMPT);
   assert.equal(miniPrompt({ id: null, nome: "sua IA" }).url, null);
   assert.equal(miniPrompt(null).copiar, true);
 });
 
-test("mini prompt: nada longo ou sensível na URL (vira bloco de copiar)", () => {
+test("mini prompt (allowlist): texto livre da pessoa nunca vai na URL nem no bloco, com ou sem acento e termo de saúde", () => {
   const ia = { id: "claude" as const, nome: "Claude" };
-  const longo = "treino ".repeat(40);
-  for (const t of [longo, "tive dor no ombro ontem", "meu exame de sangue saiu", "meu e-mail é ana@exemplo.test", "CPF 123.456.789-00", "telefone 11 99999 0000", "tomo remédio para pressão"]) {
+  const livres = ["quero treinar ombro", "tomo medicação para pressão", "MEDICAÇÃO", "joelho direito dói", "menstruação atrasada",
+    "meu peso é 82 kg", "estou grávida", "lesão no ombro", "exame de sangue", "ana@exemplo.test", "CPF 123.456.789-00", "treino ".repeat(40),
+    "O que treino hoje? e tomo remédio", "o que treino hoje"];
+  for (const t of livres) {
     const m = miniPrompt(ia, t);
-    assert.equal(m.url, null, t); assert.equal(m.copiar, true, t);
-    assert.equal(m.prompt, MINI_PROMPT, `o texto sensível/longo não entra nem no bloco: ${t}`);
+    assert.equal(m.prompt, MINI_PROMPT, t);
+    assert.equal(decodeURIComponent(m.url!.split("?q=")[1]), MINI_PROMPT, `texto livre na URL: ${t}`);
+    assert.ok(!textoFixo(t), t);
   }
-  const curto = miniPrompt(ia, "quero treinar ombro");
-  assert.ok(curto.url && curto.url.length < 400);
-  assert.ok(textoSensivel("Dor lombar")); assert.ok(!textoSensivel("o que treino hoje?"));
+  for (const t of ["O que treino hoje?", "Registrar o almoço", "Como foi minha semana?", "  Registrar   o almoço "]) assert.ok(textoFixo(t), t);
 });
 
 test("faixa: só pendente/respondido/erro, mais novos primeiro; resumo; aplicar só com proposta", () => {
