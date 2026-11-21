@@ -119,7 +119,9 @@ test("treino desatualizado: a impressão vem só do perfil da própria conta (se
   const fp = (await a("GET", `/api/state?date=${D}`)).data.dayPlan.profileFp as string;
   assert.equal(fp, planFingerprint(profileOf(env, "ana")));
   assert.ok(!fp.includes("Pullups") && !fp.includes("peito"), "impressão da conta B vazou");
-  assert.equal((await b("GET", `/api/state?date=${D}`)).data.dayPlan, null);
+  // #79 a conta B (sem academia) tem o próprio treino de peso corporal: nunca o da A
+  const db = (await b("GET", `/api/state?date=${D}`)).data.dayPlan;
+  assert.ok(!db || (db.gym_id === null && db.profileFp !== fp), "o treino da conta A vazou para a B");
 });
 
 test("perfil antigo no banco: o app e o Claude continuam conseguindo salvar", async () => {

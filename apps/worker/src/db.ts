@@ -1,6 +1,6 @@
 // Repositório: todo SQL fica aqui (ou nas rotas), sempre com parâmetros (bind) e SEMPRE filtrado por user_id.
 // O uid vem da autenticação (auth.ts), nunca do corpo da requisição.
-import { DEFAULT_PROFILE, divisoesDe, ehIdPersonalizado, DOWS, MAX_SESSION_MS, entradaTreinoAtual, formatoDe, manterTreinoAtual, assignWeekdays, reassignDays, MUSCLE_IDS, PAIN_REGIONS, applyProfilePatch, completarObjetivo, mensagemPerfil, mondayOf, normalizeProfile, planFingerprint, sessionSummary, weekDates, weeklyTargets } from "@ciclo/core";
+import { DEFAULT_PROFILE, EQUIPAMENTO_SEM_ACADEMIA, equipamentoSemAcademia, semBaseParaGerar, divisoesDe, ehIdPersonalizado, DOWS, MAX_SESSION_MS, entradaTreinoAtual, formatoDe, manterTreinoAtual, assignWeekdays, reassignDays, MUSCLE_IDS, PAIN_REGIONS, applyProfilePatch, completarObjetivo, mensagemPerfil, mondayOf, normalizeProfile, planFingerprint, sessionSummary, weekDates, weeklyTargets } from "@ciclo/core";
 import { HttpError, int, oneOf, str } from "./http.ts";
 import type { DayInput, Group, Mode, MuscleId, Pain, SetLog } from "@ciclo/core";
 import type { Env } from "./env.ts";
@@ -267,27 +267,27 @@ export async function lastGroup(env: Env, uid: string, beforeDate: string): Prom
   return g.length === 2 ? "full" : g[0] ?? null;
 }
 
-/** Motivo de não dar para planejar: conta sem perfil ou sem academia (Primeiros passos pendentes). */
-export type EmptyReason = "sem_perfil" | "sem_academia";
+/** Motivo de não dar para planejar: conta sem perfil (Primeiros passos pendentes). #79 sem academia sempre gera (peso corporal). */
+export type EmptyReason = "sem_perfil";
 export const EMPTY_MSG: Record<EmptyReason, string> = {
   sem_perfil: "complete os Primeiros passos: falta o perfil",
-  sem_academia: "complete os Primeiros passos: cadastre ao menos uma academia",
 };
 
 export interface DayArgs { date: string; daysLeft: number; minutes?: number; mode?: Mode; focus?: MuscleId[]; gymId?: string; crowded?: boolean }
-export async function buildDayInput(env: Env, uid: string, a: DayArgs): Promise<{ input: DayInput; gymId: string; empty?: undefined } | { empty: EmptyReason }> {
+/** `equipamento: "sem_academia"`: conta sem academia; o treino sai com peso corporal e o que a pessoa marcou (#79). */
+export type DayInputOk = { input: DayInput; gymId: string | null; equipamento?: typeof EQUIPAMENTO_SEM_ACADEMIA; empty?: undefined };
+export async function buildDayInput(env: Env, uid: string, a: DayArgs): Promise<DayInputOk | { empty: EmptyReason }> {
   const [profile, gyms, week, lg] = await Promise.all([getProfile(env, uid), listGyms(env, uid), weekState(env, uid, a.date), lastGroup(env, uid, a.date)]);
-  if (!profile) return { empty: "sem_perfil" };
-  if (!gyms.length) return { empty: "sem_academia" };
+  if (!profile || semBaseParaGerar(profile, gyms.length)) return { empty: "sem_perfil" };
   const dow = ["dom", "seg", "ter", "qua", "qui", "sex", "sab"][new Date(a.date + "T12:00:00Z").getUTCDay()];
   const wanted = a.gymId ?? profile.dayGym?.[dow];
-  const gym = gyms.find((g) => g.id === wanted) ?? gyms[0];
+  const gym = gyms.find((g) => g.id === wanted) ?? gyms[0] ?? null;
   return {
-    gymId: gym.id,
+    gymId: gym?.id ?? null, ...(gym ? {} : { equipamento: EQUIPAMENTO_SEM_ACADEMIA }),
     input: {
       targets: weeklyTargets(profile.level, profile.priorities), done: week.done, freq: week.freq,
       priorities: profile.priorities, daysLeft: a.daysLeft, minutes: a.minutes ?? profile.minutes, lastGroup: lg,
-      mode: a.mode ?? "normal", focus: a.focus ?? null, equipment: gym.equipment, crowded: !!a.crowded,
+      mode: a.mode ?? "normal", focus: a.focus ?? null, equipment: gym ? gym.equipment : equipamentoSemAcademia(profile as { equipamentos?: unknown }), crowded: !!a.crowded,
       prefs: profile.prefs, pinned: profile.pinned, avoid: profile.avoid,
       pains: week.pains.map((p) => ({ region: p.region, intensity: p.intensity })),
       ...entradaTreinoAtual(profile), // #74 "Meu treino atual"
