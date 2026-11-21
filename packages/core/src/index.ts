@@ -50,3 +50,5 @@ export * from "./exercicio-personalizado.ts";
 export * from "./medida.ts";
 export * from "./treino-do-dia.ts";
 export * from "./outro-aparelho.ts";
+export * from "./semana-variacao.ts";
+export * from "./historico.ts";

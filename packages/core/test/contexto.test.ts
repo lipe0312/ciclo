@@ -165,3 +165,21 @@ test("estimarTokens: ~3 caracteres por token (conservador para pt-BR em JSON)", 
   assert.equal(estimarTokens("abc"), 1);
   assert.equal(estimarTokens("a".repeat(3000)), 1000);
 });
+
+test("#90 contexto gerar/tempo: inclui o resumo do histórico (semana: mês + semana; dia: mês + N dias) dentro do teto", async () => {
+  const { resumoHistorico, TETO_HISTORICO } = await import("../src/index.ts");
+  const exs = ["Side_Lateral_Raise", "Seated_Dumbbell_Press", "Incline_Dumbbell_Curl", "Hammer_Curls", "Triceps_Pushdown", "Leg_Press", "Romanian_Deadlift", "Leverage_Iso_Row", "Incline_Dumbbell_Press", "Reverse_Flyes", "Cable_Crunch", "Standing_Calf_Raises"];
+  const dias = Array.from({ length: 40 }, (_, k) => new Date(Date.parse(D + "T12:00:00Z") - k * 864e5).toISOString().slice(0, 10));
+  const series = dias.flatMap((d, k) => exs.flatMap((id) => [1, 2, 3, 4].map((s) => ({ date: d, exerciseId: id, muscle: EXERCISE_BY_ID[id].m, kg: 10 + k + s, reps: 8 + s }))));
+  const base = { hoje: D, series, alvo: Object.fromEntries(MUSCLE_IDS.map((m) => [m, 14])), prioridades: perfil.priorities, memoria: Array.from({ length: 9 }, () => "x".repeat(300)), dores: [{ region: "escapula_e", intensity: 2 as const }], faltas: dias.slice(0, 9) };
+  for (const [p, janela] of [["gerar", { tipo: "semana" }], ["tempo", { tipo: "dia", dias: 7 }]] as const) {
+    const historico = resumoHistorico(base, janela);
+    assert.ok(estimarTokens(JSON.stringify(historico)) <= TETO_HISTORICO);
+    const f = contexto(p, estado({ historico })) as any;
+    assert.equal(f.historico.janela.tipo, janela.tipo);
+    assert.ok(f.historico.cansados.length > 0 && f.historico.repetidos.length > 0);
+    const tok = estimarTokens(JSON.stringify(f));
+    assert.ok(tok <= TETO_TOKENS[p] && TETO_TOKENS[p] <= 1500, `${p}: ${tok} tokens`);
+  }
+  assert.equal((contexto("comida", estado({ historico: resumoHistorico(base, { tipo: "semana" }) })) as any).historico, undefined, "só gerar e tempo levam o histórico");
+});

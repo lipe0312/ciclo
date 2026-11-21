@@ -1,7 +1,7 @@
 // #45 ciclo_contexto: busca só o que a fatia do pedido precisa (todo SQL com bind e filtrado por user_id) e entrega ao core
 // (contexto()), que monta a fatia enxuta. Notas, texto de comida, contexto da dor e pedidos não são lidos; o treino do dia
 // (#121 o da semana, fonte única) é lido, mas o core só aproveita IDs do catálogo e séries (o nome, texto livre, é descartado).
-import { MEMORIA, MUSCLE_IDS, PEDIDOS, academiaDoDia, academiasMcp, contexto, foodAverages, mondayOf, resumoClaude, weeklyTargets } from "@ciclo/core";
+import { JANELA_MES, MEMORIA, MUSCLE_IDS, PEDIDOS, academiaDoDia, academiasMcp, contexto, foodAverages, mondayOf, resumoClaude, resumoHistorico, weeklyTargets } from "@ciclo/core";
 import type { EstadoContexto, EstadoResumo, FoodEntry, Meal, MuscleId, Pedido } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { EMPTY_MSG, getProfile, listGyms, parse, weekState } from "./db.ts";
@@ -34,9 +34,9 @@ export async function ciclo_contexto(a: Args, env: Env, uid: string, today: stri
   const profile = await getProfile(env, uid);
   if (!profile) return { vazio: "sem_perfil", motivo: EMPTY_MSG.sem_perfil };
   const monday = mondayOf(d);
-  const precisa = { treino: pedido === "trocar" || pedido === "dor", semana: pedido !== "comida" && pedido !== "recap", comida: pedido === "comida" || pedido === "recap" || pedido === "revisao", revisao: pedido === "revisao" };
+  const precisa = { treino: pedido === "trocar" || pedido === "dor", semana: pedido !== "comida" && pedido !== "recap", comida: pedido === "comida" || pedido === "recap" || pedido === "revisao", revisao: pedido === "revisao", historico: pedido === "gerar" || pedido === "tempo" };
 
-  const [gyms, week, plan, food, series, medidas] = await Promise.all([
+  const [gyms, week, plan, food, series, medidas, hist] = await Promise.all([
     precisa.treino ? listGyms(env, uid) : Promise.resolve([]),
     precisa.semana ? weekState(env, uid, d) : Promise.resolve(null),
     precisa.treino ? lerTreinoDoDia(env, uid, d, today) : Promise.resolve(null), // #121 o treino do dia da fonte única (a semana)
@@ -47,6 +47,12 @@ export async function ciclo_contexto(a: Args, env: Env, uid: string, today: stri
       .all<{ date: string; exercise_id: string; muscle: MuscleId; kg: number | null; reps: number | null }>() : Promise.resolve(null),
     precisa.revisao ? env.DB.prepare("SELECT date, arm_cm, waist_cm FROM measurement WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date").bind(uid, addDays(d, -60), d)
       .all<{ date: string; arm_cm: number | null; waist_cm: number | null }>() : Promise.resolve(null),
+    // #90 resumo do histórico do mês (só IDs e números; "não fui" sem o motivo)
+    precisa.historico ? env.DB.batch([
+      env.DB.prepare(`SELECT s.date AS date, l.exercise_id AS ex, l.muscle AS muscle, l.kg AS kg, l.reps AS reps FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
+        WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 LIMIT 3000`).bind(uid, addDays(d, -(JANELA_MES - 1)), d),
+      env.DB.prepare("SELECT date FROM attendance WHERE user_id = ?1 AND status = 'nao_fui' AND date BETWEEN ?2 AND ?3 LIMIT 40").bind(uid, addDays(d, -(JANELA_MES - 1)), d),
+    ]) : Promise.resolve(null),
   ]);
 
   const wanted = gymId ?? plan?.gymId ?? (profile.dayGym as Record<string, string> | undefined)?.[DOW[new Date(d + "T12:00:00Z").getUTCDay()]];
@@ -67,6 +73,14 @@ export async function ciclo_contexto(a: Args, env: Env, uid: string, today: stri
     comida: food ? { registros: food.results.map((r): FoodEntry => ({ date: r.date, meal: r.meal, kcal: r.kcal, prot: r.protein })), metas: { kcal: diet.kcal ?? 0, protein: diet.protein ?? 0 } } : undefined,
     series: series?.results.filter((r) => MUSCLE_IDS.includes(r.muscle)).map((r) => ({ date: r.date, exerciseId: r.exercise_id, muscle: r.muscle, kg: r.kg ?? 0, reps: r.reps ?? 0 })),
     medidas: medidas?.results.map((m) => ({ date: m.date, armCm: m.arm_cm, waistCm: m.waist_cm })),
+    historico: hist ? resumoHistorico({
+      hoje: d, alvo: weeklyTargets(profile.level, profile.priorities), prioridades: profile.priorities,
+      series: (hist[0].results as { date: string; ex: string; muscle: MuscleId; kg: number | null; reps: number | null }[]).filter((r) => MUSCLE_IDS.includes(r.muscle))
+        .map((r) => ({ date: r.date, exerciseId: r.ex, muscle: r.muscle, kg: r.kg, reps: r.reps })),
+      sempre: (profile.pinned ?? {}) as Partial<Record<MuscleId, string>>, nunca: Array.isArray(profile.avoid) ? profile.avoid : [],
+      dores: (week?.pains ?? []).map((p) => ({ region: p.region, intensity: p.intensity })),
+      faltas: (hist[1].results as { date: string }[]).map((r) => r.date),
+    }, pedido === "gerar" ? { tipo: "semana" } : { tipo: "dia", dias: 7 }) : null,
   };
   // #95 as academias com os aparelhos (IDs) e a do dia, para montar "na academia tal" sem errar a máquina
   const [academias, planoGym] = precisa.treino ? [gyms, plan?.gymId] : await Promise.all([
