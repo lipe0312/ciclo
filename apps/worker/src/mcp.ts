@@ -36,7 +36,7 @@ const S = {
 const MODES = ["normal", "compensatorio", "expresso"] as const;
 
 /** #79 conta sem academia: o treino sai com peso corporal e o Claude avisa a pessoa. */
-const SEM_ACADEMIA_MCP = { equipamento: EQUIPAMENTO_SEM_ACADEMIA, avisoEquipamento: "sem academia cadastrada: treino com peso corporal e o que a pessoa marcou; avise e sugira cadastrar a academia no app (Academias)" } as const;
+const SEM_ACADEMIA_MCP = { equipamento: EQUIPAMENTO_SEM_ACADEMIA, avisoEquipamento: "sem academia cadastrada: treino com peso corporal; avise e sugira cadastrar a academia no app (Academias)" } as const;
 
 export const TOOLS: Tool[] = [
   {

@@ -1,4 +1,4 @@
-// #79 Faixa discreta (não bloqueia) enquanto não há academia: o treino saiu com peso corporal e o que a pessoa marcou.
+// #79 Faixa discreta (não bloqueia) enquanto não há academia: o treino saiu com peso corporal.
 // Aparece na Semana, no Treino e no Hoje; some quando existe uma academia; "Dispensar" esconde por 7 dias (regra no core).
 // A data da dispensa fica no perfil (meta.avisos, vale em qualquer aparelho) e no aparelho (cache otimista, como na #73).
 import { C, S, commit, today } from "../../lib/store/index.ts";
@@ -27,7 +27,7 @@ export function AvisoSemAcademia({ fixa }: { fixa?: boolean }) {
   };
   return <div class="note sem-academia" role="status">
     <Icon id="gym" /><div class="sem-academia-t">
-      <p class="small">Treino montado com peso corporal e o que você marcou. Falta algum aparelho? <b>Cadastre sua academia</b> e <b>refaça o treino</b>.</p>
+      <p class="small">Treino montado com peso corporal. Falta algum aparelho? <b>Cadastre sua academia</b> e <b>refaça o treino</b>.</p>
       {!fixa && <div class="sem-academia-a">
         <a class="btn sm" href={href("academias", ["novo"])}><Icon id="plus" />Cadastrar academia</a>
         <button type="button" class="btn sm ghost" onClick={() => void regenerar(false)}><Icon id="cycle" />Refazer a semana</button></div>}</div>

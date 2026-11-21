@@ -274,7 +274,7 @@ export const EMPTY_MSG: Record<EmptyReason, string> = {
 };
 
 export interface DayArgs { date: string; daysLeft: number; minutes?: number; mode?: Mode; focus?: MuscleId[]; gymId?: string; crowded?: boolean }
-/** `equipamento: "sem_academia"`: conta sem academia; o treino sai com peso corporal e o que a pessoa marcou (#79). */
+/** `equipamento: "sem_academia"`: conta sem academia; o treino sai com peso corporal (#79). */
 export type DayInputOk = { input: DayInput; gymId: string | null; equipamento?: typeof EQUIPAMENTO_SEM_ACADEMIA; empty?: undefined };
 export async function buildDayInput(env: Env, uid: string, a: DayArgs): Promise<DayInputOk | { empty: EmptyReason }> {
   const [profile, gyms, week, lg] = await Promise.all([getProfile(env, uid), listGyms(env, uid), weekState(env, uid, a.date), lastGroup(env, uid, a.date)]);
