@@ -47,6 +47,8 @@ async function subir() {
   const fim = Date.now() + 300_000; // #74 o semi grava 2 semanas de treinos pela API (limite de escritas por minuto)
   while (!log.includes("Resetar:") && Date.now() < fim && filho.exitCode === null) await sleep(300);
   if (!log.includes("Resetar:")) { parar(); throw new Error(`o cenário ${CENARIO} não subiu:\n${log.split("\n").slice(-15).join("\n")}`); }
+  // o Worker avisa "Resetar:" antes de servir os arquivos do app: sem esperar o / responder 200, o 1º passo pega 404 (instável)
+  for (let i = 0; i < 150 && (await fetch(`${BASE}/`).then((r) => r.status, () => 0)) !== 200; i++) await sleep(200);
   return parar;
 }
 
@@ -62,8 +64,9 @@ const abrirNoCenario = async (c, tela) => { // #77 até 3 tentativas: a primeira
   for (let t = 0; t < 5; t++) {
     // o `vite build --watch` do cenário esvazia o dist ao reconstruir: "/" dá 404 (chrome-error) por alguns segundos
     for (let i = 0; i < 100 && (await fetch(`${BASE}/`).then((r) => r.status, () => 0)) !== 200; i++) await sleep(200);
-    await c.abrir(urlAbertura(CENARIO, tela, new URL(BASE).port));
+    const nav = await c.send("Page.navigate", { url: urlAbertura(CENARIO, tela, new URL(BASE).port) }); await sleep(300);
     if (await c.esperar(`location.hash === '#${tela}' && document.querySelector('.pp, .view.on')`)) return;
+    if (nav.result?.errorText) { const u = urlAbertura(CENARIO, tela, new URL(BASE).port); const r = await fetch(u, { redirect: "manual" }).catch((e) => ({ status: e.message })); console.log(`  (tentativa ${t + 1}: ${nav.result.errorText} · fetch ${r.status} ${(await r.text?.().catch(() => ""))?.slice(0, 120)})`); }
   }
 };
 
@@ -182,7 +185,9 @@ async function primeiroAcesso(c) {
     ok(await c.esperar("location.hash === '#hoje'", 15000), `não chegou no Hoje (tela: ${(await c.texto()).replace(/\s+/g, " ").slice(-140)} · console: ${c.consola.map((x) => x.texto.slice(0, 140)).join(" | ")})`);
     const st = await c.ev("fetch('/api/state?date=' + new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())).then((r) => r.json())");
     ok(st.onboarding === "concluido", "Primeiros passos não foi concluído");
-    ok(st.dayPlan?.plan?.items?.length > 0, "o servidor não tem o treino de hoje");
+    // Dias padrão do perfil: seg, ter, qui, sex. Em dia de descanso (qua, sáb, dom) não há treino de hoje, e isso é certo.
+    const dow = await c.ev("new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', weekday: 'short' }).format(new Date())");
+    if (["Mon", "Tue", "Thu", "Fri"].includes(dow)) ok(st.dayPlan?.plan?.items?.length > 0, "o servidor não tem o treino de hoje");
     // sem recarregar: o Hoje tem de sair do começo vazio sozinho (antes ficava "Seu Hoje está vazio" até o F5)
     ok(await c.esperar("!(document.querySelector('#app')?.innerText ?? '').includes('Seu Hoje está vazio') && (document.querySelector('#app')?.innerText ?? '').includes('O caminho até aqui')", 10000), `o Hoje continua vazio (${(await c.texto()).replace(/\s+/g, " ").slice(0, 160)})`);
   }, c);
@@ -363,7 +368,7 @@ async function treinoAtual(c) {
 const abaMarcada = (c) => c.ev("[...document.querySelectorAll('nav.subnav a[aria-current=\"page\"]')].map((a) => a.textContent.trim())");
 const temFolha = (c) => c.ev("!!document.querySelector('.sheet.open, dialog[open]')");
 async function naTela(c, hash, aba) {
-  ok(await c.esperar(`location.hash === ${JSON.stringify(hash)} && !!document.querySelector('nav.subnav')`, 10000), `URL: veio ${await c.hash()}, esperado ${hash}`);
+  ok(await c.esperar(`location.hash === ${JSON.stringify(hash)} && !!document.querySelector('nav.subnav')`, 10000), `URL: veio ${await c.hash()}, esperado ${hash} (${await c.ev("location.href")} · ${(await c.texto()).replace(/\s+/g, " ").slice(0, 120)})`);
   igual(await abaMarcada(c), [aba], `aba marcada em ${hash}`);
   ok(!(await temFolha(c)), `abriu uma folha em ${hash}`);
 }
