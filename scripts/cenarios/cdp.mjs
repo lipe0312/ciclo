@@ -8,12 +8,15 @@ import { join } from "node:path";
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const CHROME = process.env.CHROME ?? (process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "google-chrome");
 
+/** Mata o Chrome e os filhos (renderer, GPU): sem isso sobravam dezenas de processos órfãos a cada roteiro. */
+const matarGrupo = (ch) => { try { process.kill(-ch.pid, "SIGKILL"); } catch { ch.kill("SIGKILL"); } };
+
 export async function abrirChrome({ usuario, largura = 390, altura = 844 } = {}) {
   const port = 9500 + Math.floor(Math.random() * 400), prof = mkdtempSync(join(tmpdir(), "ciclo-e2e-"));
-  const chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${port}`, `--user-data-dir=${prof}`, "--no-first-run", "--disable-gpu", `--window-size=${largura},${altura}`, "about:blank"], { stdio: "ignore" });
+  const chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${port}`, `--user-data-dir=${prof}`, "--no-first-run", "--disable-gpu", `--window-size=${largura},${altura}`, "about:blank"], { stdio: "ignore", detached: true });
   let aberto = true; chrome.on("error", () => { aberto = false; });
   let tabs; for (let i = 0; i < 60 && !tabs && aberto; i++) { try { tabs = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); } catch { await sleep(200); } }
-  if (!tabs) { chrome.kill(); throw new Error("Chrome não abriu (defina CHROME=/caminho/do/chrome)"); }
+  if (!tabs) { matarGrupo(chrome); throw new Error("Chrome não abriu (defina CHROME=/caminho/do/chrome)"); }
   const ws = new WebSocket(tabs.find((t) => t.type === "page").webSocketDebuggerUrl);
   await new Promise((r) => ws.addEventListener("open", r));
   let n = 0; const pend = new Map(); const consola = [];
@@ -53,6 +56,6 @@ export async function abrirChrome({ usuario, largura = 390, altura = 844 } = {})
       if (r !== "ok") throw new Error(`botão "${rotulo}": ${r === "desabilitado" ? "está desabilitado" : "não encontrado"}`);
       await sleep(250);
     },
-    fechar: async () => { try { ws.close(); } catch { /* já fechado */ } chrome.kill("SIGKILL"); await sleep(200); try { rmSync(prof, { recursive: true, force: true }); } catch { /* ok */ } },
+    fechar: async () => { try { ws.close(); } catch { /* já fechado */ } matarGrupo(chrome); await sleep(200); try { rmSync(prof, { recursive: true, force: true }); } catch { /* ok */ } },
   };
 }
