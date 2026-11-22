@@ -90,6 +90,9 @@ function Item({ k, busy, act, onMudou }: { k: ChaveIa; busy: string; act: (id: s
 const DEMO: Lista = { chaves: [], max: 6, cofre: false, padraoServidor: { openai: false },
   provedores: C.PROVEDORES_IA.map((id) => ({ id, nome: C.NOME_PROVEDOR[id] })) };
 
+// Mesmos nomes de "Qual IA você usa?" (a marca que a pessoa conhece), não o nome da API.
+const NOME_SELECT: Record<string, string> = { anthropic: C.PROVEDORES_IA_APP.claude.nome, openai: C.PROVEDORES_IA_APP.chatgpt.nome, gemini: C.PROVEDORES_IA_APP.gemini.nome, deepseek: C.PROVEDORES_IA_APP.deepseek.nome, openrouter: "OpenRouter" };
+
 export function Chaves({ demo = false, inicial }: { demo?: boolean; inicial?: Provedor }) {
   const [lista, setLista] = useState<Lista | null>(demo ? DEMO : null);
   const [erro, setErro] = useState("");
@@ -136,9 +139,9 @@ export function Chaves({ demo = false, inicial }: { demo?: boolean; inicial?: Pr
 
     <form class="card conta-sec conta-form" aria-labelledby="chv-nova" onSubmit={(e) => { e.preventDefault(); salvar(); }} noValidate autocomplete="off">
       <h2 id="chv-nova">Cadastrar chave</h2>
-      <span class="f">Provedor</span>
-      <div class="chips" role="group" aria-label="Provedor">{(nomes.length ? nomes : DEMO.provedores).map((p) =>
-        <button type="button" key={p.id} class="chip tall" aria-pressed={prov === p.id} onClick={() => setProv(p.id)}>{p.nome}</button>)}</div>
+      <label class="f" for="chv-prov">Provedor</label>
+      <select id="chv-prov" class="input" value={prov} onChange={(e) => setProv((e.currentTarget as HTMLSelectElement).value as typeof prov)}>{(nomes.length ? nomes : DEMO.provedores).map((p) =>
+        <option key={p.id} value={p.id}>{NOME_SELECT[p.id] ?? p.nome}</option>)}</select>
       {aviso && <div class="note warn" role="note"><Icon id="warn" /><span style="flex:1">{aviso}</span>
         {entendi[prov] ? <span class="badge ok"><Icon id="check" />entendido</span>
           : <button type="button" class="btn sm" onClick={() => setEntendi({ ...entendi, [prov]: true })}>Entendi</button>}</div>}

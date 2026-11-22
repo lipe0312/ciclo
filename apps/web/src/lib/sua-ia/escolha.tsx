@@ -2,6 +2,7 @@
 // Aqui nunca se digita chave: só se declara. Os nomes vêm do core (seletor de IA: a marca pode aparecer).
 // Editam S.profile.ia e chamam onMudou (quem chama salva: PATCH por passo no quiz, PATCH na hora no Perfil).
 import * as C from "@ciclo/core";
+import { Icon } from "../ui/index.tsx";
 import { S } from "../store/index.ts";
 import { ACESSO_INFO, sugerirOutras } from "@ciclo/core/ia-guias";
 
@@ -11,8 +12,6 @@ const salvar = (ia: Perfil, onMudou: () => void) => { const v = C.validarPerfilI
 
 const Opt = ({ on, onClick, title, desc }: { on: boolean; onClick: () => void; title: string; desc?: string }) =>
   <button type="button" class="opt big" aria-pressed={on} onClick={onClick}><b>{title}</b>{desc && <span>{desc}</span>}</button>;
-
-const DESC: Record<C.IaId, string> = { claude: "Conversa no app dela", chatgpt: "Conversa no app dela", gemini: "Do Google", deepseek: "Chat e API", outra: "Grok, Kimi, Qwen…" };
 
 /** Tela 1 · "Qual IA você usa?" (pode marcar mais de uma; "Não uso IA" desmarca as outras). */
 export function EscolhaIa({ onMudou }: { onMudou: () => void }) {
@@ -32,9 +31,9 @@ export function EscolhaIa({ onMudou }: { onMudou: () => void }) {
   };
   return <>
     <div class="opts two" role="group" aria-label="Qual IA você usa (pode marcar mais de uma)">
-      {C.IAS_CARD.map((p) => <Opt key={p} on={tem(p)} title={C.PROVEDORES_IA_APP[p].nome} desc={DESC[p]} onClick={() => toggle(p)} />)}
-      <Opt on={tem("outra")} title="Outra" desc={DESC.outra} onClick={() => toggle("outra")} />
-      <Opt on={semIa} title="Não uso IA" desc="O app funciona sem" onClick={() => salvar({ usa: [], testarGratis: ia?.testarGratis ?? true }, onMudou)} />
+      {C.IAS_CARD.map((p) => <Opt key={p} on={tem(p)} title={C.PROVEDORES_IA_APP[p].nome} onClick={() => toggle(p)} />)}
+      <Opt on={tem("outra")} title="Outra" onClick={() => toggle("outra")} />
+      <Opt on={semIa} title="Não uso IA" onClick={() => salvar({ usa: [], testarGratis: ia?.testarGratis ?? true }, onMudou)} />
     </div>
     {outra && <div class="sia-outra">
       <label class="f" for="sia-outra">Qual?</label>
@@ -70,6 +69,7 @@ export function ComoUsa({ onMudou }: { onMudou: () => void }) {
   };
   return <div class="sia-como">{ia.usa.map((u) => <fieldset key={u.provedor} class="sia-ia">
     <legend><b>{C.nomeIa(u)}</b></legend>
+    {u.acesso.includes("gratis") && u.acesso.includes("assinatura") && <div class="note warn" role="note"><Icon id="warn" /><span>Você marcou acesso gratuito e assinatura para {C.nomeIa(u)}. Esses acessos se excluem: confirme se tem duas contas ou escolha apenas um.</span></div>}
     <div class="opts two">{C.ACESSOS_IA.map((a) => <Opt key={a} on={u.acesso.includes(a)} title={ACESSO_INFO[a].nm} desc={ACESSO_INFO[a].desc} onClick={() => toggle(u.provedor, a)} />)}</div>
   </fieldset>)}</div>;
 }
