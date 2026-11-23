@@ -2,7 +2,7 @@
 
 ![Arquitetura atual: clientes, Worker na Cloudflare, dados, terceiros, segurança, performance e limites de escala](arquitetura/detalhada/atual.svg)
 
-O desenho acima ([`arquitetura/detalhada/atual.svg`](arquitetura/detalhada/atual.svg)) é um diagrama C4 nível 2 (contêineres) com as fronteiras de confiança. Foi levantado do código em 22/11/2026 (main @ `6c327f4`). Há também uma versão resumida para apresentar e postar ([`arquitetura/resumida/atual.svg`](arquitetura/resumida/atual.svg)): estilo prancheta, nas cores do Ciclo, sem detalhe interno. Ela já mostra o teto do teste fechado (≤ 50, #148). Quando uma peça mudar, atualize os SVGs e esta página no mesmo PR.
+O desenho acima ([`arquitetura/detalhada/atual.svg`](arquitetura/detalhada/atual.svg)) é um diagrama C4 nível 2 (contêineres) com as fronteiras de confiança. Foi levantado do código em 22/11/2026 (main @ `6c327f4`). Há também uma versão resumida para apresentar e postar ([`arquitetura/resumida/atual.svg`](arquitetura/resumida/atual.svg)): estilo prancheta, nas cores do Ciclo, sem detalhe interno. Ela já mostra o teto do teste fechado (≤ 50, #148). A proposta para escalar a milhões de contas, com decisões, o que foi conferido na documentação oficial e a ordem de migração, está em [`arquitetura/futura.md`](arquitetura/futura.md). Quando uma peça mudar, atualize os SVGs e esta página no mesmo PR.
 
 ## Peças
 | Peça | O que é | Dependências de runtime |
@@ -13,7 +13,7 @@ O desenho acima ([`arquitetura/detalhada/atual.svg`](arquitetura/detalhada/atual
 | `apps/mcp-local` | Ponte stdio ⇄ HTTPS para o Claude Code, mais o upload de arquivo do Mac (pastas permitidas) | nenhuma (Node 22) |
 | `.claude/` | Skills, subagentes (`implementer`, `guarda-seguranca`, `ui-reviewer`) e o modelo por tarefa | — |
 
-**Números (22/11/2026):** 107 rotas em `/api`, 11 em `/auth`, 39 ferramentas MCP (contrato 1.4.0), 60 tabelas, 40 índices, 25 migrations e cerca de 1.060 testes.
+**Números (22/11/2026):** 107 rotas em `/api`, 11 em `/auth`, 39 ferramentas MCP (contrato 1.4.0), 60 tabelas, 40 índices, 25 migrations e 1.000 testes.
 
 ## Zonas de confiança
 1. **Internet (não confiável):** o app no celular, a IA da pessoa (claude.ai, Claude Desktop/celular, ChatGPT, Cursor), o Claude Code com `apps/mcp-local` e a rotina/vigia (`claude -p`).

@@ -1,0 +1,434 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 2509" width="1800" height="2509" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <title>Ciclo · arquitetura alvo (milhões de contas)</title>
+  <desc>Proposta de arquitetura para escalar o Ciclo a milhões de contas com baixo custo: borda com WAF, gateway, serviços separados, plano de controle global, um SQLite por conta em Durable Objects, filas, workflows, mídia no R2, criptografia por conta, observabilidade, backup em dois provedores e entrega com rollout gradual.</desc>
+  <defs>
+    <style>
+      .t { fill:#0F172A; } .m { fill:#475569; } .s { fill:#64748B; font-size:11px; } .b { font-weight:700; }
+      .h { font-size:15px; font-weight:700; } .mono { font-family:'JetBrains Mono', SFMono-Regular, Menlo, Consolas, monospace; }
+      .zl { font-weight:800; letter-spacing:1.2px; } .lbl { fill:#334155; font-weight:600; }
+      .ico { fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+    </style>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#334155"/></marker>
+    <filter id="sh" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#0F172A" flood-opacity="0.08"/></filter>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2" class="ico"/><path d="M8 11V7a4 4 0 0 1 8 0v4" class="ico"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z" class="ico"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3 2 21h20z" class="ico"/><path d="M12 10v5M12 18v.5" class="ico"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5" class="ico"/><path d="M10.5 18.5h3" class="ico"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z" class="ico"/><path d="M8 9.5h8M8 12.5h5" class="ico"/></symbol>
+    <symbol id="i-term" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2" class="ico"/><path d="m6.5 9.5 3 2.5-3 2.5M12 15h5" class="ico"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" class="ico"/><path d="M12 7v5l3 2" class="ico"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9.5 4.3 4.3 0 0 0 7 18z" class="ico"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 4 5.5v6c0 5 3.5 8.5 8 10.5 4.5-2 8-5.5 8-10.5v-6z" class="ico"/><path d="m8.5 12 2.5 2.5 4.5-5" class="ico"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4.5" class="ico"/><path d="m11.5 11.5 8-8M16.5 6.5l2.5 2.5M14 9l2 2" class="ico"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2" class="ico"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" class="ico"/></symbol>
+    <symbol id="i-git" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5" class="ico"/><circle cx="6" cy="18" r="2.5" class="ico"/><circle cx="18" cy="8" r="2.5" class="ico"/><path d="M6 8.5v7M18 10.5c0 4-6 3-11 6" class="ico"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5" class="ico"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2" class="ico"/><circle cx="8.5" cy="9.5" r="1.6" class="ico"/><path d="m21 15.5-5-5-9 9" class="ico"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M11 3l1.9 5.1L18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9z" class="ico"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" class="ico"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="8" ry="3" class="ico"/><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" class="ico"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" class="ico"/><circle cx="12" cy="12" r="3" class="ico"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20V11M11 20V5M17 20v-6M2.5 20h19" class="ico"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="M3 7.5l9-4.5 9 4.5-9 4.5z" class="ico"/><path d="M3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5" class="ico"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7" class="ico"/><path d="M20 4v5h-5" class="ico"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5z" class="ico"/><path d="M3 8v8l9 5 9-5V8M12 13v8" class="ico"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z" class="ico"/><path d="M10 21h4" class="ico"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5z" class="ico"/><path d="M9 4v13.5M15 6.5V20" class="ico"/></symbol>
+    <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15" class="ico"/><path d="M5 19c3-4 6-6.5 10-8.5" class="ico"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" class="ico"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" class="ico"/></symbol>
+    <symbol id="i-queue" viewBox="0 0 24 24"><rect x="2.5" y="6" width="5" height="12" rx="1" class="ico"/><rect x="9.5" y="6" width="5" height="12" rx="1" class="ico"/><path d="M17 8l4.5 4-4.5 4" class="ico"/></symbol>
+    <symbol id="i-flow" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="5" rx="1" class="ico"/><rect x="14" y="16" width="7" height="5" rx="1" class="ico"/><path d="M6.5 8v4h11v4" class="ico"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2" class="ico"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" class="ico"/></symbol>
+  </defs>
+  <rect width="1800" height="2509" fill="#F7F8FA"/>
+<text x="40" y="40" class="zl" fill="#059669" font-size="12">DEPOIS · ARQUITETURA ALVO · MILHÕES DE CONTAS · PROPOSTA, NADA IMPLEMENTADO</text>
+<text x="40" y="76" fill="#0F172A" font-size="30" font-weight="800">Ciclo: o mesmo produto, desenhado para escalar sem perder segurança</text>
+<text x="40" y="102" class="m" font-size="14">Metas a validar: p95 de sincronização &lt; 500 ms · disponibilidade 99,9% · RPO 5 min e RTO 1 h · custo proporcional ao uso · dado de saúde cifrado por conta</text>
+<rect x="1640" y="26" width="130" height="30" rx="15" fill="#F5F3FF" stroke="#DDD6FE"/><text x="1705.0" y="46" text-anchor="middle" font-size="12.5" font-weight="700" fill="#5B21B6">Deploy gradual</text>
+<rect x="1452" y="26" width="180" height="30" rx="15" fill="#FFFBEB" stroke="#FDE68A"/><text x="1542.0" y="46" text-anchor="middle" font-size="12.5" font-weight="700" fill="#92400E">Backup em 2 provedores</text>
+<rect x="1274" y="26" width="170" height="30" rx="15" fill="#FEF2F2" stroke="#FECACA"/><text x="1359.0" y="46" text-anchor="middle" font-size="12.5" font-weight="700" fill="#991B1B">Criptografia por conta</text>
+<rect x="1118" y="26" width="148" height="30" rx="15" fill="#EEF2FF" stroke="#C7D2FE"/><text x="1192.0" y="46" text-anchor="middle" font-size="12.5" font-weight="700" fill="#3730A3">Filas + Workflows</text>
+<rect x="960" y="26" width="150" height="30" rx="15" fill="#ECFDF5" stroke="#A7F3D0"/><text x="1035.0" y="46" text-anchor="middle" font-size="12.5" font-weight="700" fill="#065F46">1 SQLite por conta</text>
+<g transform="translate(1290 72)" class="s"><line x1="0" y1="10" x2="34" y2="10" stroke="#334155" stroke-width="1.8" marker-end="url(#ar)"/><text x="42" y="14">síncrono</text><line x1="110" y1="10" x2="144" y2="10" stroke="#334155" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ar)"/><text x="152" y="14">assíncrono</text><rect x="236" y="2" width="30" height="16" rx="3" fill="none" stroke="#2563EB" stroke-width="1.5" stroke-dasharray="6 4"/><text x="274" y="14">fronteira de confiança</text><rect x="414" y="1" width="62" height="16" rx="8" fill="#FEF3C7" stroke="#B45309" stroke-width="0.8"/><text x="445" y="12.5" text-anchor="middle" font-size="9.5" font-weight="700" fill="#B45309">a confirmar</text></g>
+<rect x="30" y="125" width="1360" height="252.5" rx="14" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.5" stroke-dasharray="8 6"/>
+<rect x="44" y="115" width="288" height="20" rx="4" fill="#2563EB"/>
+<text x="54" y="129" class="zl" fill="#FFFFFF" font-size="11">INTERNET · ZONA NÃO CONFIÁVEL</text>
+<g filter="url(#sh)"><rect x="50" y="146" width="315" height="217.5" rx="10" fill="#FFFFFF" stroke="#93C5FD" stroke-width="1.3"/></g>
+<use href="#i-phone" x="62" y="156" width="21" height="21" style="stroke:#2563EB"/>
+<text x="90" y="172" class="h" fill="#2563EB">App PWA local-first</text>
+<text x="64" y="198" class="m" font-size="12.4">• Preact + @ciclo/core no aparelho: ação</text>
+<text x="75.2" y="216" class="m" font-size="12.4">em &lt; 50 ms</text>
+<text x="64" y="237.5" class="m" font-size="12.4">• Service Worker e fila offline com</text>
+<text x="75.2" y="255.5" class="m" font-size="12.4">idempotência</text>
+<text x="64" y="277.0" class="m" font-size="12.4">• Sincronização por delta (versão da</text>
+<text x="75.2" y="295.0" class="m" font-size="12.4">conta) e WebSocket</text>
+<text x="64" y="316.5" class="m" font-size="12.4">• Passkey; Face ID em ação sensível</text>
+<text x="64" y="338.0" class="m" font-size="12.4">• Orçamento de JS e Web Vitals no CI</text>
+<g filter="url(#sh)"><rect x="385" y="146" width="315" height="217.5" rx="10" fill="#FFFFFF" stroke="#93C5FD" stroke-width="1.3"/></g>
+<use href="#i-chat" x="397" y="156" width="21" height="21" style="stroke:#2563EB"/>
+<text x="425" y="172" class="h" fill="#2563EB">IA da pessoa (MCP)</text>
+<text x="399" y="198" class="m" font-size="12.4">• claude.ai · ChatGPT · Cursor, por uma</text>
+<text x="410.2" y="216" class="m" font-size="12.4">URL</text>
+<text x="399" y="237.5" class="m" font-size="12.4">• OAuth 2.1 + PKCE, token de 1 h, escopo</text>
+<text x="410.2" y="255.5" class="m" font-size="12.4">ler/escrever</text>
+<text x="399" y="277.0" class="m" font-size="12.4">• Escrita destrutiva só com prévia +</text>
+<text x="410.2" y="295.0" class="m" font-size="12.4">confirmar</text>
+<text x="399" y="316.5" class="m" font-size="12.4">• Usa a assinatura da pessoa: custo de IA</text>
+<text x="410.2" y="334.5" class="m" font-size="12.4">zero para o app</text>
+<g filter="url(#sh)"><rect x="720" y="146" width="315" height="217.5" rx="10" fill="#FFFFFF" stroke="#93C5FD" stroke-width="1.3"/></g>
+<use href="#i-term" x="732" y="156" width="21" height="21" style="stroke:#2563EB"/>
+<text x="760" y="172" class="h" fill="#2563EB">Claude Code (Mac)</text>
+<text x="734" y="198" class="m" font-size="12.4">• Ponte stdio para HTTPS, mesmo MCP e</text>
+<text x="745.2" y="216" class="m" font-size="12.4">mesmo escopo</text>
+<text x="734" y="237.5" class="m" font-size="12.4">• Anexa mídia do Mac (pastas permitidas)</text>
+<text x="734" y="259.0" class="m" font-size="12.4">• Skills e subagentes de revisão</text>
+<text x="734" y="280.5" class="m" font-size="12.4">• Sem dependência de runtime</text>
+<g filter="url(#sh)"><rect x="1055" y="146" width="315" height="217.5" rx="10" fill="#FFFFFF" stroke="#93C5FD" stroke-width="1.3" stroke-dasharray="6 4"/></g>
+<use href="#i-clock" x="1067" y="156" width="21" height="21" style="stroke:#2563EB"/>
+<text x="1095" y="172" class="h" fill="#2563EB">Rotinas de IA</text>
+<text x="1069" y="198" class="m" font-size="12.4">• Hoje: processo agendado no Mac que drena</text>
+<text x="1080.2" y="216" class="m" font-size="12.4">a caixa</text>
+<text x="1069" y="237.5" class="m" font-size="12.4">• Alvo: consumidores de fila no servidor,</text>
+<text x="1080.2" y="255.5" class="m" font-size="12.4">na chave da pessoa</text>
+<text x="1069" y="277.0" class="m" font-size="12.4">• Resposta em segundos, não em minutos</text>
+<text x="1069" y="298.5" class="m" font-size="12.4">• Falha vai para a fila de mortos (DLQ)</text>
+<rect x="30" y="423.5" width="1360" height="959.0" rx="14" fill="#FFF7ED" stroke="#F38020" stroke-width="1.5" stroke-dasharray="8 6"/>
+<rect x="265" y="413.5" width="249" height="20" rx="4" fill="#F38020"/>
+<use href="#i-cloud" x="269" y="414.5" width="18" height="18" style="stroke:#FFFFFF"/>
+<text x="293" y="427.5" class="zl" fill="#FFFFFF" font-size="11">CLOUDFLARE · PLANO PAGO</text>
+<rect x="50" y="447.5" width="1320" height="44" rx="8" fill="#FFEDD5" stroke="#FDBA74"/>
+<use href="#i-shield" x="62" y="457.5" width="24" height="24" style="stroke:#C2410C"/>
+<text x="94" y="474.5" class="t" font-size="12.6"><tspan class="b" fill="#9A3412">EDGE anycast</tspan>  ·  domínio próprio + DNSSEC  ·  TLS 1.3 + HSTS preload  ·  WAF gerenciado  ·  bot management  ·  rate limit de borda  ·  Turnstile  ·  cache de estáticos e do catálogo  ·  HTTP/3</text>
+<path d="M207.5 363.5 L207.5 446.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<rect x="215.5" y="389.5" width="188" height="19" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/><text x="222.5" y="403.0" class="lbl" font-size="11.5">HTTPS · passkey · WebSocket</text>
+<path d="M207.5 491.5 L207.5 520.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<path d="M542.5 363.5 L542.5 446.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<rect x="550.5" y="389.5" width="111" height="19" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/><text x="557.5" y="403.0" class="lbl" font-size="11.5">MCP · OAuth 2.1</text>
+<path d="M542.5 491.5 L542.5 520.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<path d="M877.5 363.5 L877.5 446.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<rect x="885.5" y="389.5" width="85" height="19" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/><text x="892.5" y="403.0" class="lbl" font-size="11.5">MCP · token</text>
+<path d="M877.5 491.5 L877.5 520.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<path d="M1212.5 363.5 L1212.5 446.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<rect x="1220.5" y="389.5" width="85" height="19" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/><text x="1227.5" y="403.0" class="lbl" font-size="11.5">MCP · token</text>
+<path d="M1212.5 491.5 L1212.5 520.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<g filter="url(#sh)"><rect x="50" y="521.5" width="1320" height="92" rx="10" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.5"/></g>
+<path d="M50 531.5 a10 10 0 0 1 10 -10 h1300 a10 10 0 0 1 10 10 v20 h-1320 z" fill="#4F46E5"/>
+<use href="#i-layers" x="62" y="523.5" width="22" height="22" style="stroke:#FFFFFF"/>
+<text x="92" y="537.5" fill="#FFFFFF" font-size="14" font-weight="700">GATEWAY · Worker de entrada (único ponto público)</text>
+<text x="1356" y="537.5" fill="#C7D2FE" font-size="11.5" text-anchor="end">service bindings para os serviços · sem estado</text>
+<text x="66" y="575.5" class="t" font-size="12.6">valida a sessão ou o token (com cache local)  ·  rate limit por conta e por IP  ·  idempotência e request-id para o trace  ·  roteia a conta para o plano de dados  ·  CSP com nonce e</text>
+<text x="66" y="594.5" class="t" font-size="12.6">headers de segurança  ·  nega por padrão</text>
+<path d="M176.0 613.5 L176.0 647.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<g filter="url(#sh)"><rect x="50" y="649.5" width="252" height="196.0" rx="10" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.3"/></g>
+<use href="#i-key" x="62" y="659.5" width="21" height="21" style="stroke:#4F46E5"/>
+<text x="90" y="675.5" class="h" fill="#4F46E5">Auth</text>
+<text x="64" y="701.5" class="m" font-size="12.4">• Passkey, convite, recuperação</text>
+<text x="64" y="723.0" class="m" font-size="12.4">• Servidor OAuth 2.1 (PKCE)</text>
+<text x="64" y="744.5" class="m" font-size="12.4">• Sessão com rotação e revogação</text>
+<text x="64" y="766.0" class="m" font-size="12.4">• Step-up de Face ID</text>
+<text x="64" y="787.5" class="m" font-size="12.4">• Escreve só no plano de controle</text>
+<path d="M443.0 613.5 L443.0 647.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<g filter="url(#sh)"><rect x="317" y="649.5" width="252" height="196.0" rx="10" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.3"/></g>
+<use href="#i-cpu" x="329" y="659.5" width="21" height="21" style="stroke:#4F46E5"/>
+<text x="357" y="675.5" class="h" fill="#4F46E5">API</text>
+<text x="331" y="701.5" class="m" font-size="12.4">• REST validada por schema</text>
+<text x="331" y="723.0" class="m" font-size="12.4">• Chama o @ciclo/core (regra</text>
+<text x="342.2" y="741.0" class="m" font-size="12.4">única)</text>
+<text x="331" y="762.5" class="m" font-size="12.4">• Fala com o objeto da conta</text>
+<text x="331" y="784.0" class="m" font-size="12.4">• Delta sync + ETag</text>
+<path d="M710.0 613.5 L710.0 647.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<g filter="url(#sh)"><rect x="584" y="649.5" width="252" height="196.0" rx="10" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.3"/></g>
+<use href="#i-plug" x="596" y="659.5" width="21" height="21" style="stroke:#4F46E5"/>
+<text x="624" y="675.5" class="h" fill="#4F46E5">MCP</text>
+<text x="598" y="701.5" class="m" font-size="12.4">• JSON-RPC sem estado, 39</text>
+<text x="609.2" y="719.5" class="m" font-size="12.4">ferramentas</text>
+<text x="598" y="741.0" class="m" font-size="12.4">• Prévia e confirmação nas</text>
+<text x="609.2" y="759.0" class="m" font-size="12.4">escritas</text>
+<text x="598" y="780.5" class="m" font-size="12.4">• Texto do usuário é dado</text>
+<text x="598" y="802.0" class="m" font-size="12.4">• Limite por ferramenta</text>
+<path d="M977.0 613.5 L977.0 647.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<g filter="url(#sh)"><rect x="851" y="649.5" width="252" height="196.0" rx="10" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.3"/></g>
+<use href="#i-image" x="863" y="659.5" width="21" height="21" style="stroke:#4F46E5"/>
+<text x="891" y="675.5" class="h" fill="#4F46E5">Mídia</text>
+<text x="865" y="701.5" class="m" font-size="12.4">• URL assinada: upload direto ao</text>
+<text x="876.2" y="719.5" class="m" font-size="12.4">R2</text>
+<text x="865" y="741.0" class="m" font-size="12.4">• Tipo por magic bytes (fila de</text>
+<text x="876.2" y="759.0" class="m" font-size="12.4">verificação)</text>
+<text x="865" y="780.5" class="m" font-size="12.4">• Cota por conta, contada no</text>
+<text x="876.2" y="798.5" class="m" font-size="12.4">objeto</text>
+<text x="865" y="820.0" class="m" font-size="12.4">• Leitura por URL curta</text>
+<path d="M1244.0 613.5 L1244.0 647.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<g filter="url(#sh)"><rect x="1118" y="649.5" width="252" height="196.0" rx="10" fill="#FFFFFF" stroke="#A5B4FC" stroke-width="1.3"/></g>
+<use href="#i-spark" x="1130" y="659.5" width="21" height="21" style="stroke:#4F46E5"/>
+<text x="1158" y="675.5" class="h" fill="#4F46E5">Serviço de IA</text>
+<text x="1132" y="701.5" class="m" font-size="12.4">• Cache, retry e fallback entre</text>
+<text x="1143.2" y="719.5" class="m" font-size="12.4">provedores</text>
+<text x="1132" y="741.0" class="m" font-size="12.4">• Teto em US$ por conta,</text>
+<text x="1143.2" y="759.0" class="m" font-size="12.4">reservado antes</text>
+<text x="1132" y="780.5" class="m" font-size="12.4">• Chave do usuário em envelope</text>
+<text x="1143.2" y="798.5" class="m" font-size="12.4">(DEK)</text>
+<text x="1132" y="820.0" class="m" font-size="12.4">• Saída validada pelo core</text>
+<path d="M176.0 845.5 L176.0 882.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<path d="M470 845.5 L470 882.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<path d="M710.0 845.5 L710.0 882.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<path d="M977.0 845.5 L977.0 882.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)" stroke-dasharray="6 5"/>
+<path d="M1244.0 845.5 L1244.0 882.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)" stroke-dasharray="6 5"/>
+<g filter="url(#sh)"><rect x="50" y="883.5" width="380" height="301" rx="12" fill="#ECFDF5" stroke="#059669" stroke-width="1.5"/></g>
+<path d="M72 909.5 v58 a43.0 9 0 0 0 86 0 v-58" fill="#D1FAE5" stroke="#059669" stroke-width="1.4"/><ellipse cx="115.0" cy="909.5" rx="43.0" ry="9" fill="#D1FAE5" stroke="#059669" stroke-width="1.4"/>
+<use href="#i-db" x="91" y="927.5" width="26" height="26" style="stroke:#065F46"/>
+<text x="172" y="925.5" class="h" fill="#065F46">PLANO DE CONTROLE</text>
+<text x="172" y="943.5" class="m" font-size="12.5">D1 global · pequeno e quente</text>
+<rect x="284" y="893.5" width="130" height="16" rx="8" fill="#FEF3C7" stroke="#B45309" stroke-width="0.8"/><text x="349.0" y="905.0" text-anchor="middle" font-size="9.5" font-weight="700" fill="#B45309">a confirmar: réplicas</text>
+<text x="66" y="993.5" class="m" font-size="12.4">• Contas, passkeys, sessões, OAuth e convites</text>
+<text x="66" y="1015.0" class="m" font-size="12.4">• Cotas e uso diário (agregado)</text>
+<text x="66" y="1036.5" class="m" font-size="12.4">• Diretório conta → objeto e região</text>
+<text x="66" y="1058.0" class="m" font-size="12.4">• Réplicas de leitura com Sessions API: lê o que</text>
+<text x="77.2" y="1076.0" class="m" font-size="12.4">acabou de escrever</text>
+<text x="66" y="1097.5" class="m" font-size="12.4">• Só escrito pelo Auth e pelo Gateway</text>
+<g filter="url(#sh)"><rect x="450" y="883.5" width="470" height="301" rx="12" fill="#ECFDF5" stroke="#059669" stroke-width="2.2"/></g>
+<text x="466" y="909.5" class="h" fill="#065F46">PLANO DE DADOS · 1 Durable Object por conta</text>
+<rect x="827" y="893.5" width="79" height="16" rx="8" fill="#FEF3C7" stroke="#B45309" stroke-width="0.8"/><text x="866.5" y="905.0" text-anchor="middle" font-size="9.5" font-weight="700" fill="#B45309">PITR 30 dias</text>
+<path d="M470 945.5 v34 a36.0 8 0 0 0 72 0 v-34" fill="#D1FAE5" stroke="#059669" stroke-width="1.4"/><ellipse cx="506.0" cy="945.5" rx="36.0" ry="8" fill="#D1FAE5" stroke="#059669" stroke-width="1.4"/>
+<text x="506" y="969.5" text-anchor="middle" font-size="10.5" font-weight="700" fill="#065F46">conta A</text>
+<path d="M558 945.5 v34 a36.0 8 0 0 0 72 0 v-34" fill="#D1FAE5" stroke="#059669" stroke-width="1.4"/><ellipse cx="594.0" cy="945.5" rx="36.0" ry="8" fill="#D1FAE5" stroke="#059669" stroke-width="1.4"/>
+<text x="594" y="969.5" text-anchor="middle" font-size="10.5" font-weight="700" fill="#065F46">conta B</text>
+<path d="M646 945.5 v34 a36.0 8 0 0 0 72 0 v-34" fill="#D1FAE5" stroke="#059669" stroke-width="1.4"/><ellipse cx="682.0" cy="945.5" rx="36.0" ry="8" fill="#D1FAE5" stroke="#059669" stroke-width="1.4"/>
+<text x="682" y="969.5" text-anchor="middle" font-size="10.5" font-weight="700" fill="#065F46">conta C</text>
+<text x="770" y="975.5" text-anchor="middle" font-size="22" font-weight="800" fill="#059669">…</text>
+<path d="M822 945.5 v34 a36.0 8 0 0 0 72 0 v-34" fill="#FFFFFF" stroke="#059669" stroke-width="1.4"/><ellipse cx="858.0" cy="945.5" rx="36.0" ry="8" fill="#FFFFFF" stroke="#059669" stroke-width="1.4"/>
+<text x="858" y="969.5" text-anchor="middle" font-size="10.5" font-weight="700" fill="#065F46">milhões</text>
+<text x="466" y="1015.5" class="m" font-size="12.4">• SQLite embutido: as tabelas de dado da pessoa ficam dentro do</text>
+<text x="477.2" y="1033.5" class="m" font-size="12.4">objeto</text>
+<text x="466" y="1054.5" class="m" font-size="12.4">• Consistência forte por conta; zero JOIN entre contas</text>
+<text x="466" y="1075.5" class="m" font-size="12.4">• WebSocket hibernável: tempo real e custo próximo de zero</text>
+<text x="477.2" y="1093.5" class="m" font-size="12.4">ocioso</text>
+<text x="466" y="1114.5" class="m" font-size="12.4">• Alarmes por conta (push, fechar treino, purgas) no lugar do</text>
+<text x="477.2" y="1132.5" class="m" font-size="12.4">cron global</text>
+<text x="466" y="1153.5" class="m" font-size="12.4">• Limites: 10 GB por objeto e ~1.000 req/s (soft)</text>
+<g filter="url(#sh)"><rect x="940" y="883.5" width="430" height="301" rx="12" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.5"/></g>
+<use href="#i-queue" x="954" y="893.5" width="24" height="24" style="stroke:#4F46E5"/>
+<text x="986" y="911.5" class="h" fill="#3730A3">ASSÍNCRONO · Queues e Workflows</text>
+<rect x="954" y="927.5" width="34" height="24" rx="12" fill="#EEF2FF" stroke="#C7D2FE"/><text x="971.0" y="943.5" text-anchor="middle" font-size="12" font-weight="700" fill="#3730A3">ia</text>
+<rect x="996" y="927.5" width="48" height="24" rx="12" fill="#EEF2FF" stroke="#C7D2FE"/><text x="1020.0" y="943.5" text-anchor="middle" font-size="12" font-weight="700" fill="#3730A3">push</text>
+<rect x="1052" y="927.5" width="62" height="24" rx="12" fill="#EEF2FF" stroke="#C7D2FE"/><text x="1083.0" y="943.5" text-anchor="middle" font-size="12" font-weight="700" fill="#3730A3">export</text>
+<rect x="1122" y="927.5" width="76" height="24" rx="12" fill="#EEF2FF" stroke="#C7D2FE"/><text x="1160.0" y="943.5" text-anchor="middle" font-size="12" font-weight="700" fill="#3730A3">exclusão</text>
+<rect x="1206" y="927.5" width="55" height="24" rx="12" fill="#EEF2FF" stroke="#C7D2FE"/><text x="1233.5" y="943.5" text-anchor="middle" font-size="12" font-weight="700" fill="#3730A3">mídia</text>
+<text x="954" y="975.5" class="m" font-size="12" font-weight="700">Filas com DLQ</text>
+<text x="954" y="993.5" class="m" font-size="12.4">• Consumidores idempotentes, retry com backoff e reprocesso</text>
+<text x="965.2" y="1011.5" class="m" font-size="12.4">da DLQ</text>
+<text x="954" y="1032.5" class="m" font-size="12.4">• Workflows (execução durável, dormem por dias): fim do</text>
+<text x="965.2" y="1050.5" class="m" font-size="12.4">teste, exclusão em cascata e export</text>
+<text x="954" y="1071.5" class="m" font-size="12.4">• Fan-out por conta no lugar de um cron que varre todo</text>
+<text x="965.2" y="1089.5" class="m" font-size="12.4">mundo</text>
+<text x="954" y="1110.5" class="m" font-size="12.4">• Retenção da fila de 4 a 14 dias; sem custo de saída</text>
+<g filter="url(#sh)"><rect x="50" y="1220.5" width="315" height="142.0" rx="10" fill="#ECFDF5" stroke="#059669" stroke-width="1.3"/></g>
+<use href="#i-image" x="62" y="1230.5" width="21" height="21" style="stroke:#065F46"/>
+<text x="90" y="1246.5" class="h" fill="#065F46">R2 · mídia privada</text>
+<text x="64" y="1272.5" class="m" font-size="12.4">• u/&lt;conta&gt;/&lt;id aleatório&gt;, bucket privado</text>
+<text x="64" y="1294.0" class="m" font-size="12.4">• Upload direto por URL assinada</text>
+<text x="64" y="1315.5" class="m" font-size="12.4">• Ciclo de vida: lixeira, depois apagar</text>
+<text x="64" y="1337.0" class="m" font-size="12.4">• Cota por conta, contada no objeto</text>
+<g filter="url(#sh)"><rect x="385" y="1220.5" width="315" height="142.0" rx="10" fill="#ECFDF5" stroke="#059669" stroke-width="1.3"/></g>
+<use href="#i-copy" x="397" y="1230.5" width="21" height="21" style="stroke:#065F46"/>
+<text x="425" y="1246.5" class="h" fill="#065F46">R2 · retenção</text>
+<text x="399" y="1272.5" class="m" font-size="12.4">• Snapshot diário por conta, cifrado</text>
+<text x="399" y="1294.0" class="m" font-size="12.4">• Auditoria só de acréscimo, com hash em</text>
+<text x="410.2" y="1312.0" class="m" font-size="12.4">cadeia</text>
+<text x="399" y="1333.5" class="m" font-size="12.4">• Bucket com retenção (lock)</text>
+<rect x="585" y="1229.5" width="107" height="16" rx="8" fill="#FEF3C7" stroke="#B45309" stroke-width="0.8"/><text x="638.5" y="1241.0" text-anchor="middle" font-size="9.5" font-weight="700" fill="#B45309">lock: a confirmar</text>
+<g filter="url(#sh)"><rect x="720" y="1220.5" width="315" height="142.0" rx="10" fill="#FFFFFF" stroke="#059669" stroke-width="1.3"/></g>
+<use href="#i-key" x="732" y="1230.5" width="21" height="21" style="stroke:#065F46"/>
+<text x="760" y="1246.5" class="h" fill="#065F46">Segredos e chaves</text>
+<text x="734" y="1272.5" class="m" font-size="12.4">• Secrets Store da conta (beta)</text>
+<text x="734" y="1294.0" class="m" font-size="12.4">• KEK no KMS externo; DEK por conta</text>
+<text x="734" y="1315.5" class="m" font-size="12.4">• Rotação versionada; acesso auditado</text>
+<rect x="993" y="1229.5" width="34" height="16" rx="8" fill="#FEF3C7" stroke="#B45309" stroke-width="0.8"/><text x="1010.0" y="1241.0" text-anchor="middle" font-size="9.5" font-weight="700" fill="#B45309">beta</text>
+<g filter="url(#sh)"><rect x="1055" y="1220.5" width="315" height="142.0" rx="10" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.3" stroke-dasharray="6 4"/></g>
+<use href="#i-mic" x="1067" y="1230.5" width="21" height="21" style="stroke:#475569"/>
+<text x="1095" y="1246.5" class="h" fill="#475569">Workers AI (opcional)</text>
+<text x="1069" y="1272.5" class="m" font-size="12.4">• Whisper: voz em texto (pt-BR)</text>
+<text x="1069" y="1294.0" class="m" font-size="12.4">• Porções: 1ª camada barata</text>
+<text x="1069" y="1315.5" class="m" font-size="12.4">• Cache por hash do texto</text>
+<path d="M540 1184.5 L540 1219.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)" stroke-dasharray="6 5"/>
+<rect x="548" y="1192.5" width="132" height="19" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/><text x="555" y="1206.0" class="lbl" font-size="10.5">snapshot · auditoria</text>
+<path d="M800 1184.5 L800 1219.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<rect x="808" y="1192.5" width="32" height="19" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/><text x="815" y="1206.0" class="lbl" font-size="10.5">DEK</text>
+<path d="M1150 1184.5 L1150 1219.5" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)" stroke-dasharray="6 5"/>
+<rect x="1420" y="125" width="350" height="1257.5" rx="14" fill="#F1F5F9" stroke="#475569" stroke-width="1.5" stroke-dasharray="8 6"/>
+<rect x="1434" y="115" width="306" height="20" rx="4" fill="#475569"/>
+<text x="1444" y="129" class="zl" fill="#FFFFFF" font-size="11">TERCEIROS · SAÍDA POR ALLOWLIST</text>
+<g filter="url(#sh)"><rect x="1436" y="146" width="318" height="156.5" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/></g>
+<use href="#i-spark" x="1448" y="156" width="21" height="21" style="stroke:#334155"/>
+<text x="1476" y="172" class="h" fill="#334155">LLMs com a chave da pessoa</text>
+<text x="1450" y="198" class="m" font-size="12.4">• Anthropic · OpenAI · Gemini · OpenRouter</text>
+<text x="1461.2" y="216" class="m" font-size="12.4">· DeepSeek</text>
+<text x="1450" y="237.5" class="m" font-size="12.4">• Só via serviço de IA: cache, fallback e</text>
+<text x="1461.2" y="255.5" class="m" font-size="12.4">teto</text>
+<text x="1450" y="277.0" class="m" font-size="12.4">• Sem redirect; erro do provedor descartado</text>
+<g filter="url(#sh)"><rect x="1436" y="316.5" width="318" height="117.0" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/></g>
+<use href="#i-key" x="1448" y="326.5" width="21" height="21" style="stroke:#334155"/>
+<text x="1476" y="342.5" class="h" fill="#334155">KMS externo</text>
+<text x="1450" y="368.5" class="m" font-size="12.4">• Guarda a KEK; o Worker só pede para</text>
+<text x="1461.2" y="386.5" class="m" font-size="12.4">cifrar e decifrar</text>
+<text x="1450" y="408.0" class="m" font-size="12.4">• A chave nunca sai do KMS</text>
+<g filter="url(#sh)"><rect x="1436" y="447.5" width="318" height="99.0" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/></g>
+<use href="#i-leaf" x="1448" y="457.5" width="21" height="21" style="stroke:#334155"/>
+<text x="1476" y="473.5" class="h" fill="#334155">Open Food Facts · Nominatim</text>
+<text x="1450" y="499.5" class="m" font-size="12.4">• Só o texto necessário, com cache de borda</text>
+<text x="1450" y="521.0" class="m" font-size="12.4">• Limite global de consultas</text>
+<g filter="url(#sh)"><rect x="1436" y="560.5" width="318" height="99.0" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/></g>
+<use href="#i-bell" x="1448" y="570.5" width="21" height="21" style="stroke:#334155"/>
+<text x="1476" y="586.5" class="h" fill="#334155">Turnstile · Web Push</text>
+<text x="1450" y="612.5" class="m" font-size="12.4">• Anti-robô no convite e no login suspeito</text>
+<text x="1450" y="634.0" class="m" font-size="12.4">• Push sem conteúdo pessoal</text>
+<g filter="url(#sh)"><rect x="1436" y="673.5" width="318" height="120.5" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3" stroke-dasharray="6 4"/></g>
+<use href="#i-eye" x="1448" y="683.5" width="21" height="21" style="stroke:#334155"/>
+<text x="1476" y="699.5" class="h" fill="#334155">Observabilidade e SIEM</text>
+<text x="1450" y="725.5" class="m" font-size="12.4">• OTel, métricas e logs sem dado pessoal</text>
+<text x="1450" y="747.0" class="m" font-size="12.4">• Produto a escolher (Grafana, Datadog…)</text>
+<text x="1450" y="768.5" class="m" font-size="12.4">• Alerta de SLO e de custo</text>
+<g filter="url(#sh)"><rect x="1436" y="808.0" width="318" height="120.5" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3" stroke-dasharray="6 4"/></g>
+<use href="#i-copy" x="1448" y="818.0" width="21" height="21" style="stroke:#334155"/>
+<text x="1476" y="834.0" class="h" fill="#334155">Backup em 2º provedor</text>
+<text x="1450" y="860.0" class="m" font-size="12.4">• Armazenamento compatível com S3</text>
+<text x="1450" y="881.5" class="m" font-size="12.4">• Snapshot cifrado com outra chave</text>
+<text x="1450" y="903.0" class="m" font-size="12.4">• Restauração ensaiada a cada trimestre</text>
+<g filter="url(#sh)"><rect x="1436" y="942.5" width="318" height="142.0" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/></g>
+<use href="#i-git" x="1448" y="952.5" width="21" height="21" style="stroke:#334155"/>
+<text x="1476" y="968.5" class="h" fill="#334155">GitHub · CI/CD</text>
+<text x="1450" y="994.5" class="m" font-size="12.4">• IaC revisada em PR; ambiente por PR</text>
+<text x="1450" y="1016.0" class="m" font-size="12.4">• SAST, SCA, SBOM, k6 e DAST</text>
+<text x="1450" y="1037.5" class="m" font-size="12.4">• Artefato assinado e provenance</text>
+<text x="1450" y="1059.0" class="m" font-size="12.4">• Deploy gradual com rollback por SLO</text>
+<path d="M1370 747.5 H1405 M1405 224.25 V868.25" stroke="#334155" stroke-width="2" fill="none"/>
+<path d="M1405 224.25 L1435 224.25" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<path d="M1405 375.0 L1435 375.0" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<path d="M1405 497.0 L1435 497.0" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<path d="M1405 610.0 L1435 610.0" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<path d="M1405 733.75 L1435 733.75" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)" stroke-dasharray="6 5"/>
+<path d="M1405 868.25 L1435 868.25" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#ar)" stroke-dasharray="6 5"/>
+<path d="M1436 1013.5 H1392" stroke="#64748B" stroke-width="1.8" stroke-dasharray="6 5" fill="none" marker-end="url(#ar)"/>
+<text x="1400" y="1005.5" class="s">deploy</text>
+<g filter="url(#sh)"><rect x="30" y="1416.5" width="570" height="498.5" rx="12" fill="#FFFFFF" stroke="#FCA5A5" stroke-width="1.3"/></g>
+<path d="M30 1428.5 a12 12 0 0 1 12 -12 h546 a12 12 0 0 1 12 12 v30 h-570 z" fill="#FEF2F2"/>
+<use href="#i-lock" x="46" y="1425.5" width="22" height="22" style="stroke:#991B1B"/>
+<text x="76" y="1442.5" class="h" fill="#991B1B">Segurança máxima</text>
+<text x="48" y="1480.5" class="t" font-size="12.6">• Isolamento físico: um SQLite por conta, sem JOIN entre contas; erro de</text>
+<text x="59.3" y="1500.0" class="t" font-size="12.6">filtro não vaza dado</text>
+<text x="48" y="1524.5" class="t" font-size="12.6">• Criptografia por conta: dado de saúde cifrado com DEK da conta e KEK no KMS;</text>
+<text x="59.3" y="1544.0" class="t" font-size="12.6">apagar a chave apaga o dado (crypto-shredding)</text>
+<text x="48" y="1568.5" class="t" font-size="12.6">• Passkey, sessão com rotação, Face ID em ação sensível e detecção de anomalia</text>
+<text x="59.3" y="1588.0" class="t" font-size="12.6">(país, aparelho)</text>
+<text x="48" y="1612.5" class="t" font-size="12.6">• WAF gerenciado + bot management + rate limit de borda + Turnstile, em</text>
+<text x="59.3" y="1632.0" class="t" font-size="12.6">domínio próprio com DNSSEC</text>
+<text x="48" y="1656.5" class="t" font-size="12.6">• Log de auditoria só de acréscimo, com hash em cadeia, em bucket com retenção</text>
+<text x="48" y="1681.0" class="t" font-size="12.6">• Menor privilégio: cada Worker enxerga só os bindings de que precisa;</text>
+<text x="59.3" y="1700.5" class="t" font-size="12.6">segredos fora do código</text>
+<text x="48" y="1725.0" class="t" font-size="12.6">• Nenhum acesso humano a dado de saúde; emergência por break-glass com</text>
+<text x="59.3" y="1744.5" class="t" font-size="12.6">aprovação e auditoria</text>
+<text x="48" y="1769.0" class="t" font-size="12.6">• Cadeia de suprimentos: SAST, SCA, SBOM, provenance (SLSA), CI sem segredo de</text>
+<text x="59.3" y="1788.5" class="t" font-size="12.6">longa duração</text>
+<text x="48" y="1813.0" class="t" font-size="12.6">• Pentest anual, security.txt e divulgação responsável; modelo de ameaças por</text>
+<text x="59.3" y="1832.5" class="t" font-size="12.6">fronteira</text>
+<text x="48" y="1857.0" class="t" font-size="12.6">• LGPD: RIPD, encarregado, exportar e apagar automatizados e transferência</text>
+<text x="59.3" y="1876.5" class="t" font-size="12.6">internacional com salvaguardas</text>
+<g filter="url(#sh)"><rect x="615" y="1416.5" width="570" height="498.5" rx="12" fill="#FFFFFF" stroke="#FCD34D" stroke-width="1.3"/></g>
+<path d="M615 1428.5 a12 12 0 0 1 12 -12 h546 a12 12 0 0 1 12 12 v30 h-570 z" fill="#FFFBEB"/>
+<use href="#i-bolt" x="631" y="1425.5" width="22" height="22" style="stroke:#92400E"/>
+<text x="661" y="1442.5" class="h" fill="#92400E">Performance</text>
+<text x="633" y="1480.5" class="t" font-size="12.6">• Ação local &lt; 50 ms: o core roda no aparelho e a escrita é otimista</text>
+<text x="633" y="1505.0" class="t" font-size="12.6">• Sincronização por delta + ETag no lugar de recarregar tudo; WebSocket no</text>
+<text x="644.3" y="1524.5" class="t" font-size="12.6">lugar do polling de 8 s</text>
+<text x="633" y="1549.0" class="t" font-size="12.6">• Objeto da conta perto da pessoa (location hint). A América do Sul ainda não</text>
+<text x="644.3" y="1568.5" class="t" font-size="12.6">hospeda objetos: o caminho vai à costa leste dos EUA, medir na PoC</text>
+<text x="633" y="1593.0" class="t" font-size="12.6">• Cache de borda: estáticos imutáveis, catálogo versionado, consultas de</text>
+<text x="644.3" y="1612.5" class="t" font-size="12.6">alimento e endereço</text>
+<text x="633" y="1637.0" class="t" font-size="12.6">• IA, push, export e verificação de mídia saem do caminho crítico (filas)</text>
+<text x="633" y="1661.5" class="t" font-size="12.6">• Smart Placement para Workers que falam com o plano de controle</text>
+<text x="633" y="1686.0" class="t" font-size="12.6">• HTTP/3, compressão e orçamento de 130 KB de JS no CI</text>
+<text x="633" y="1710.5" class="t" font-size="12.6">• Orçamento de latência por rota no k6; regressão trava o merge</text>
+<text x="633" y="1735.0" class="t" font-size="12.6">• Metas (a validar): sync p95 &lt; 500 ms a partir do Brasil; catálogo na borda &lt;</text>
+<text x="644.3" y="1754.5" class="t" font-size="12.6">100 ms</text>
+<g filter="url(#sh)"><rect x="1200" y="1416.5" width="570" height="498.5" rx="12" fill="#FFFFFF" stroke="#6EE7B7" stroke-width="1.3"/></g>
+<path d="M1200 1428.5 a12 12 0 0 1 12 -12 h546 a12 12 0 0 1 12 12 v30 h-570 z" fill="#ECFDF5"/>
+<use href="#i-chart" x="1216" y="1425.5" width="22" height="22" style="stroke:#065F46"/>
+<text x="1246" y="1442.5" class="h" fill="#065F46">Escala e custo</text>
+<text x="1218" y="1480.5" class="t" font-size="12.6">• Escala horizontal por construção: 1 objeto por conta, sem ponto único de</text>
+<text x="1229.3" y="1500.0" class="t" font-size="12.6">escrita</text>
+<text x="1218" y="1524.5" class="t" font-size="12.6">• O único ponto global é o plano de controle (pequeno e quente): réplicas de</text>
+<text x="1229.3" y="1544.0" class="t" font-size="12.6">leitura e cache de sessão no Gateway</text>
+<text x="1218" y="1568.5" class="t" font-size="12.6">• Objeto ocioso hiberna: custo de quem não usa tende a zero</text>
+<text x="1218" y="1593.0" class="t" font-size="12.6">• Custo = requisições + tempo ativo dos objetos + linhas lidas e escritas +</text>
+<text x="1229.3" y="1612.5" class="t" font-size="12.6">GB-mês (objetos e R2) + operações de fila</text>
+<text x="1218" y="1637.0" class="t" font-size="12.6">• Exemplo (premissas): 1 M contas, 20% ativas por dia, 100 req/dia ≈ 20 M</text>
+<text x="1229.3" y="1656.5" class="t" font-size="12.6">req/dia ≈ 230 req/s na média e ~2,3 mil no pico</text>
+<text x="1218" y="1681.0" class="t" font-size="12.6">• Mídia no R2 sem custo de saída, com cota por conta e ciclo de vida</text>
+<text x="1218" y="1705.5" class="t" font-size="12.6">• IA fora do orçamento: assinatura ou chave da pessoa; Gateway com cache e</text>
+<text x="1229.3" y="1725.0" class="t" font-size="12.6">teto</text>
+<text x="1218" y="1749.5" class="t" font-size="12.6">• Guarda-corpos: orçamento por conta, alerta de billing a 80% e chave de corte</text>
+<text x="1218" y="1774.0" class="t" font-size="12.6">• Preço unitário: a confirmar nas páginas oficiais antes de decidir (nada foi</text>
+<text x="1229.3" y="1793.5" class="t" font-size="12.6">assumido aqui)</text>
+<g filter="url(#sh)"><rect x="30" y="1931.0" width="570" height="386.0" rx="12" fill="#FFFFFF" stroke="#67E8F9" stroke-width="1.3"/></g>
+<path d="M30 1943.0 a12 12 0 0 1 12 -12 h546 a12 12 0 0 1 12 12 v30 h-570 z" fill="#ECFEFF"/>
+<use href="#i-eye" x="46" y="1940.0" width="22" height="22" style="stroke:#0E7490"/>
+<text x="76" y="1957.0" class="h" fill="#0E7490">Observabilidade</text>
+<text x="48" y="1995.0" class="t" font-size="12.6">• Traces OpenTelemetry de ponta a ponta: Gateway, serviço, objeto da conta e</text>
+<text x="59.3" y="2014.5" class="t" font-size="12.6">fila, com request-id em tudo</text>
+<text x="48" y="2039.0" class="t" font-size="12.6">• Métricas RED por rota e por ferramenta MCP; métricas de produto agregadas,</text>
+<text x="59.3" y="2058.5" class="t" font-size="12.6">sem dado de saúde</text>
+<text x="48" y="2083.0" class="t" font-size="12.6">• Logs estruturados sem dado pessoal, exportados para armazenamento e SIEM</text>
+<text x="48" y="2107.5" class="t" font-size="12.6">• SLOs com alerta de queima de orçamento de erro (disponibilidade 99,9%,</text>
+<text x="59.3" y="2127.0" class="t" font-size="12.6">latência p95)</text>
+<text x="48" y="2151.5" class="t" font-size="12.6">• RUM: Web Vitals e erros do app no aparelho real</text>
+<text x="48" y="2176.0" class="t" font-size="12.6">• Checagens sintéticas de login, abrir o app e MCP, de várias regiões</text>
+<text x="48" y="2200.5" class="t" font-size="12.6">• Painel de custo por conta e global</text>
+<text x="48" y="2225.0" class="t" font-size="12.6">• Status page, runbooks e plantão</text>
+<g filter="url(#sh)"><rect x="615" y="1931.0" width="570" height="386.0" rx="12" fill="#FFFFFF" stroke="#C4B5FD" stroke-width="1.3"/></g>
+<path d="M615 1943.0 a12 12 0 0 1 12 -12 h546 a12 12 0 0 1 12 12 v30 h-570 z" fill="#F5F3FF"/>
+<use href="#i-refresh" x="631" y="1940.0" width="22" height="22" style="stroke:#5B21B6"/>
+<text x="661" y="1957.0" class="h" fill="#5B21B6">Backup e recuperação de desastre</text>
+<text x="633" y="1995.0" class="t" font-size="12.6">• Recuperação a qualquer ponto dos últimos 30 dias por conta: restaura uma</text>
+<text x="644.3" y="2014.5" class="t" font-size="12.6">pessoa sem tocar nas outras</text>
+<text x="633" y="2039.0" class="t" font-size="12.6">• Snapshot diário por conta, cifrado, no R2 e copiado para um segundo provedor</text>
+<text x="644.3" y="2058.5" class="t" font-size="12.6">com outra chave</text>
+<text x="633" y="2083.0" class="t" font-size="12.6">• Plano de controle: Time Travel do D1 (a confirmar) + export periódico fora</text>
+<text x="644.3" y="2102.5" class="t" font-size="12.6">da Cloudflare</text>
+<text x="633" y="2127.0" class="t" font-size="12.6">• Metas: perda máxima 5 min (RPO) e volta em 1 h (RTO), com ensaio de</text>
+<text x="644.3" y="2146.5" class="t" font-size="12.6">restauração a cada trimestre</text>
+<text x="633" y="2171.0" class="t" font-size="12.6">• Falha de região: o app segue offline e a fila de escrita reenvia quando</text>
+<text x="644.3" y="2190.5" class="t" font-size="12.6">voltar</text>
+<text x="633" y="2215.0" class="t" font-size="12.6">• Saída do fornecedor: dado exportável em formato aberto (o export por conta</text>
+<text x="644.3" y="2234.5" class="t" font-size="12.6">já existe)</text>
+<text x="633" y="2259.0" class="t" font-size="12.6">• Exclusão com comprovante: crypto-shredding mais saga que apaga R2, snapshots</text>
+<text x="644.3" y="2278.5" class="t" font-size="12.6">e cópias</text>
+<g filter="url(#sh)"><rect x="1200" y="1931.0" width="570" height="386.0" rx="12" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.3"/></g>
+<path d="M1200 1943.0 a12 12 0 0 1 12 -12 h546 a12 12 0 0 1 12 12 v30 h-570 z" fill="#F1F5F9"/>
+<use href="#i-git" x="1216" y="1940.0" width="22" height="22" style="stroke:#334155"/>
+<text x="1246" y="1957.0" class="h" fill="#334155">Entrega e operação</text>
+<text x="1218" y="1995.0" class="t" font-size="12.6">• Infra como código (wrangler + provider Terraform da Cloudflare), revisada em</text>
+<text x="1229.3" y="2014.5" class="t" font-size="12.6">PR</text>
+<text x="1218" y="2039.0" class="t" font-size="12.6">• Ambiente efêmero por PR com Worker, objeto e R2 próprios; passkey exige</text>
+<text x="1229.3" y="2058.5" class="t" font-size="12.6">origem fixa, então o staging usa domínio próprio</text>
+<text x="1218" y="2083.0" class="t" font-size="12.6">• Deploy gradual por porcentagem com rollback automático por SLO. Objetos</text>
+<text x="1229.3" y="2102.5" class="t" font-size="12.6">rodam uma versão por vez: testar a migração de schema antes</text>
+<text x="1218" y="2127.0" class="t" font-size="12.6">• Migração em duas fases (expandir, depois contrair), com versão de schema por</text>
+<text x="1229.3" y="2146.5" class="t" font-size="12.6">objeto</text>
+<text x="1218" y="2171.0" class="t" font-size="12.6">• k6 no CI: carga, soak e pico, com orçamento de latência</text>
+<text x="1218" y="2195.5" class="t" font-size="12.6">• Teste de caos: fila lenta, objeto indisponível, provedor de IA fora</text>
+<text x="1218" y="2220.0" class="t" font-size="12.6">• Feature flags por coorte (liberar o teste fechado aos poucos)</text>
+<text x="1218" y="2244.5" class="t" font-size="12.6">• SAST, SCA, SBOM e DAST no pipeline, com artefato assinado</text>
+<g filter="url(#sh)"><rect x="30" y="2341.0" width="1740" height="124" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.3"/></g>
+<use href="#i-warn" x="46" y="2353.0" width="22" height="22" style="stroke:#B45309"/>
+<text x="76" y="2370.0" class="h" fill="#92400E">O que o “antes” não tinha e nenhum pedido pedia</text>
+<rect x="46" y="2387.0" width="134" height="26" rx="13" fill="#FFFBEB" stroke="#FDE68A"/><text x="113.0" y="2404.5" text-anchor="middle" font-size="12.5" font-weight="600" fill="#92400E">observabilidade</text>
+<rect x="188" y="2387.0" width="126" height="26" rx="13" fill="#FFFBEB" stroke="#FDE68A"/><text x="251.0" y="2404.5" text-anchor="middle" font-size="12.5" font-weight="600" fill="#92400E">teste de carga</text>
+<rect x="322" y="2387.0" width="250" height="26" rx="13" fill="#FFFBEB" stroke="#FDE68A"/><text x="447.0" y="2404.5" text-anchor="middle" font-size="12.5" font-weight="600" fill="#92400E">backup com restauração ensaiada</text>
+<rect x="580" y="2387.0" width="148" height="26" rx="13" fill="#FFFBEB" stroke="#FDE68A"/><text x="654.0" y="2404.5" text-anchor="middle" font-size="12.5" font-weight="600" fill="#92400E">infra como código</text>
+<rect x="736" y="2387.0" width="221" height="26" rx="13" fill="#FFFBEB" stroke="#FDE68A"/><text x="846.5" y="2404.5" text-anchor="middle" font-size="12.5" font-weight="600" fill="#92400E">deploy gradual com rollback</text>
+<rect x="965" y="2387.0" width="148" height="26" rx="13" fill="#FFFBEB" stroke="#FDE68A"/><text x="1039.0" y="2404.5" text-anchor="middle" font-size="12.5" font-weight="600" fill="#92400E">fila e tempo real</text>
+<rect x="1121" y="2387.0" width="155" height="26" rx="13" fill="#FFFBEB" stroke="#FDE68A"/><text x="1198.5" y="2404.5" text-anchor="middle" font-size="12.5" font-weight="600" fill="#92400E">sharding por conta</text>
+<rect x="1284" y="2387.0" width="221" height="26" rx="13" fill="#FFFBEB" stroke="#FDE68A"/><text x="1394.5" y="2404.5" text-anchor="middle" font-size="12.5" font-weight="600" fill="#92400E">SAST · SCA · SBOM · pentest</text>
+<rect x="1513" y="2387.0" width="177" height="26" rx="13" fill="#FFFBEB" stroke="#FDE68A"/><text x="1601.5" y="2404.5" text-anchor="middle" font-size="12.5" font-weight="600" fill="#92400E">WAF e domínio próprio</text>
+<rect x="46" y="2419.0" width="134" height="26" rx="13" fill="#FFFBEB" stroke="#FDE68A"/><text x="113.0" y="2436.5" text-anchor="middle" font-size="12.5" font-weight="600" fill="#92400E">modelo de custo</text>
+<text x="40" y="2493" class="s">Notação: C4 nível 2 + fronteiras de confiança. Proposta; premissas, metas e recursos a confirmar em docs/arquitetura/futura.md. Comparar com detalhada/atual.svg.</text>
+<text x="1760" y="2493" class="s" text-anchor="end">github.com/lipe0312/ciclo</text>
+</svg>
