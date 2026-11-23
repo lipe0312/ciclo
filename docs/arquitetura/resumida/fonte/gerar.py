@@ -60,8 +60,8 @@ def bucket(x, y, w, h, ry=12):
             f'<ellipse cx="{x + w / 2}" cy="{y}" rx="{w / 2}" ry="{ry}" fill="{CARD}" stroke="{INK}" stroke-width="2"/>')
 
 
-CLIENTES = [("phone", "PWA", "celular · offline"), ("ia", "Claude · ChatGPT", "MCP remoto"),
-            ("term", "Claude Code", "MCP via stdio"), ("ampulheta", "Agente agendado", "drena a fila")]
+CLIENTES = [("phone", "PWA", "celular · offline"), ("ia", "Sua IA", "assinatura · MCP"),
+            ("term", "IA no terminal", "MCP via stdio"), ("ampulheta", "Agente agendado", "drena a fila")]
 PROTO = ["HTTPS · passkey", "MCP · OAuth 2.1", "MCP · token", "MCP · token"]
 MODULOS = [("janela", "App estático"), ("chaves", "REST API"), ("digital", "Passkey"), ("ticket", "OAuth 2.1"),
            ("hub", "Servidor MCP"), ("fluxo", "Regras de domínio"), ("funil", "Rate limit"), ("relogio", "Cron 1 min")]
@@ -73,8 +73,8 @@ PERF = ["Abre offline", "1 request abre o app", "Regras no aparelho", "~130 KB d
 LIM = ["1 banco, 1 região", "Cota grátis diária", "Polling, sem tempo real", "Sem fila, cache e métricas"]
 
 P = [f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" font-family="{SANS}">
-<title>Ciclo · arquitetura atual</title>
-<desc>Arquitetura atual do Ciclo: clientes (app e IAs via MCP), um Worker na Cloudflare, D1, bucket R2, secrets, Workers AI, terceiros, segurança, performance e limites.</desc>
+<title>O que basta para o MVP</title>
+<desc>Arquitetura do MVP (2 de 2): app de treino e dieta com a IA da pessoa; clientes (app e IAs via MCP), um Worker na Cloudflare, D1, bucket R2, secrets, Workers AI, terceiros, segurança, performance e limites.</desc>
 <defs>
 <pattern id="g" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="{GRID}" stroke-width="1"/></pattern>
 <pattern id="G" width="120" height="120" patternUnits="userSpaceOnUse"><path d="M120 0H0V120" fill="none" stroke="{GRID2}" stroke-width="1.2"/></pattern>
@@ -84,9 +84,9 @@ P = [f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W
 <rect width="{W}" height="{H}" fill="{PAPER}"/><rect width="{W}" height="{H}" fill="url(#g)"/><rect width="{W}" height="{H}" fill="url(#G)"/>''']
 
 # ---------- cabeçalho ----------
-P.append(f'<text x="60" y="78" font-family="{MONO}" font-size="15" letter-spacing="2.2" fill="{SUB}">CICLO · TREINO, COMIDA E SAÚDE COM A SUA IA</text>')
-P.append(f'<text x="58" y="136" font-size="58" font-weight="600" fill="{INK}" letter-spacing="-1">Arquitetura atual</text>')
-P.append(f'<rect x="60" y="150" width="96" height="8" fill="{LIME}"/>')
+P.append(f'<text x="60" y="78" font-family="{MONO}" font-size="15" letter-spacing="2.2" fill="{SUB}">2/2 · VERSÃO MVP</text>')
+P.append(f'<text x="58" y="136" font-size="58" font-weight="600" fill="{INK}" letter-spacing="-1" textLength="614.7" lengthAdjust="spacing">O que basta para o MVP</text>')
+P.append(f'<rect x="60" y="150" width="612" height="8" fill="{LIME}"/>')
 P.append(f'<text x="1020" y="78" text-anchor="end" font-family="{MONO}" font-size="15" fill="{SUB}">2026</text>')
 P.append(f'<path d="M60 170H1020" stroke="{INK}" stroke-width="2.5"/>')
 
@@ -163,7 +163,7 @@ P.append(f'<text x="186" y="969" font-size="19" fill="{INK}">{EXTERNOS}</text>')
 # ---------- notas ----------
 P.append(f'<path d="M60 1028H1020" stroke="{INK}" stroke-width="2.5"/>')
 colw = 960 / 3
-for j, (titulo, items, num) in enumerate([("SEGURANÇA", SEG, False), ("PERFORMANCE", PERF, False), ("LIMITES", LIM, True)]):
+for j, (titulo, items, num) in enumerate([("SEGURANÇA", SEG, False), ("PERFORMANCE", PERF, False), ("O QUE FICOU PARA DEPOIS", LIM, True)]):
     x = 60 + j * colw + (10 if j else 0)
     if j: P.append(f'<path d="M{x - 20:.1f} 1044 V1226" stroke="{INK}" stroke-width="1"/>')
     P.append(f'<text x="{x:.1f}" y="1066" font-family="{MONO}" font-size="16" font-weight="700" letter-spacing="2" fill="{INK}">{titulo}</text>')
@@ -178,7 +178,7 @@ for j, (titulo, items, num) in enumerate([("SEGURANÇA", SEG, False), ("PERFORMA
 
 # ---------- carimbo (sem notação e sem plano) ----------
 P.append(f'<rect x="60" y="1252" width="960" height="56" fill="{CARD}" stroke="{INK}" stroke-width="2"/>')
-cells = [("CUSTO", "R$ 0/mês", 220), ("CONTAS", "≤ 50 · teste", 250), ("ACESSO", "só por convite", 290), ("REGIÃO", "1", 200)]
+cells = [("CUSTO", "R$ 0/mês", 220), ("CONTAS", "≤ 50 · teste", 250), ("PEÇAS NA NUVEM", "6", 220), ("ACESSO", "só por convite", 270)]
 x = 60
 for k, v, w in cells:
     if x > 60: P.append(f'<path d="M{x} 1252 V1308" stroke="{INK}" stroke-width="1.2"/>')
