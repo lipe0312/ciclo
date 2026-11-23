@@ -20,15 +20,13 @@ npm run e2e:local    # roteiro de ponta a ponta numa conta fictícia (docs/09-te
 ```
 
 ## Usar na academia (Mac em casa desligado)
-Deploy grátis na Cloudflare (Workers + D1 + R2 + Access): checklist copiável em [`docs/05-deploy-gratis.md`](docs/05-deploy-gratis.md) (`npm run cf:setup` → `npm run deploy` → Access → token → connector → PWA → rotina/vigia). `npm run deploy:dry` confere tudo sem subir nada.
+Deploy grátis na Cloudflare (Workers + D1 + R2, login por passkey): checklist copiável em [`docs/05-deploy-gratis.md`](docs/05-deploy-gratis.md) (`npm run cf:setup` → `npm run deploy` → conta com Face ID → connector → PWA → rotina/vigia). `npm run deploy:dry` confere tudo sem subir nada.
 
 ## Como funciona
-```
-celular (PWA) ─┐                 ┌─ claude.ai / app do Claude (connector /mcp)
-               ├─ Cloudflare Worker ─┤
-               │   app · /api · /mcp · cron      └─ Claude Code (apps/mcp-local, stdio)
-               └─ packages/core (regras puras, testadas) → D1 (dados) · R2 (vídeos)
-```
+![Arquitetura atual do Ciclo](docs/arquitetura/detalhada/atual.svg)
+
+Um Worker na Cloudflare serve o app (PWA em Preact), a API, o servidor OAuth e o MCP; o `packages/core` (regras puras, testadas) roda igual no celular e no servidor; D1 guarda os dados e R2 os vídeos. Detalhes em [`docs/02-arquitetura.md`](docs/02-arquitetura.md).
+
 - **O Claude decide, o código monta:** o Claude devolve só IDs e séries; o core valida (aparelho, dor, tempo, prioridades) e monta o treino com imagens e vídeos.
 - **Modelo por pedido:** Haiku para registros, Sonnet para reorganizar o dia, Opus para dor e revisão.
 
@@ -36,8 +34,8 @@ celular (PWA) ─┐                 ┌─ claude.ai / app do Claude (connector
 | | |
 |---|---|
 | [01 · Requisitos v3](docs/01-requisitos-v3.md) | o que o app faz e por quê, ligado ao objetivo |
-| [02 · Arquitetura](docs/02-arquitetura.md) | peças, fluxos, dados, ADRs |
-| [03 · Segurança](docs/03-seguranca.md) | Access, token do MCP, CSP, validação, segredos |
+| [02 · Arquitetura](docs/02-arquitetura.md) | diagrama de sistema, zonas de confiança, fluxos, dados, limites de escala, ADRs |
+| [03 · Segurança](docs/03-seguranca.md) | passkey, OAuth/token do MCP, CSP, limites, validação, segredos |
 | [04 · Performance](docs/04-performance.md) | metas e técnicas (offline, 1 requisição, WebP) |
 | [05 · Deploy grátis](docs/05-deploy-gratis.md) | Cloudflare passo a passo, celular, connector |
 | [06 · Roadmap](docs/06-roadmap.md) | marcos M0–M5 |
