@@ -1,0 +1,391 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1360" width="1800" height="1360" font-family="Inter, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <title>Ciclo · arquitetura atual (nov/2026)</title>
+  <desc>Diagrama de contêineres (C4 nível 2) com fronteiras de confiança, banco, segurança, performance e limites de escala do app Ciclo, levantado do código.</desc>
+  <defs>
+    <style>
+      .t  { fill:#0F172A; font-size:13px; }
+      .m  { fill:#475569; font-size:12.5px; }
+      .s  { fill:#64748B; font-size:11px; }
+      .b  { font-weight:700; }
+      .h  { fill:#0F172A; font-size:15px; font-weight:700; }
+      .mono { font-family:'JetBrains Mono', SFMono-Regular, Menlo, Consolas, monospace; }
+      .zl { font-size:12px; font-weight:800; letter-spacing:1.2px; }
+      .lbl { fill:#334155; font-size:11.5px; font-weight:600; }
+      .card { fill:#FFFFFF; stroke:#CBD5E1; stroke-width:1.2; }
+      .ico { fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+    </style>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#334155"/></marker>
+    <marker id="arg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#64748B"/></marker>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#DC2626"/></marker>
+    <filter id="sh" x="-5%" y="-5%" width="110%" height="120%"><feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#0F172A" flood-opacity="0.08"/></filter>
+    <!-- ícones 24×24, traço -->
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2" class="ico"/><path d="M8 11V7a4 4 0 0 1 8 0v4" class="ico"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z" class="ico"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3 2 21h20z" class="ico"/><path d="M12 10v5M12 18v.5" class="ico"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5" class="ico"/><path d="M10.5 18.5h3" class="ico"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z" class="ico"/><path d="M8 9.5h8M8 12.5h5" class="ico"/></symbol>
+    <symbol id="i-term" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2" class="ico"/><path d="m6.5 9.5 3 2.5-3 2.5M12 15h5" class="ico"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" class="ico"/><path d="M12 7v5l3 2" class="ico"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9.5 4.3 4.3 0 0 0 7 18z" class="ico"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2 4 5.5v6c0 5 3.5 8.5 8 10.5 4.5-2 8-5.5 8-10.5v-6z" class="ico"/><path d="m8.5 12 2.5 2.5 4.5-5" class="ico"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4.5" class="ico"/><path d="m11.5 11.5 8-8M16.5 6.5l2.5 2.5M14 9l2 2" class="ico"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2" class="ico"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" class="ico"/></symbol>
+    <symbol id="i-git" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5" class="ico"/><circle cx="6" cy="18" r="2.5" class="ico"/><circle cx="18" cy="8" r="2.5" class="ico"/><path d="M6 8.5v7M18 10.5c0 4-6 3-11 6" class="ico"/></symbol>
+  </defs>
+
+  <!-- fundo -->
+  <rect width="1800" height="1360" fill="#F7F8FA"/>
+
+  <!-- ===================== TÍTULO ===================== -->
+  <text x="40" y="40" class="zl" fill="#F38020">ANTES · ARQUITETURA ATUAL · SEM REQUISITO DE ESCALA</text>
+  <text x="40" y="76" fill="#0F172A" font-size="30" font-weight="800">Ciclo: treino, comida e saúde administrados pela sua IA via MCP</text>
+  <text x="40" y="102" class="m" font-size="14">1 dev + Claude Code · Cloudflare plano Free · R$ 0/mês · até 10 contas (teste de 50 planejado, #148) · repositório público, dados privados</text>
+
+  <!-- números -->
+  <g font-size="12.5" font-weight="700">
+    <rect x="1050" y="26" width="118" height="30" rx="15" fill="#EEF2FF" stroke="#C7D2FE"/><text x="1109" y="46" text-anchor="middle" fill="#3730A3">118 rotas HTTP</text>
+    <rect x="1176" y="26" width="150" height="30" rx="15" fill="#EEF2FF" stroke="#C7D2FE"/><text x="1251" y="46" text-anchor="middle" fill="#3730A3">39 ferramentas MCP</text>
+    <rect x="1334" y="26" width="100" height="30" rx="15" fill="#ECFDF5" stroke="#A7F3D0"/><text x="1384" y="46" text-anchor="middle" fill="#065F46">60 tabelas</text>
+    <rect x="1442" y="26" width="120" height="30" rx="15" fill="#FFFBEB" stroke="#FDE68A"/><text x="1502" y="46" text-anchor="middle" fill="#92400E">~1.060 testes</text>
+    <rect x="1570" y="26" width="190" height="30" rx="15" fill="#FFF7ED" stroke="#FED7AA"/><text x="1665" y="46" text-anchor="middle" fill="#9A3412">0 deps de runtime no back</text>
+  </g>
+  <!-- legenda -->
+  <g transform="translate(1050 72)" class="s">
+    <line x1="0" y1="10" x2="34" y2="10" stroke="#334155" stroke-width="1.8" marker-end="url(#ar)"/><text x="42" y="14">síncrono (HTTPS)</text>
+    <line x1="150" y1="10" x2="184" y2="10" stroke="#64748B" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#arg)"/><text x="192" y="14">assíncrono / cron</text>
+    <rect x="310" y="2" width="30" height="16" rx="3" fill="none" stroke="#2563EB" stroke-width="1.5" stroke-dasharray="6 4"/><text x="348" y="14">fronteira de confiança</text>
+    <use href="#i-lock" x="490" y="1" width="18" height="18" style="stroke:#DC2626"/><text x="512" y="14">controle de segurança</text>
+  </g>
+
+  <!-- ===================== ZONA A · CLIENTES ===================== -->
+  <rect x="30" y="120" width="1360" height="190" rx="14" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.5" stroke-dasharray="8 6"/>
+  <rect x="44" y="111" width="270" height="20" rx="4" fill="#2563EB"/>
+  <text x="56" y="125" class="zl" fill="#FFFFFF" font-size="11">INTERNET · ZONA NÃO CONFIÁVEL</text>
+
+  <!-- A1 PWA -->
+  <g filter="url(#sh)"><rect x="50" y="142" width="430" height="156" rx="10" class="card" stroke="#93C5FD"/></g>
+  <use href="#i-phone" x="64" y="153" width="22" height="22" style="stroke:#2563EB"/>
+  <text x="94" y="170" class="h">App PWA no celular</text>
+  <g class="m">
+    <text x="64" y="194">Vite + Preact + TS · <tspan class="b" fill="#0F172A">130 KB gzip</tspan> de JS inicial</text>
+    <text x="64" y="211">Service Worker: abre sem sinal (shell em cache)</text>
+    <text x="64" y="228">Fila offline de escrita · id da sessão gerado no aparelho</text>
+    <text x="64" y="245">@ciclo/core no aparelho: treino do dia em &lt; 50 ms</text>
+    <text x="64" y="262">pdf.js lê o exame no aparelho: o PDF nunca sobe</text>
+    <text x="64" y="279">Confere /api/version a cada 8 s, só com a aba visível</text>
+  </g>
+
+  <!-- A2 IAs -->
+  <g filter="url(#sh)"><rect x="500" y="142" width="330" height="156" rx="10" class="card" stroke="#93C5FD"/></g>
+  <use href="#i-chat" x="514" y="153" width="22" height="22" style="stroke:#2563EB"/>
+  <text x="544" y="170" class="h">Sua IA, na sua assinatura</text>
+  <g class="m">
+    <text x="514" y="194">claude.ai · Claude Desktop e celular</text>
+    <text x="514" y="211">ChatGPT · Cursor</text>
+    <text x="514" y="228">connector MCP remoto (uma URL)</text>
+    <text x="514" y="245">login OAuth 2.1 + PKCE com Face ID</text>
+    <text x="514" y="262">escopo: ler | ler + escrever</text>
+    <text x="514" y="279" class="b" fill="#0F172A">custo de IA para o app: zero</text>
+  </g>
+
+  <!-- A3 Claude Code -->
+  <g filter="url(#sh)"><rect x="850" y="142" width="255" height="156" rx="10" class="card" stroke="#93C5FD"/></g>
+  <use href="#i-term" x="864" y="153" width="22" height="22" style="stroke:#2563EB"/>
+  <text x="894" y="170" class="h">Claude Code (Mac)</text>
+  <g class="m">
+    <text x="864" y="194" class="mono" font-size="12">apps/mcp-local · stdio</text>
+    <text x="864" y="211">ponte stdio ⇄ HTTPS</text>
+    <text x="864" y="228">+ anexa vídeo/foto do Mac</text>
+    <text x="864" y="245">(só pastas permitidas)</text>
+    <text x="864" y="262">skills: /hoje, /revisao, /dor</text>
+    <text x="864" y="279">zero dependências (Node 22)</text>
+  </g>
+
+  <!-- A4 Rotina -->
+  <g filter="url(#sh)"><rect x="1125" y="142" width="245" height="156" rx="10" class="card" stroke="#93C5FD" stroke-dasharray="6 4"/></g>
+  <use href="#i-clock" x="1139" y="153" width="22" height="22" style="stroke:#2563EB"/>
+  <text x="1169" y="170" class="h">Rotina / vigia</text>
+  <g class="m">
+    <text x="1139" y="194" class="mono" font-size="12">claude -p --model &lt;tier&gt;</text>
+    <text x="1139" y="211">haiku · sonnet · opus por pedido</text>
+    <text x="1139" y="228">drena a caixa de pedidos</text>
+    <text x="1139" y="245">fila = tabela inbox no D1</text>
+    <text x="1139" y="262">resposta assíncrona (minutos)</text>
+    <text x="1139" y="279">sem chave de API paga</text>
+  </g>
+
+  <!-- ===================== ZONA B · CLOUDFLARE ===================== -->
+  <rect x="30" y="345" width="1360" height="652" rx="14" fill="#FFF7ED" stroke="#F38020" stroke-width="1.5" stroke-dasharray="8 6"/>
+  <rect x="44" y="336" width="276" height="20" rx="4" fill="#F38020"/>
+  <use href="#i-cloud" x="50" y="337" width="18" height="18" style="stroke:#FFFFFF"/>
+  <text x="74" y="350" class="zl" fill="#FFFFFF" font-size="11">CLOUDFLARE · PLANO FREE</text>
+
+  <!-- Edge -->
+  <rect x="50" y="370" width="1320" height="40" rx="8" fill="#FFEDD5" stroke="#FDBA74"/>
+  <use href="#i-shield" x="62" y="379" width="22" height="22" style="stroke:#C2410C"/>
+  <text x="92" y="395" class="t"><tspan class="b" fill="#9A3412">EDGE anycast</tspan>  ·  TLS 1.3  ·  DDoS automático  ·  HSTS  ·  CSP estrita sem script inline  ·  frame-ancestors none  ·  COOP  ·  sem URL de preview</text>
+
+  <!-- setas clientes → worker (por cima do edge) -->
+  <g stroke="#334155" stroke-width="2" fill="none">
+    <path d="M265 298 V436" marker-end="url(#ar)"/>
+    <path d="M665 298 V436" marker-end="url(#ar)"/>
+    <path d="M977 298 V436" marker-end="url(#ar)"/>
+    <path d="M1247 298 V436" stroke="#64748B" stroke-dasharray="6 5" marker-end="url(#arg)"/>
+  </g>
+  <g class="lbl">
+    <rect x="274" y="316" width="224" height="20" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/><text x="282" y="330">HTTPS · JSON · cookie __Host-ciclo</text>
+    <rect x="674" y="316" width="166" height="20" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/><text x="682" y="330">JSON-RPC · Bearer (1 h)</text>
+    <rect x="986" y="316" width="128" height="20" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/><text x="994" y="330">HTTPS · Bearer</text>
+    <rect x="1256" y="316" width="118" height="20" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/><text x="1264" y="330">MCP · Bearer</text>
+  </g>
+
+  <!-- Worker -->
+  <g filter="url(#sh)"><rect x="50" y="436" width="1320" height="362" rx="10" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.5"/></g>
+  <path d="M50 446 a10 10 0 0 1 10 -10 h1300 a10 10 0 0 1 10 10 v24 h-1320 z" fill="#4F46E5"/>
+  <use href="#i-cpu" x="62" y="441" width="22" height="22" style="stroke:#FFFFFF"/>
+  <text x="92" y="458" fill="#FFFFFF" font-size="14.5" font-weight="700">Worker “ciclo”  ·  V8 isolate sem estado  ·  1 deploy serve app, API, MCP e cron</text>
+  <text x="1356" y="458" fill="#C7D2FE" font-size="12" text-anchor="end">roteador próprio, sem framework · 0 dependências de runtime</text>
+
+  <!-- col 1: portas -->
+  <text x="66" y="492" class="zl" fill="#4F46E5" font-size="11">PORTAS DE ENTRADA</text>
+  <g>
+    <rect x="66" y="500" width="330" height="38" rx="6" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="78" y="516" class="t b mono" font-size="12">GET /  ·  /assets/*</text><text x="78" y="531" class="s">app estático (SPA) servido pelo ASSETS</text>
+    <rect x="66" y="542" width="330" height="38" rx="6" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="78" y="558" class="t b mono" font-size="12">/auth/*  (11 rotas)</text><text x="78" y="573" class="s">passkey · convite de uso único · recuperação</text>
+    <rect x="66" y="584" width="330" height="38" rx="6" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="78" y="600" class="t b mono" font-size="12">/oauth/*  ·  /.well-known</text><text x="78" y="615" class="s">servidor OAuth 2.1 próprio · PKCE · registro dinâmico</text>
+    <rect x="66" y="626" width="330" height="38" rx="6" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="78" y="642" class="t b mono" font-size="12">/api/*  (107 rotas JSON)</text><text x="78" y="657" class="s">o app; /api/state abre tudo numa chamada</text>
+    <rect x="66" y="668" width="330" height="38" rx="6" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="78" y="684" class="t b mono" font-size="12">/mcp  JSON-RPC sem estado</text><text x="78" y="699" class="s">39 ferramentas · escrita destrutiva = prévia + confirmar</text>
+    <rect x="66" y="710" width="330" height="38" rx="6" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="78" y="726" class="t b mono" font-size="12">/mcp/media</text><text x="78" y="741" class="s">upload do Claude Code direto para o R2</text>
+    <rect x="66" y="752" width="330" height="38" rx="6" fill="#F8FAFC" stroke="#94A3B8" stroke-dasharray="5 4"/>
+    <text x="78" y="768" class="t b mono" font-size="12">scheduled() · cron 1 min</text><text x="78" y="783" class="s">push do descanso · 30 min: fecha treinos · 1 h: purgas</text>
+  </g>
+
+  <!-- seta portas → cadeia -->
+  <path d="M396 640 H420" stroke="#334155" stroke-width="2" marker-end="url(#ar)"/>
+
+  <!-- col 2: cadeia de segurança -->
+  <text x="430" y="492" class="zl" fill="#DC2626" font-size="11">CADEIA POR REQUISIÇÃO (FALHA FECHADA)</text>
+  <g>
+    <rect x="430" y="500" width="390" height="36" rx="6" fill="#FEF2F2" stroke="#FECACA"/><circle cx="450" cy="518" r="10" fill="#DC2626"/><text x="450" y="522" fill="#FFF" font-size="11" font-weight="800" text-anchor="middle">1</text>
+    <text x="468" y="515" class="t b" font-size="12.5">Origin = app</text><text x="468" y="530" class="s">anti-CSRF na escrita · sem CORS</text>
+    <rect x="430" y="541" width="390" height="36" rx="6" fill="#FEF2F2" stroke="#FECACA"/><circle cx="450" cy="559" r="10" fill="#DC2626"/><text x="450" y="563" fill="#FFF" font-size="11" font-weight="800" text-anchor="middle">2</text>
+    <text x="468" y="556" class="t b" font-size="12.5">Autenticação</text><text x="468" y="571" class="s">cookie ou Bearer · só o SHA-256 no D1 · tempo constante</text>
+    <rect x="430" y="582" width="390" height="36" rx="6" fill="#FEF2F2" stroke="#FECACA"/><circle cx="450" cy="600" r="10" fill="#DC2626"/><text x="450" y="604" fill="#FFF" font-size="11" font-weight="800" text-anchor="middle">3</text>
+    <text x="468" y="597" class="t b" font-size="12.5">Face ID de novo</text><text x="468" y="612" class="s">app fechado há 7 dias · ação sensível ≤ 5 min</text>
+    <rect x="430" y="623" width="390" height="36" rx="6" fill="#FEF2F2" stroke="#FECACA"/><circle cx="450" cy="641" r="10" fill="#DC2626"/><text x="450" y="645" fill="#FFF" font-size="11" font-weight="800" text-anchor="middle">4</text>
+    <text x="468" y="638" class="t b" font-size="12.5">Aceite de termos</text><text x="468" y="653" class="s">versão nova bloqueia app e MCP até aceitar</text>
+    <rect x="430" y="664" width="390" height="36" rx="6" fill="#FEF2F2" stroke="#FECACA"/><circle cx="450" cy="682" r="10" fill="#DC2626"/><text x="450" y="686" fill="#FFF" font-size="11" font-weight="800" text-anchor="middle">5</text>
+    <text x="468" y="679" class="t b" font-size="12.5">Rate limit + cota</text><text x="468" y="694" class="s">por IP (HMAC) e por conta · 429 com Retry-After</text>
+    <rect x="430" y="705" width="390" height="36" rx="6" fill="#FEF2F2" stroke="#FECACA"/><circle cx="450" cy="723" r="10" fill="#DC2626"/><text x="450" y="727" fill="#FFF" font-size="11" font-weight="800" text-anchor="middle">6</text>
+    <text x="468" y="720" class="t b" font-size="12.5">Validação de entrada</text><text x="468" y="735" class="s">Content-Type, tamanho (16–64 KB), tipo e faixa</text>
+    <rect x="430" y="746" width="390" height="44" rx="6" fill="#FEF2F2" stroke="#FECACA"/><circle cx="450" cy="768" r="10" fill="#DC2626"/><text x="450" y="772" fill="#FFF" font-size="11" font-weight="800" text-anchor="middle">7</text>
+    <text x="468" y="764" class="t b" font-size="12.5">SQL só com bind</text><text x="468" y="780" class="s">user_id vem da sessão, nunca do corpo</text>
+  </g>
+
+  <!-- seta cadeia → domínio -->
+  <path d="M820 640 H842" stroke="#334155" stroke-width="2" marker-end="url(#ar)"/>
+
+  <!-- col 3: domínio -->
+  <text x="848" y="492" class="zl" fill="#4F46E5" font-size="11">DOMÍNIO</text>
+  <rect x="848" y="500" width="506" height="52" rx="6" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <text x="862" y="520" class="t b">Módulos: api · semana · comida · diário · contas · mcp-*</text>
+  <text x="862" y="540" class="s">handlers finos: validam, chamam o core, gravam e sobem a versão da conta</text>
+
+  <rect x="848" y="560" width="506" height="118" rx="8" fill="#EEF2FF" stroke="#6366F1" stroke-width="1.5"/>
+  <text x="862" y="582" class="h" fill="#3730A3">@ciclo/core · TypeScript puro, 0 dependências</text>
+  <g class="m">
+    <text x="862" y="603">A <tspan class="b" fill="#0F172A">mesma regra</tspan> roda no celular e no Worker (testada uma vez)</text>
+    <text x="862" y="621"><tspan class="b" fill="#0F172A">“A IA decide, o código monta”:</tspan> a IA manda só {id, sets}</text>
+    <text x="862" y="639">→ validador (aparelho, dor, tempo, prioridade) → hidrata</text>
+    <text x="862" y="657">gerador determinístico · porções · limites · OAuth · cripto</text>
+  </g>
+
+  <rect x="848" y="686" width="506" height="104" rx="8" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <text x="862" y="707" class="t b">Cérebro: quem responde a caixa de pedidos</text>
+  <g class="m">
+    <text x="862" y="727">① regra local (grátis, na hora)  →  ② IA da assinatura (fila)</text>
+    <text x="862" y="745">→  ③ chave própria do usuário, BYOK (teto em US$)</text>
+    <text x="862" y="763">texto do usuário é dado, não instrução; saída sempre</text>
+    <text x="862" y="781">passa pelo validador; fora da regra, é descartada</text>
+  </g>
+
+  <!-- ===== dados (dentro da Cloudflare) ===== -->
+  <g stroke="#334155" stroke-width="2" fill="none">
+    <path d="M246 798 V836" marker-end="url(#ar)"/>
+    <path d="M590 798 V836" marker-end="url(#ar)"/>
+    <path d="M894 798 V836" marker-end="url(#ar)"/>
+    <path d="M1214 798 V836" marker-end="url(#ar)"/>
+  </g>
+  <text x="254" y="822" class="lbl">D1 binding · prepared statements · DB.batch</text>
+  <text x="598" y="822" class="lbl">R2 binding (stream)</text>
+  <text x="902" y="822" class="lbl">env (nunca no git)</text>
+  <text x="1222" y="822" class="lbl">AI binding</text>
+
+  <!-- D1 cilindro -->
+  <g filter="url(#sh)">
+    <path d="M66 852 v118 a180 14 0 0 0 360 0 v-118" fill="#ECFDF5" stroke="#059669" stroke-width="1.5"/>
+    <ellipse cx="246" cy="852" rx="180" ry="14" fill="#D1FAE5" stroke="#059669" stroke-width="1.5"/>
+  </g>
+  <text x="86" y="886" class="h" fill="#065F46">D1 · SQLite gerenciado</text>
+  <g class="m">
+    <text x="86" y="906">1 banco · 1 região · 1 escritor</text>
+    <text x="86" y="923"><tspan class="b" fill="#0F172A">60 tabelas · 40 índices</tspan>; dado de usuário: user_id 1º</text>
+    <text x="86" y="940">FTS5 para busca · 25 migrations versionadas</text>
+    <text x="86" y="957">também guarda rate limit, cota diária e versão da conta</text>
+  </g>
+
+  <!-- R2 balde -->
+  <g filter="url(#sh)">
+    <path d="M450 852 h280 l-18 128 h-244 z" fill="#ECFDF5" stroke="#059669" stroke-width="1.5"/>
+    <path d="M450 852 h280" stroke="#059669" stroke-width="4"/>
+  </g>
+  <text x="472" y="880" class="h" fill="#065F46">R2 · bucket privado</text>
+  <g class="m">
+    <text x="472" y="900" class="mono" font-size="11.5">u/&lt;user_id&gt;/&lt;aleatório&gt;</text>
+    <text x="476" y="918">≤ 20 MB · 500 MB por conta</text>
+    <text x="480" y="936">tipo pelo conteúdo (magic</text>
+    <text x="484" y="953">bytes) · leitura autenticada</text>
+  </g>
+
+  <!-- Secrets -->
+  <g filter="url(#sh)"><rect x="754" y="846" width="280" height="134" rx="10" fill="#FFFFFF" stroke="#059669" stroke-width="1.5"/></g>
+  <use href="#i-key" x="768" y="858" width="22" height="22" style="stroke:#059669"/>
+  <text x="798" y="875" class="h" fill="#065F46">Secrets do Worker</text>
+  <g class="m">
+    <text x="768" y="900"><tspan class="mono" font-size="11.5">KEK_V1</tspan>: cofre AES-256-GCM</text>
+    <text x="768" y="918"><tspan class="mono" font-size="11.5">AUTH_PEPPER</tspan>: HMAC do IP</text>
+    <text x="768" y="936"><tspan class="mono" font-size="11.5">VAPID_*</tspan>: Web Push</text>
+    <text x="768" y="954"><tspan class="mono" font-size="11.5">OWNER_SETUP_CODE</tspan>: 1ª conta</text>
+  </g>
+
+  <!-- Workers AI -->
+  <g filter="url(#sh)"><rect x="1058" y="846" width="312" height="134" rx="10" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="6 4"/></g>
+  <use href="#i-cpu" x="1072" y="858" width="22" height="22" style="stroke:#475569"/>
+  <text x="1102" y="875" class="h">Workers AI (opcional)</text>
+  <g class="m">
+    <text x="1072" y="900">Whisper: voz → texto em pt-BR</text>
+    <text x="1072" y="918">porções de comida: 1ª camada de IA</text>
+    <text x="1072" y="936">cache por hash · 40 chamadas/conta/dia</text>
+    <text x="1072" y="954">desligado: o app usa a voz do navegador</text>
+  </g>
+
+  <!-- ===================== ZONA C · TERCEIROS ===================== -->
+  <rect x="1420" y="120" width="350" height="877" rx="14" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5" stroke-dasharray="8 6"/>
+  <rect x="1434" y="111" width="300" height="20" rx="4" fill="#475569"/>
+  <text x="1446" y="125" class="zl" fill="#FFFFFF" font-size="11">TERCEIROS · SAÍDA POR ALLOWLIST</text>
+
+  <!-- barramento de saída -->
+  <path d="M1370 620 H1404 V196" stroke="#334155" stroke-width="2" fill="none"/>
+  <g stroke="#334155" stroke-width="2" fill="none">
+    <path d="M1404 196 H1438" marker-end="url(#ar)"/>
+    <path d="M1404 315 H1438" marker-end="url(#ar)"/>
+    <path d="M1404 389 H1438" marker-end="url(#ar)"/>
+    <path d="M1404 463 H1438" marker-end="url(#ar)"/>
+    <path d="M1404 537 H1438" marker-end="url(#ar)"/>
+  </g>
+  <g transform="translate(1396 430) rotate(-90)"><text class="lbl" text-anchor="middle" x="0" y="0">fetch https · sem redirect · timeout</text></g>
+
+  <g filter="url(#sh)"><rect x="1440" y="146" width="310" height="134" rx="10" class="card"/></g>
+  <use href="#i-chat" x="1454" y="157" width="20" height="20" style="stroke:#475569"/>
+  <text x="1482" y="173" class="h">LLMs com chave própria</text>
+  <g class="m">
+    <text x="1454" y="196">Anthropic · OpenAI · Gemini</text>
+    <text x="1454" y="213">OpenRouter · DeepSeek</text>
+    <text x="1454" y="230">chave cifrada, nunca volta ao app</text>
+    <text x="1454" y="247">teto US$ dia/mês reservado antes</text>
+    <text x="1454" y="264">erro do provedor descartado</text>
+  </g>
+
+  <g filter="url(#sh)"><rect x="1440" y="292" width="310" height="62" rx="10" class="card"/></g>
+  <text x="1454" y="316" class="t b">Open Food Facts</text><text x="1454" y="336" class="m">só o nome do alimento · timeout 2 s</text>
+  <g filter="url(#sh)"><rect x="1440" y="366" width="310" height="62" rx="10" class="card"/></g>
+  <text x="1454" y="390" class="t b">Nominatim (OpenStreetMap)</text><text x="1454" y="410" class="m">endereço → mapa · 1 req/s global</text>
+  <g filter="url(#sh)"><rect x="1440" y="440" width="310" height="62" rx="10" class="card"/></g>
+  <text x="1454" y="464" class="t b">Turnstile</text><text x="1454" y="484" class="m">anti-robô no convite e após 3 falhas</text>
+  <g filter="url(#sh)"><rect x="1440" y="514" width="310" height="62" rx="10" class="card"/></g>
+  <text x="1454" y="538" class="t b">Web Push (Apple / Google)</text><text x="1454" y="558" class="m">VAPID · push sem conteúdo pessoal</text>
+  <g filter="url(#sh)"><rect x="1440" y="588" width="310" height="62" rx="10" class="card" stroke-dasharray="6 4"/></g>
+  <text x="1454" y="612" class="t b">Tiles do OpenStreetMap</text><text x="1454" y="632" class="m">o navegador pede direto (mapa opcional)</text>
+
+  <!-- GitHub / CI -->
+  <g filter="url(#sh)"><rect x="1440" y="700" width="310" height="280" rx="10" fill="#FFFFFF" stroke="#334155" stroke-width="1.3"/></g>
+  <use href="#i-git" x="1454" y="712" width="22" height="22" style="stroke:#0F172A"/>
+  <text x="1484" y="729" class="h">GitHub · repositório público</text>
+  <g class="m">
+    <text x="1454" y="754">CI a cada push: typecheck + testes</text>
+    <text x="1454" y="771">+ build + gitleaks (segredos)</text>
+    <text x="1454" y="788">push protection · Dependabot semanal</text>
+    <text x="1454" y="805">backlog em issues com zona e onda</text>
+    <text x="1454" y="822">Claude Code implementa em worktree;</text>
+    <text x="1454" y="839">revisores de segurança e de UI no PR</text>
+    <text x="1454" y="864" class="b" fill="#0F172A">Deploy manual pelo dono</text>
+    <text x="1454" y="881">predeploy confere: sem var de dev,</text>
+    <text x="1454" y="898">sem preview, migrations sem transação</text>
+    <text x="1454" y="923" class="b" fill="#0F172A">Staging opcional</text>
+    <text x="1454" y="940">Worker, D1 e R2 próprios</text>
+    <text x="1454" y="957">(nunca os de produção)</text>
+  </g>
+  <path d="M1440 760 H1374" stroke="#64748B" stroke-width="1.8" stroke-dasharray="6 5" fill="none" marker-end="url(#arg)"/>
+  <text x="1378" y="752" class="s" text-anchor="start">deploy</text>
+
+  <!-- ===================== PAINÉIS ===================== -->
+  <!-- Segurança -->
+  <g filter="url(#sh)"><rect x="30" y="1022" width="570" height="300" rx="12" fill="#FFFFFF" stroke="#FCA5A5" stroke-width="1.3"/></g>
+  <path d="M30 1034 a12 12 0 0 1 12 -12 h546 a12 12 0 0 1 12 12 v30 h-570 z" fill="#FEF2F2"/>
+  <use href="#i-lock" x="46" y="1031" width="22" height="22" style="stroke:#DC2626"/>
+  <text x="76" y="1048" class="h" fill="#991B1B">Segurança: código aberto, dado fechado</text>
+  <g class="t" font-size="12.8">
+    <text x="48" y="1090">• Passkey (WebAuthn), sem senha; conta só por convite; teto de 10</text>
+    <text x="48" y="1117">• Sessão: cookie __Host HttpOnly Secure; no banco só o SHA-256</text>
+    <text x="48" y="1144">• Isolamento: teste de matriz em todas as rotas e ferramentas</text>
+    <text x="48" y="1171">• Abuso: auth 5/min por IP, bloqueio 15 min; 120 escritas/min</text>
+    <text x="48" y="1198">• Custo: a 95% da cota grátis, upload e convite param (429)</text>
+    <text x="48" y="1225">• Saúde: nada em log; texto do exame some em 7 dias</text>
+    <text x="48" y="1252">• LGPD: exportar tudo e apagar a conta em cascata (até o R2)</text>
+    <text x="48" y="1279">• Chave de API: envelope AES-GCM, KEK fora do banco, step-up</text>
+    <text x="48" y="1306">• IA: texto do usuário é dado; a saída sempre passa no validador</text>
+  </g>
+
+  <!-- Performance -->
+  <g filter="url(#sh)"><rect x="615" y="1022" width="570" height="300" rx="12" fill="#FFFFFF" stroke="#FCD34D" stroke-width="1.3"/></g>
+  <path d="M615 1034 a12 12 0 0 1 12 -12 h546 a12 12 0 0 1 12 12 v30 h-570 z" fill="#FFFBEB"/>
+  <use href="#i-bolt" x="631" y="1031" width="22" height="22" style="stroke:#D97706"/>
+  <text x="661" y="1048" class="h" fill="#92400E">Performance: academia com 4G ruim</text>
+  <g class="t" font-size="12.8">
+    <text x="633" y="1090">• 1 requisição abre o app: /api/state com Promise.all + DB.batch</text>
+    <text x="633" y="1117">• /api/state em 4 ms e /api/home em 3 ms (mediana, D1 local)</text>
+    <text x="633" y="1144">• Regra no aparelho: marcar série ou trocar exercício &lt; 50 ms</text>
+    <text x="633" y="1171">• Service Worker + /assets imutável por 1 ano: abre sem sinal</text>
+    <text x="633" y="1198">• 130 KB gzip iniciais; pdf.js e Leaflet só quando abre a tela</text>
+    <text x="633" y="1225">• Índices compostos (user_id, …) e parciais (WHERE … IS NULL)</text>
+    <text x="633" y="1252">• Fila offline reenvia quando o sinal volta (evento online)</text>
+    <text x="633" y="1279">• Escrita secundária em waitUntil: não atrasa a resposta</text>
+    <text x="633" y="1306">• Resposta do MCP compacta: a IA manda só IDs (menos tokens)</text>
+  </g>
+
+  <!-- Limites -->
+  <g filter="url(#sh)"><rect x="1200" y="1022" width="570" height="300" rx="12" fill="#FFFFFF" stroke="#C4B5FD" stroke-width="1.3"/></g>
+  <path d="M1200 1034 a12 12 0 0 1 12 -12 h546 a12 12 0 0 1 12 12 v30 h-570 z" fill="#F5F3FF"/>
+  <use href="#i-warn" x="1216" y="1031" width="22" height="22" style="stroke:#7C3AED"/>
+  <text x="1246" y="1048" class="h" fill="#5B21B6">Onde isso para de escalar</text>
+  <g class="t" font-size="12.8">
+    <text x="1218" y="1090">• 1 banco D1 para todos: 1 escritor, 1 região, 500 MB no Free</text>
+    <text x="1218" y="1117">• Free: 100 mil req/dia e 10 ms de CPU por requisição</text>
+    <text x="1218" y="1144">• Teto de 10 contas no código; teste de 50 na #148</text>
+    <text x="1218" y="1171">• Sem tempo real: o app pergunta a versão a cada 8 s</text>
+    <text x="1218" y="1198">• Rate limit e cota em tabela do D1: escrita extra por request</text>
+    <text x="1218" y="1225">• Um cron único (1 min) faz push e limpeza de todas as contas</text>
+    <text x="1218" y="1252">• Sem fila de mensagens, cache de leitura nem réplica</text>
+    <text x="1218" y="1279">• IA da assinatura responde em minutos (fila do usuário)</text>
+    <text x="1218" y="1306">• Observabilidade: só os logs do Workers, sem métricas/alertas</text>
+  </g>
+
+  <!-- rodapé -->
+  <text x="40" y="1347" class="s">Notação: C4 nível 2 (contêineres) + fronteiras de confiança. Levantado do código (main @ 6c327f4) em 22/11/2026.</text>
+  <text x="1760" y="1347" class="s" text-anchor="end">github.com/lipe0312/ciclo</text>
+</svg>

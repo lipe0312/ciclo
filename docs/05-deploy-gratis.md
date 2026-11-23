@@ -6,7 +6,7 @@
 | App abre com o Mac desligado | ✅ | ✅ | ✅ |
 | Banco | D1 (SQLite): 5 GB, 5 mi leituras e 100 mil escritas por dia | Turso: 5 GB | Postgres 500 MB, **pausa após 7 dias sem uso** |
 | Vídeos | **R2: 10 GB, saída grátis** | Blob: 1 GB | 1 GB |
-| Login sem código | **Access** (até 50 usuários) | — | Auth pronto |
+| Login sem senha | **Passkey** próprio (Face ID/Touch ID), conta por convite | — | Auth pronto |
 | Transcrição de voz | **Workers AI Whisper** (~200 min/dia grátis) | — | — |
 
 Sem domínio próprio: o app fica em `https://ciclo.<sua-conta>.workers.dev`.
