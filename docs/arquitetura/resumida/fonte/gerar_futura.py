@@ -65,8 +65,8 @@ def pill(x, y, label):
             f'<text x="{x + 4}" y="{y + 16}" font-family="{MONO}" font-size="14.5" fill="{INK}">{label}</text>')
 
 
-CLIENTES = [("phone", "PWA", "offline · tempo real"), ("ia", "Claude · ChatGPT", "MCP remoto · OAuth 2.1"),
-            ("term", "Claude Code", "MCP via stdio"), ("ampulheta", "Rotinas de IA", "do Mac para a fila")]
+CLIENTES = [("phone", "PWA", "offline · tempo real"), ("ia", "Sua IA", "assinatura · OAuth 2.1"),
+            ("term", "IA no terminal", "MCP via stdio"), ("ampulheta", "Rotinas de IA", "do Mac para a fila")]
 PROTO = ["HTTPS · passkey", "MCP · OAuth 2.1", "MCP · token", "MCP · token"]
 SERVICOS = [("digital", "Auth", "quem é você"), ("chaves", "API", "regras do app"), ("hub", "MCP", "fala com a IA"),
             ("imagem", "Mídia", "foto e vídeo"), ("ia", "Serviço IA", "cache e teto")]
@@ -74,7 +74,7 @@ TERCEIROS = "LLMs / KMS / Backup em 2º provedor / OpenTelemetry / Open Food Fac
 SEG = ["Isolamento: 1 SQLite por conta", "Dado de saúde cifrado (KMS)", "WAF, bot e rate limit na borda"]
 PERF = ["Ação local em < 50 ms", "Delta sync + WebSocket", "Cache na borda; IA e push em fila"]
 OPE = ["Traces, SLO e alerta de custo", "Backup: PITR 30 dias + 2º provedor", "IaC, deploy gradual e rollback"]
-LIM = ["Depende de 1 fornecedor", "Dados fora do Brasil: a decidir", "Mais peças: exige observabilidade"]
+LIM = ["Plano pago, KMS e backup externo", "Mais peças para operar e vigiar", "Mais tempo até o 1º usuário"]
 
 # ---- posições (tudo derivado daqui) ----
 CL_Y, CL_H = 194, 106
@@ -87,8 +87,8 @@ ZB_BOT = 906
 TERC_Y = 926
 
 P = [f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" font-family="{SANS}">
-<title>Ciclo · arquitetura alvo</title>
-<desc>Proposta de arquitetura do Ciclo para milhões de contas: borda com WAF, gateway com serviços separados, plano de controle em D1, um SQLite por conta em Durable Objects, filas, R2, KMS, backup em segundo provedor, segurança, performance, operação e limites. Metas a validar.</desc>
+<title>O que eu planejei</title>
+<desc>A versão complexa (1 de 2), pensada para milhares de contas antes do primeiro usuário: borda com WAF, gateway com serviços separados, plano de controle em D1, um SQLite por conta em Durable Objects, filas, R2, KMS, backup em segundo provedor, segurança, performance, operação e limites. Metas a validar.</desc>
 <defs>
 <pattern id="g" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="{GRID}" stroke-width="1"/></pattern>
 <pattern id="G" width="120" height="120" patternUnits="userSpaceOnUse"><path d="M120 0H0V120" fill="none" stroke="{GRID2}" stroke-width="1.2"/></pattern>
@@ -98,10 +98,10 @@ P = [f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W
 <rect width="{W}" height="{H}" fill="{PAPER}"/><rect width="{W}" height="{H}" fill="url(#g)"/><rect width="{W}" height="{H}" fill="url(#G)"/>''']
 
 # ---------- cabeçalho ----------
-P.append(f'<text x="60" y="78" font-family="{MONO}" font-size="15" letter-spacing="2.2" fill="{SUB}">CICLO · TREINO, COMIDA E SAÚDE COM A SUA IA</text>')
-P.append(f'<text x="58" y="136" font-size="58" font-weight="600" fill="{INK}" letter-spacing="-1">Arquitetura alvo</text>')
-P.append(f'<rect x="60" y="150" width="96" height="8" fill="{LIME}"/>')
-P.append(f'<text x="1020" y="78" text-anchor="end" font-family="{MONO}" font-size="15" fill="{SUB}">2026 · PROPOSTA</text>')
+P.append(f'<text x="60" y="78" font-family="{MONO}" font-size="15" letter-spacing="2.2" fill="{SUB}">1/2 · VERSÃO COMPLEXA</text>')
+P.append(f'<text x="58" y="136" font-size="58" font-weight="600" fill="{INK}" letter-spacing="-1" textLength="448.1" lengthAdjust="spacing">O que eu planejei</text>')
+P.append(f'<rect x="60" y="150" width="446" height="8" fill="{LIME}"/>')
+P.append(f'<text x="1020" y="78" text-anchor="end" font-family="{MONO}" font-size="15" fill="{SUB}">2026</text>')
 P.append(f'<path d="M60 170H1020" stroke="{INK}" stroke-width="2.5"/>')
 
 # ---------- clientes ----------
@@ -213,7 +213,7 @@ NY = 1004
 P.append(f'<path d="M60 {NY}H1020" stroke="{INK}" stroke-width="2.5"/>')
 P.append(f'<path d="M540 {NY + 14}V{NY + 232}" stroke="{INK}" stroke-width="1"/><path d="M60 {NY + 122}H1020" stroke="{INK}" stroke-width="1"/>')
 grid = [("SEGURANÇA", SEG, 60, NY + 28, False), ("PERFORMANCE", PERF, 560, NY + 28, False),
-        ("OPERAÇÃO", OPE, 60, NY + 152, False), ("LIMITES QUE FICAM", LIM, 560, NY + 152, True)]
+        ("OPERAÇÃO", OPE, 60, NY + 152, False), ("O PREÇO DISSO", LIM, 560, NY + 152, True)]
 for titulo, items, x, y0, num in grid:
     P.append(f'<text x="{x}" y="{y0}" font-family="{MONO}" font-size="16" font-weight="700" letter-spacing="2" fill="{INK}">{titulo}</text>')
     for n, it in enumerate(items):
@@ -227,7 +227,7 @@ for titulo, items, x, y0, num in grid:
 
 # ---------- carimbo ----------
 P.append(f'<rect x="60" y="1252" width="960" height="56" fill="{CARD}" stroke="{INK}" stroke-width="2"/>')
-cells = [("CUSTO", "proporcional ao uso", 300), ("CONTAS", "milhões", 190), ("DISPONIBILIDADE", "99,9% (meta)", 250), ("RPO · RTO", "5 min · 1 h", 220)]
+cells = [("CUSTO", "plano pago + ferramentas", 310), ("CONTAS", "milhares", 190), ("PEÇAS NA NUVEM", "14", 200), ("OPERAÇÃO", "SLO e plantão", 260)]
 x = 60
 for k, v, w in cells:
     if x > 60: P.append(f'<path d="M{x} 1252 V1308" stroke="{INK}" stroke-width="1.2"/>')

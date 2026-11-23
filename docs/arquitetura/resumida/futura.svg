@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="1080" height="1350" font-family="'IBM Plex Sans', -apple-system, Helvetica, Arial, sans-serif">
-<title>Ciclo · arquitetura alvo</title>
-<desc>Proposta de arquitetura do Ciclo para milhões de contas: borda com WAF, gateway com serviços separados, plano de controle em D1, um SQLite por conta em Durable Objects, filas, R2, KMS, backup em segundo provedor, segurança, performance, operação e limites. Metas a validar.</desc>
+<title>O que eu planejei</title>
+<desc>A versão complexa (1 de 2), pensada para milhares de contas antes do primeiro usuário: borda com WAF, gateway com serviços separados, plano de controle em D1, um SQLite por conta em Durable Objects, filas, R2, KMS, backup em segundo provedor, segurança, performance, operação e limites. Metas a validar.</desc>
 <defs>
 <pattern id="g" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#E4E4DE" stroke-width="1"/></pattern>
 <pattern id="G" width="120" height="120" patternUnits="userSpaceOnUse"><path d="M120 0H0V120" fill="none" stroke="#D6D6CF" stroke-width="1.2"/></pattern>
@@ -8,10 +8,10 @@
 <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 1 L10 5 L0 9" fill="none" stroke="#16161A" stroke-width="1.8"/></marker>
 </defs>
 <rect width="1080" height="1350" fill="#F6F6F3"/><rect width="1080" height="1350" fill="url(#g)"/><rect width="1080" height="1350" fill="url(#G)"/>
-<text x="60" y="78" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="15" letter-spacing="2.2" fill="#5B5B57">CICLO · TREINO, COMIDA E SAÚDE COM A SUA IA</text>
-<text x="58" y="136" font-size="58" font-weight="600" fill="#16161A" letter-spacing="-1">Arquitetura alvo</text>
-<rect x="60" y="150" width="96" height="8" fill="#C6F432"/>
-<text x="1020" y="78" text-anchor="end" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="15" fill="#5B5B57">2026 · PROPOSTA</text>
+<text x="60" y="78" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="15" letter-spacing="2.2" fill="#5B5B57">1/2 · VERSÃO COMPLEXA</text>
+<text x="58" y="136" font-size="58" font-weight="600" fill="#16161A" letter-spacing="-1" textLength="448.1" lengthAdjust="spacing">O que eu planejei</text>
+<rect x="60" y="150" width="446" height="8" fill="#C6F432"/>
+<text x="1020" y="78" text-anchor="end" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="15" fill="#5B5B57">2026</text>
 <path d="M60 170H1020" stroke="#16161A" stroke-width="2.5"/>
 <rect x="60" y="194" width="222" height="106" fill="#FFFFFF" stroke="#16161A" stroke-width="2"/>
 <rect x="84.6" y="216.6" width="15.8" height="15.8" fill="#C6F432"/><g transform="translate(76 208) scale(1.0000)" fill="none" stroke="#16161A" stroke-width="1.90" stroke-linecap="square" stroke-linejoin="miter"><path d="M7 2.5h10v19H7z"/><path d="M11 18.5h2M10 5h4"/></g>
@@ -19,11 +19,11 @@
 <text x="76" y="286" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="14" fill="#5B5B57">offline · tempo real</text>
 <rect x="306" y="194" width="222" height="106" fill="#FFFFFF" stroke="#16161A" stroke-width="2"/>
 <rect x="330.6" y="216.6" width="15.8" height="15.8" fill="#C6F432"/><g transform="translate(322 208) scale(1.0000)" fill="none" stroke="#16161A" stroke-width="1.90" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3l1.9 5.1L18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></g>
-<text x="322" y="262" font-size="22" font-weight="600" fill="#16161A">Claude · ChatGPT</text>
-<text x="322" y="286" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="14" fill="#5B5B57">MCP remoto · OAuth 2.1</text>
+<text x="322" y="262" font-size="22" font-weight="600" fill="#16161A">Sua IA</text>
+<text x="322" y="286" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="14" fill="#5B5B57">assinatura · OAuth 2.1</text>
 <rect x="552" y="194" width="222" height="106" fill="#FFFFFF" stroke="#16161A" stroke-width="2"/>
 <rect x="576.6" y="216.6" width="15.8" height="15.8" fill="#C6F432"/><g transform="translate(568 208) scale(1.0000)" fill="none" stroke="#16161A" stroke-width="1.90" stroke-linecap="square" stroke-linejoin="miter"><path d="M2.5 4h19v16h-19z"/><path d="M6.5 9.5l3 2.5-3 2.5M12 15h5.5"/></g>
-<text x="568" y="262" font-size="22" font-weight="600" fill="#16161A">Claude Code</text>
+<text x="568" y="262" font-size="22" font-weight="600" fill="#16161A">IA no terminal</text>
 <text x="568" y="286" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="14" fill="#5B5B57">MCP via stdio</text>
 <rect x="798" y="194" width="222" height="106" fill="#FFFFFF" stroke="#16161A" stroke-width="2" stroke-dasharray="7 5"/>
 <rect x="822.6" y="216.6" width="15.8" height="15.8" fill="#C6F432"/><g transform="translate(814 208) scale(1.0000)" fill="none" stroke="#16161A" stroke-width="1.90" stroke-linecap="square" stroke-linejoin="miter"><path d="M6 3h12M6 21h12"/><path d="M7.5 3c0 5 9 5 9 9s-9 4-9 9M16.5 3c0 5-9 5-9 9s9 4 9 9"/></g>
@@ -140,26 +140,26 @@
 <text x="60" y="1186" font-size="18" fill="#16161A"><tspan font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-weight="700">+</tspan>  Traces, SLO e alerta de custo</text>
 <text x="60" y="1212" font-size="18" fill="#16161A"><tspan font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-weight="700">+</tspan>  Backup: PITR 30 dias + 2º provedor</text>
 <text x="60" y="1238" font-size="18" fill="#16161A"><tspan font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-weight="700">+</tspan>  IaC, deploy gradual e rollback</text>
-<text x="560" y="1156" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="16" font-weight="700" letter-spacing="2" fill="#16161A">LIMITES QUE FICAM</text>
+<text x="560" y="1156" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="16" font-weight="700" letter-spacing="2" fill="#16161A">O PREÇO DISSO</text>
 <rect x="560" y="1170" width="21" height="21" fill="#16161A"/>
 <text x="570.5" y="1186" text-anchor="middle" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="13.5" font-weight="700" fill="#C6F432">1</text>
-<text x="592" y="1186" font-size="18" fill="#16161A">Depende de 1 fornecedor</text>
+<text x="592" y="1186" font-size="18" fill="#16161A">Plano pago, KMS e backup externo</text>
 <rect x="560" y="1196" width="21" height="21" fill="#16161A"/>
 <text x="570.5" y="1212" text-anchor="middle" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="13.5" font-weight="700" fill="#C6F432">2</text>
-<text x="592" y="1212" font-size="18" fill="#16161A">Dados fora do Brasil: a decidir</text>
+<text x="592" y="1212" font-size="18" fill="#16161A">Mais peças para operar e vigiar</text>
 <rect x="560" y="1222" width="21" height="21" fill="#16161A"/>
 <text x="570.5" y="1238" text-anchor="middle" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="13.5" font-weight="700" fill="#C6F432">3</text>
-<text x="592" y="1238" font-size="18" fill="#16161A">Mais peças: exige observabilidade</text>
+<text x="592" y="1238" font-size="18" fill="#16161A">Mais tempo até o 1º usuário</text>
 <rect x="60" y="1252" width="960" height="56" fill="#FFFFFF" stroke="#16161A" stroke-width="2"/>
 <text x="74" y="1273" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12" letter-spacing="1.5" fill="#5B5B57">CUSTO</text>
-<text x="74" y="1297" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="18" font-weight="700" fill="#16161A">proporcional ao uso</text>
-<path d="M360 1252 V1308" stroke="#16161A" stroke-width="1.2"/>
-<text x="374" y="1273" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12" letter-spacing="1.5" fill="#5B5B57">CONTAS</text>
-<text x="374" y="1297" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="18" font-weight="700" fill="#16161A">milhões</text>
-<path d="M550 1252 V1308" stroke="#16161A" stroke-width="1.2"/>
-<text x="564" y="1273" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12" letter-spacing="1.5" fill="#5B5B57">DISPONIBILIDADE</text>
-<text x="564" y="1297" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="18" font-weight="700" fill="#16161A">99,9% (meta)</text>
-<path d="M800 1252 V1308" stroke="#16161A" stroke-width="1.2"/>
-<text x="814" y="1273" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12" letter-spacing="1.5" fill="#5B5B57">RPO · RTO</text>
-<text x="814" y="1297" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="18" font-weight="700" fill="#16161A">5 min · 1 h</text>
+<text x="74" y="1297" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="18" font-weight="700" fill="#16161A">plano pago + ferramentas</text>
+<path d="M370 1252 V1308" stroke="#16161A" stroke-width="1.2"/>
+<text x="384" y="1273" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12" letter-spacing="1.5" fill="#5B5B57">CONTAS</text>
+<text x="384" y="1297" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="18" font-weight="700" fill="#16161A">milhares</text>
+<path d="M560 1252 V1308" stroke="#16161A" stroke-width="1.2"/>
+<text x="574" y="1273" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12" letter-spacing="1.5" fill="#5B5B57">PEÇAS NA NUVEM</text>
+<text x="574" y="1297" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="18" font-weight="700" fill="#16161A">14</text>
+<path d="M760 1252 V1308" stroke="#16161A" stroke-width="1.2"/>
+<text x="774" y="1273" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12" letter-spacing="1.5" fill="#5B5B57">OPERAÇÃO</text>
+<text x="774" y="1297" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="18" font-weight="700" fill="#16161A">SLO e plantão</text>
 </svg>
