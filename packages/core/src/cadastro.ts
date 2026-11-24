@@ -98,7 +98,9 @@ export const REAUTH_AUSENCIA_MS = 7 * DIA;
 /** Ação sensível (chave do Chat, convidar, apagar conta, códigos de recuperação, sair de todos): Face ID nos últimos 5 min. */
 export const REAUTH_SENSIVEL_MS = 5 * 60_000;
 export const precisaFaceId = (s: { lastSeenAt: number | null; createdAt: number }, now: number) => now - (s.lastSeenAt ?? s.createdAt) > REAUTH_AUSENCIA_MS;
-export const faceIdRecente = (reauthAt: number | null | undefined, now: number) => reauthAt != null && reauthAt <= now + 60_000 && now - reauthAt <= REAUTH_SENSIVEL_MS;
+/** `janelaMs` (#138): as ações que aumentam risco no cofre de chaves usam uma janela mais curta (60 s). */
+export const faceIdRecente = (reauthAt: number | null | undefined, now: number, janelaMs = REAUTH_SENSIVEL_MS) =>
+  reauthAt != null && reauthAt <= now + 60_000 && now - reauthAt <= janelaMs;
 
 // ---- conta nova = vazia ----
 /** O que uma conta recém-criada pode ter além da linha em `user`: credenciais, a sessão do cadastro e o aceite. Nada de seed. */

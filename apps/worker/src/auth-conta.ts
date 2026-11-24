@@ -114,10 +114,11 @@ async function contaParaAdicionar(req: Request, env: Env, quem: Quem, now: numbe
   return r.id;
 }
 
-/** #62: ações sensíveis (chave do Chat, convidar, apagar conta, códigos de recuperação, sair de todos, apagar passkey, "Fui eu") pedem Face ID nos últimos 5 min. */
-export function exigirFaceId(u: AuthUser, now = Date.now()) {
+/** #62: ações sensíveis (chave do Chat, convidar, apagar conta, códigos de recuperação, sair de todos, apagar passkey, "Fui eu") pedem Face ID nos últimos 5 min.
+ *  #138: `janelaMs` encurta a janela (ex.: 60 s para subir teto, ativar ou trocar uma chave de API). Sem ela, os 5 min de sempre. */
+export function exigirFaceId(u: AuthUser, now = Date.now(), janelaMs?: number) {
   if (u.via === "dev") return; // só localhost com DEV_NO_AUTH (não há passkey)
-  if (u.via !== "sessao" || !faceIdRecente(u.reauthAt, now)) throw new HttpError(403, "confirme com o Face ID para continuar", "reauth");
+  if (u.via !== "sessao" || !faceIdRecente(u.reauthAt, now, janelaMs)) throw new HttpError(403, "confirme com o Face ID para continuar", "reauth");
 }
 
 // ---- limite de tentativas (/auth/*) ----

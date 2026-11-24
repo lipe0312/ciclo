@@ -27,7 +27,7 @@ function provedorFalso(o: { status?: number; statusKey?: number } = {}) {
   }) as typeof fetch;
   return calls;
 }
-const nova = (provedor: string, chave: string) => ({ provedor, apelido: "Chave fictícia", chave, tetoDia: 1, tetoMes: 5 });
+const nova = (provedor: string, chave: string) => ({ provedor, apelido: "Chave fictícia", chave, tetoDia: 1, tetoMes: 5, aceiteAvisoGratis: true }); // #138 aceite do aviso grátis no servidor
 const dumpD1 = (env: any) => JSON.stringify((env.DB.raw.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[])
   .map((t) => env.DB.raw.prepare(`SELECT * FROM "${t.name}"`).all()));
 
@@ -110,10 +110,10 @@ test("GET /api/account/ia: conexão e provedores com chave ativa, só da própri
   provedorFalso();
   assert.equal((await call(env, "POST", "/api/account/chaves", { user: "bia", body: nova("deepseek", DS_B) })).status, 201);
   const b = await call(env, "GET", "/api/account/ia", { user: "bia" });
-  assert.deepEqual(b.data, { conector: "nenhum", chaves: [{ provedor: "deepseek", ativo: true }] });
+  assert.deepEqual(b.data, { conector: "nenhum", chaves: [{ provedor: "deepseek", ativo: true }], consumo: [] });
   assert.ok(!b.text.includes(DS_B));
   const a = await call(env, "GET", "/api/account/ia", { user: "ana" });
-  assert.deepEqual(a.data, { conector: "nenhum", chaves: [] }, "a conta A não vê a chave da B");
+  assert.deepEqual(a.data, { conector: "nenhum", chaves: [], consumo: [] }, "a conta A não vê a chave da B");
 });
 
 test("migration 0024: aplicada sobre uma chave já guardada pela 0023, a linha fica idêntica (envelope, metadados e índice)", () => {

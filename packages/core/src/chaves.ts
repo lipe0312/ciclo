@@ -299,6 +299,92 @@ export function cabeNoTetoIa(x: { gastoDiaMicro: number; gastoMesMicro: number; 
   return x.gastoDiaMicro + x.estMicro <= x.tetoDiaCent * 10_000 && x.gastoMesMicro + x.estMicro <= x.tetoMesCent * 10_000;
 }
 
+// ---------- #138 limites blindados ----------
+// Padrão de mercado seguido em cada controle (anotado na issue #138 e no ADR-0015):
+// - Assimetria: reduzir risco (baixar teto, desativar, apagar) nunca pede prova; aumentar risco pede prova recente
+//   (step-up do NIST SP 800-63B; bancos pedem senha/biometria só para AUMENTAR limite, nunca para reduzir).
+// - Subida com espera: aumento de limite de cartão e do Pix só vale depois de um prazo (no Pix, a regra do Banco
+//   Central dá de 24 a 48 h); reduzir vale na hora. Uma sessão roubada não ganha teto maior na hora.
+// - Teto global da conta: o "hard limit" por organização da OpenAI/Anthropic vale acima de cada chave.
+// - Disjuntor: detecção de velocidade anormal (antifraude de cartão) pausa e só o dono reativa, com prova.
+// - Alerta de consumo a 80%: o "soft limit"/alerta de orçamento dos painéis de nuvem e de API.
+
+/** Subir teto, ativar ou trocar a chave: Face ID dos últimos 60 s (o cadastro e os ajustes seguem com 5 min). */
+export const CHAVE_REAUTH_LIMITE_MS = 60_000;
+/** Subida de teto pendente: só vale 24 h depois do pedido. */
+export const CHAVE_ESPERA_SUBIDA_MS = 24 * 3_600_000;
+/** Teto global da conta (soma de todas as chaves), em centavos: US$ 100 por mês e por dia, fixo (não se contorna com mais chaves). */
+export const CHAVE_TETO_CONTA_CENT = { dia: CHAVE_TETO_MAX_USD * 100, mes: CHAVE_TETO_MAX_USD * 100 } as const;
+/** Disjuntor de velocidade: em 10 min, gasto acima de metade do teto do dia ou 60 chamadas (o rate limit deixaria 200). */
+export const DISJUNTOR = { janelaMs: 10 * 60_000, fracaoTetoDia: 0.5, maxChamadas: 60 } as const;
+export type MotivoPausa = "gasto_10min" | "rajada";
+/** Aviso de consumo a partir de 80% do teto do dia ou do mês. */
+export const ALERTA_CONSUMO = 0.8;
+
+/** Chave de nível grátis (o provedor pode usar o conteúdo): exige o aceite do aviso, gravado no servidor. */
+export const chaveGratis = (p: ProvedorIa) => avisoChaveGratis(p) != null;
+
+export type ProvaChave = "sessao" | "faceid" | "faceid60";
+/** Que prova a mudança pede. Aumentar risco numa chave que já existe (trocar o segredo, ativar, subir teto) → Face ID
+ *  de 60 s; cadastrar e ajuste neutro (apelido, modelo, esforço) → Face ID de 5 min (como na #88); reduzir risco
+ *  (baixar teto, desativar, apagar, cancelar subida) → sessão normal. */
+export function provaExigida(m: { cadastra?: boolean; trocaSegredo?: boolean; ativa?: boolean; sobeTeto?: boolean; ajuste?: boolean }): ProvaChave {
+  if (m.trocaSegredo || m.ativa || m.sobeTeto) return "faceid60";
+  return m.cadastra || m.ajuste ? "faceid" : "sessao";
+}
+
+export interface TetosCent { dia: number; mes: number }
+export interface SubidaPendente extends TetosCent { valeEm: number }
+/** Mudança de tetos (centavos; `alvo` já validado por validarTetos): a parte que baixa vale agora; a que sobe fica
+ *  pendente por 24 h. Qualquer baixa cancela a pendente anterior; uma subida nova a substitui (e o prazo recomeça). */
+export function planejarTetos(atual: TetosCent, alvo: TetosCent, pendente: SubidaPendente | null, now: number): {
+  agora: TetosCent; pendente: SubidaPendente | null; sobe: boolean; baixa: boolean; anterior: "nenhuma" | "mantida" | "cancelada" | "substituida";
+} {
+  const sobe = alvo.dia > atual.dia || alvo.mes > atual.mes;
+  const baixa = alvo.dia < atual.dia || alvo.mes < atual.mes;
+  const agora = { dia: Math.min(atual.dia, alvo.dia), mes: Math.min(atual.mes, alvo.mes) };
+  const nova = sobe ? { dia: alvo.dia, mes: alvo.mes, valeEm: now + CHAVE_ESPERA_SUBIDA_MS } : null;
+  const anterior = !pendente ? "nenhuma" : sobe ? "substituida" : baixa ? "cancelada" : "mantida";
+  return { agora, pendente: sobe ? nova : baixa ? null : pendente, sobe, baixa, anterior };
+}
+/** Aplica a subida pendente se o prazo passou. Pendente inválida (dia > mês ou fora da faixa) é descartada. */
+export function aplicarPendente(atual: TetosCent, p: SubidaPendente | null, now: number): { tetos: TetosCent; pendente: SubidaPendente | null; aplicou: boolean } {
+  if (!p) return { tetos: atual, pendente: null, aplicou: false };
+  if (!(p.dia >= 1 && p.mes >= p.dia && p.mes <= CHAVE_TETO_MAX_USD * 100)) return { tetos: atual, pendente: null, aplicou: false };
+  if (now < p.valeEm) return { tetos: atual, pendente: p, aplicou: false };
+  return { tetos: { dia: p.dia, mes: p.mes }, pendente: null, aplicou: true };
+}
+
+/** O pior caso cabe no teto global da conta (soma de todas as chaves) do dia E do mês? (o Worker confere no mesmo UPDATE atômico) */
+export function cabeNoTetoConta(x: { gastoDiaMicro: number; gastoMesMicro: number; estMicro: number }): boolean {
+  if (!(x.estMicro >= 0)) return false;
+  return x.gastoDiaMicro + x.estMicro <= CHAVE_TETO_CONTA_CENT.dia * 10_000 && x.gastoMesMicro + x.estMicro <= CHAVE_TETO_CONTA_CENT.mes * 10_000;
+}
+
+/** Disjuntor (conferido antes de cada chamada, com o que já foi gasto na janela de 10 min): motivo da pausa ou null. */
+export function disjuntor(x: { gastoJanelaMicro: number; chamadasJanela: number; tetoDiaCent: number }): MotivoPausa | null {
+  if (x.chamadasJanela >= DISJUNTOR.maxChamadas) return "rajada";
+  if (x.gastoJanelaMicro > DISJUNTOR.fracaoTetoDia * x.tetoDiaCent * 10_000) return "gasto_10min";
+  return null;
+}
+export const MOTIVO_PAUSA: Record<MotivoPausa, string> = {
+  gasto_10min: "gasto rápido demais em 10 minutos", rajada: "chamadas demais em 10 minutos",
+};
+
+export interface AlertaConsumo { periodo: "dia" | "mes"; pct: number }
+/** A partir de 80% do teto do dia ou do mês (o mais cheio vence). */
+export function alertaConsumo(x: { gastoDiaMicro: number; gastoMesMicro: number; tetoDiaCent: number; tetoMesCent: number }): AlertaConsumo | null {
+  const pct = (g: number, t: number) => (t > 0 ? Math.max(0, g) / (t * 10_000) : 0);
+  const d = pct(x.gastoDiaMicro, x.tetoDiaCent), m = pct(x.gastoMesMicro, x.tetoMesCent);
+  const [periodo, v] = d >= m ? ["dia", d] as const : ["mes", m] as const;
+  if (v < ALERTA_CONSUMO) return null;
+  return { periodo, pct: Math.min(100, Math.floor(v * 100 + 1e-9)) };
+}
+export function textoAlertaConsumo(apelido: string, a: AlertaConsumo): string {
+  const p = a.periodo === "dia" ? "do dia" : "do mês";
+  return a.pct >= 100 ? `${apelido} chegou ao teto ${p}.` : `${apelido} usou ${a.pct}% do teto ${p}.`;
+}
+
 // ---------- prioridade ----------
 /** A chave da pessoa vence; a do dono (OPENAI_API_KEY) é só o padrão opcional do servidor. */
 export function fonteOpenai(x: { chaveUsuario: boolean; servidor: { ligado: boolean } }): "usuario" | "servidor" | null {
