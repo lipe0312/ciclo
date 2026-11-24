@@ -9,6 +9,7 @@ import { toast } from "../../lib/ui/index.tsx";
 import { DOW, DOW_NM } from "../../lib/util.ts";
 import { salvarLugar } from "../../lib/lugares/index.ts";
 import { SeletorDeLocal } from "./mapa.tsx";
+import { antesDoPrimeiro } from "./refazer.tsx";
 import type { Ponto } from "./mapa.tsx";
 
 type Tipo = "completa" | "basica" | "casa";
@@ -39,7 +40,8 @@ export function AssistenteAcademias({ onManual }: { onManual: () => void }) {
   ];
   return <MiniAssistente tela="academias" passos={passos} concluir="Salvar lugar" onManual={onManual} onFim={async () => {
     const base = DEFAULT_GYMS[TIPOS.find((t) => t[0] === tipo)![3]];
+    const depois = antesDoPrimeiro(); // #139 1º lugar: a página dele oferece "Refazer a semana"
     const g = await salvarLugar(null, { name: nome, kind: tipo === "casa" ? "casa" : "academia", address: endereco.trim() || null, lat: ponto?.lat ?? null, lng: ponto?.lng ?? null, equipment: [...base.equipment], busyHours: [], weekdays: dias });
-    toast("Lugar criado"); go(href("academias", [g.id]));
+    depois(g.id); toast("Lugar criado"); go(href("academias", [g.id]));
   }} />;
 }

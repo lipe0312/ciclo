@@ -81,6 +81,12 @@
 /* #79 faixa "sem academia": discreta, não bloqueia; ações quebram linha no celular */
 .sem-academia{align-items:flex-start;border-left:4px solid var(--acc);margin-bottom:12px}
 .sem-academia>svg{flex:none;margin-top:2px}
+.stack>.sem-academia{margin-bottom:0}
 .sem-academia-t{flex:1;min-width:0}
-.sem-academia-a{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.sem-academia-a{display:flex;gap:8px;margin-top:10px}
+/* #139 os dois CTAs com a mesma largura: lado a lado quando cabem, um embaixo do outro no celular */
+.sem-academia-a .btn{flex:1 1 0;min-width:0;white-space:nowrap}
+@media (max-width:520px){.sem-academia-a{flex-direction:column}.sem-academia-a .btn{flex:none;width:100%}}
 .sem-academia .iconbtn{margin:-4px -4px 0 0}
+/* #139 sugestão da divisão: Manter / Ajustar lado a lado no desktop (no celular, um embaixo do outro) */
+@media (min-width:768px){.sem-div-sug .sem-acts{flex-direction:row}.sem-div-sug .sem-acts .btn{flex:1 1 0;width:auto}}

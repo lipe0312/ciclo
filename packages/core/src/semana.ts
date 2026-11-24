@@ -3,6 +3,7 @@
 // Regras: 2× por músculo antes de volume; 48 h entre estímulos do mesmo músculo; nunca compensar dobrado;
 // compensatório só aparece quando a regra diz (e só vira treino a pedido). Funções puras e determinísticas.
 
+import { equipamentoDoDia } from "./equipamentos.ts";
 import { EQUIPMENT_BY_ID, EXERCISE_BY_ID, INTENSITIES, MUSCLES, MUSCLE_IDS, SUB_MUSCLES } from "./catalog.ts";
 import type { Group, MuscleId, SubMuscleId } from "./catalog.ts";
 import { creditoSubpartes, volumeSubpartes } from "./semana-volume.ts";
@@ -41,6 +42,8 @@ export type Sets = Partial<Record<MuscleId, number>>;
 export interface WeekProfile {
   daysUsual: readonly string[]; daysTarget: number; minutes: number; priorities: MuscleId[];
   dayGym: Partial<Record<string, string>>; gyms: { id: string; equipment: string[] }[];
+  /** #139 com 0 academias, o que a pessoa marcou no perfil (equipamentoDoDia); sem nada, peso corporal */
+  equipamentos?: readonly string[] | null;
   prefs?: DayInput["prefs"]; pinned?: DayInput["pinned"]; avoid?: string[]; pains?: Pain[];
   /** objetivo do perfil (id) e o ajuste de cardio que o dono fez: a dose do cardio vem daí (#44) */
   goalId?: string | null; cardio?: Partial<CardioDose> | null;
@@ -152,7 +155,7 @@ function dayInputFor(inp: WeekInput, d: WeekDay, run: Run): DayInput {
   return {
     targets: inp.targets, done: { ...run.done }, freq: { ...run.freq }, priorities: p.priorities, daysLeft: 1,
     minutes: d.opts.minutes ?? p.minutes, lastGroup: null, mode: d.opts.mode ?? "normal", focus: d.opts.focus?.length ? d.opts.focus : null,
-    equipment: (p.gyms.find((g) => g.id === d.gymId)?.equipment ?? []).filter((q) => !d.opts.ocupados?.includes(q)), crowded: !!d.opts.crowded,
+    equipment: equipamentoDoDia(p, d.gymId).filter((q) => !d.opts.ocupados?.includes(q)), crowded: !!d.opts.crowded,
     prefs: p.prefs, pinned: p.pinned, avoid: p.avoid, pains: p.pains,
     estilo: d.opts.estilo ?? null, leve: !!d.opts.leve, adiantar: d.opts.adiantar ?? null,
     familiar: p.familiar, familiarFraco: p.familiarFraco, iniciante: p.iniciante, subAlvo: p.subAlvo,
@@ -641,7 +644,7 @@ export function regenerarDia(plan: WeekPlan, inp: WeekInput, date: string, g: Ge
   let ocupados: string[] = [];
   if (g.livres) {
     if (!g.livres.every((q) => EQUIPMENT_BY_ID[q])) return { error: "livres: aparelho desconhecido" };
-    ocupados = (inp.profile.gyms.find((x) => x.id === d.gymId)?.equipment ?? []).filter((q) => !g.livres!.includes(q));
+    ocupados = equipamentoDoDia(inp.profile, d.gymId).filter((q) => !g.livres!.includes(q));
   }
   const r = applyDayAction(plan, inp.overrides ?? {}, { type: "outro", date, geracao: { ocupados, estilo: g.estilo, leve: g.leve, adiantar: g.adiantar } }, inp);
   if ("error" in r) return r;

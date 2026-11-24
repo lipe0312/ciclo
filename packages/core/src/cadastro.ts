@@ -134,10 +134,10 @@ export function montarPerfilApp(salvo: Record<string, unknown> | null | undefine
     else if (Array.isArray(base[k]) !== Array.isArray(s[k])) continue;
     else base[k] = structuredClone(s[k]);
   }
-  // #93 `treinoAtual` não existe no perfil vazio (é opcional), mas é dado da pessoa: recarregar não pode descartá-lo.
-  if (s.treinoAtual != null && typeof s.treinoAtual === "object" && !Array.isArray(s.treinoAtual)) base.treinoAtual = structuredClone(s.treinoAtual);
-  // #82 a escolha Manter/Ajustar da divisão também é opcional e da pessoa
-  if (s.divisaoEscolha != null && typeof s.divisaoEscolha === "object" && !Array.isArray(s.divisaoEscolha)) base.divisaoEscolha = structuredClone(s.divisaoEscolha);
+  // Opcionais da pessoa que não existem no perfil vazio: recarregar não pode descartá-los. #93 `treinoAtual` e #82 a escolha
+  // Manter/Ajustar da divisão (objetos); #139 `equipamentos` (lista).
+  for (const k of ["treinoAtual", "divisaoEscolha", "equipamentos"])
+    if (s[k] != null && typeof s[k] === "object" && Array.isArray(s[k]) === (k === "equipamentos")) base[k] = structuredClone(s[k]);
   return base as PerfilApp;
 }
 

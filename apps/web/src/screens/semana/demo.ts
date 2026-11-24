@@ -25,7 +25,7 @@ export const demo = (() => {
     return {
       weekStart: monday, today, sets, attendance: S.week.attendance as C.WeekInput["attendance"],
       profile: { daysUsual: p.daysUsual, daysTarget: p.daysTarget, minutes: p.minutes, priorities: p.priorities, dayGym: p.dayGym,
-        gyms: S.gyms.map((g) => ({ id: g.id, equipment: g.equipment })), prefs: p.prefs, pinned: p.pinned, avoid: p.avoid,
+        gyms: S.gyms.map((g) => ({ id: g.id, equipment: g.equipment })), equipamentos: S.profile.equipamentos ?? null, prefs: p.prefs, pinned: p.pinned, avoid: p.avoid,
         pains: S.pains.map((x) => ({ region: x.region, intensity: x.intensity })), goalId: S.profile.goal?.id ?? null,
         ...C.entradaTreinoAtual(S.profile), formato: C.formatoDe(S.profile.dynamics) },
       targets: prog().targets, overrides, prev, cardioLog: S.week.cardio, fixed,
@@ -44,7 +44,7 @@ export const demo = (() => {
     const G = await import("@ciclo/core/treino-gerado");
     const p = calc(), dow = C.DOWS[(new Date(date + "T12:00:00Z").getUTCDay() + 6) % 7];
     const gym = S.gyms.find((g) => g.id === p.dayGym?.[dow]) ?? S.gyms[0];
-    const g = G.gerarTreinoDia({ sexo: S.profile.sex ?? null, nivel: p.level, prioridades: p.priorities, equipamentos: gym?.equipment ?? [], dias: p.daysUsual, diasMeta: p.daysTarget,
+    const g = G.gerarTreinoDia({ sexo: S.profile.sex ?? null, nivel: p.level, prioridades: p.priorities, equipamentos: gym ? gym.equipment : C.equipamentoSemAcademia(S.profile), dias: p.daysUsual, diasMeta: p.daysTarget,
       minutos: p.minutes, dores: S.pains.map((x) => ({ region: x.region, intensity: x.intensity })), evitar: p.avoid, prefs: p.prefs, pinned: p.pinned }, dow);
     return g ? G.planoDoDiaGerado(g.dia, "pendente") : null;
   };
@@ -99,11 +99,13 @@ export const demo = (() => {
       if (apply) push(r.plan, r.overrides, "ajuste", r.fixed);
       return { moves: r.moves, diff: r.diff, week: apply ? ver() : null };
     },
-    regenerar(reset: boolean, apply: boolean) {
+    regenerar(reset: boolean, apply: boolean, divisaoEscolha?: C.DivisaoEscolha) {
       const c = cur();
       const ov = reset ? Object.fromEntries(Object.entries(c.overrides).filter(([d]) => d < today)) : c.overrides;
       const fixed = semSalvos(c.fixed, C.salvosSubstituidos({ tipo: "semana" }, c.fixed ?? {}, input(ov, c.plan), { manual: reset }));
-      const plan = C.planWeek(input(ov, c.plan, fixed));
+      // #139 prévia da divisão: "como ficaria" com a escolha, sem mexer no perfil
+      const inp = input(ov, c.plan, fixed);
+      const plan = C.planWeek(divisaoEscolha && !apply ? { ...inp, profile: { ...inp.profile, divisaoEscolha } } : inp);
       const diff = C.diffWeeks(c.plan, plan);
       if (apply) push(plan, ov, "regenerar", fixed);
       return { diff, week: apply ? ver() : null };

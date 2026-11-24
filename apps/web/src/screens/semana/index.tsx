@@ -100,9 +100,10 @@ function Lista({ s }: { s: Semana }) {
   return <>
     <div class="row between wrapx" style="margin-bottom:14px;gap:8px"><div><p class="kicker">Semana · {curto(s.weekStart)} a {curto(s.days[6].date)}</p><h1>Semana</h1>
       <p class="small sub num" style="margin-top:4px">{treinos} treinos planejados · fecha em {s.closePct}% do orçamento</p></div></div>
-    <AvisoSemAcademia />
     <div class="grid dash"><div class="stack">
+      {/* #139 o "Não fui" (resposta que reorganiza a semana) vem antes; a faixa sem academia logo depois, como no Hoje */}
       <AvisoFalta />
+      <AvisoSemAcademia />
       <HojeNaoDa s={s} />
       <Oferta s={s} />
       <DivisaoCard s={s} />

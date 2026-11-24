@@ -37,8 +37,8 @@ const S = {
 };
 const MODES = ["normal", "compensatorio", "expresso"] as const;
 
-/** #79 conta sem academia: o treino sai com peso corporal e o Claude avisa a pessoa. */
-const SEM_ACADEMIA_MCP = { equipamento: EQUIPAMENTO_SEM_ACADEMIA, avisoEquipamento: "sem academia cadastrada: treino com peso corporal; avise e sugira cadastrar a academia no app (Academias)" } as const;
+/** #79/#139 conta sem academia: o treino sai com peso corporal + o que a pessoa marcou e o Claude avisa a pessoa. */
+const SEM_ACADEMIA_MCP = { equipamento: EQUIPAMENTO_SEM_ACADEMIA, avisoEquipamento: "sem academia cadastrada: treino com peso corporal e o que a pessoa marcou em equipamentos (perfil); avise e sugira cadastrar a academia no app (Academias)" } as const;
 
 export const TOOLS: Tool[] = [
   {
@@ -79,7 +79,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "ciclo_perfil_atualizar", aliases: ["ciclo_salvar_perfil"],
-    description: "Atualiza (patch, o mesmo do PATCH /api/profile) o perfil de treino da conta, para fazer os Primeiros passos conversando. Mande só o que o usuário disse. Campos: goal{id,statement,horizonWeeks 8|12|16}, subPriorities (até 3 IDs de subdivisão, em ordem; ex.: ombro_lat, biceps, triceps_longa), level 0-3, sex m|f, age, heightCm, weightKg, bodyType, daysUsual[seg..dom], daysTarget 1-7, minutes 20-180, weekStart seg..dom, hour, prefs{músculo:livre|maquina|cabo|tanto_faz}, pinned{músculo:idExercício}, avoid[idExercício], remembered[{exerciseId,kg,reps,confidence}], dynamics, diet{mode zero|leve|detalhado}, autonomy, tone. Valida tudo; qualquer erro recusa e nada é salvo. O app mostra 'preenchido pelo Claude — confira'.",
+    description: "Atualiza (patch, o mesmo do PATCH /api/profile) o perfil de treino da conta, para fazer os Primeiros passos conversando. Mande só o que o usuário disse. Campos: goal{id,statement,horizonWeeks 8|12|16}, subPriorities (até 3 IDs de subdivisão, em ordem; ex.: ombro_lat, biceps, triceps_longa), level 0-3, sex m|f, age, heightCm, weightKg, bodyType, daysUsual[seg..dom], daysTarget 1-7, minutes 20-180, weekStart seg..dom, hour, prefs{músculo:livre|maquina|cabo|tanto_faz}, pinned{músculo:idExercício}, avoid[idExercício], remembered[{exerciseId,kg,reps,confidence}], dynamics, diet{mode zero|leve|detalhado}, autonomy, tone, equipamentos[idAparelho] (o que tem sem academia; [] = só peso corporal). Valida tudo; qualquer erro recusa e nada é salvo. O app mostra 'preenchido pelo Claude — confira'.",
     inputSchema: obj({ perfil: { type: "object", description: "Campos parciais do perfil (só os que mudam)." }, concluirPrimeirosPassos: { type: "boolean", description: "true quando já cobriu o essencial (objetivo, prioridades, rotina, corpo)." } }, ["perfil"]),
     run: async (a, env, uid) => {
       validarPatchGerador(a.perfil, false); // #105 campos do gerador conferidos com http.ts antes de salvar
