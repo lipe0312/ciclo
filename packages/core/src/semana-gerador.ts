@@ -4,6 +4,7 @@
 // O resto (folgas, academia do dia, cardio, status) continua do planWeek. TS puro e determinístico.
 import { MUSCLES } from "./catalog.ts";
 import type { Group } from "./catalog.ts";
+import { equipamentoDoDia } from "./equipamentos.ts";
 import { gerarSemana } from "./gerador.ts";
 import type { DiaGerado, PerfilGerador, SemanaGerada } from "./gerador.ts";
 import { resumirDia } from "./plan-day.ts";
@@ -36,7 +37,7 @@ export function motivoSemGerador(inp: WeekInput, plan: WeekPlan): MotivoSemGerad
 export function perfilGeradorDaSemana(inp: WeekInput, plan: WeekPlan, base: BaseGerador): PerfilGerador {
   const p = inp.profile;
   const treinos = plan.days.filter((d) => d.kind === "treino");
-  const eqDe = (gid: string | null) => p.gyms.find((g) => g.id === gid)?.equipment ?? [];
+  const eqDe = (gid: string | null) => equipamentoDoDia(p, gid); // #139 sem academia: o que a pessoa marcou
   const listas = treinos.map((d) => eqDe(d.gymId));
   const equipamentos = listas.length ? listas.reduce((a, b) => a.filter((q) => b.includes(q))) : [];
   return {

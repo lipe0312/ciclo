@@ -36,6 +36,8 @@
     "e2e:treino-atual": "node scripts/e2e-cenario.mjs treino-atual",
     "e2e:navegacao": "node scripts/e2e-cenario.mjs navegacao",
     "e2e:chat": "node scripts/e2e-cenario.mjs chat",
+    "e2e:sem-academia": "node scripts/e2e-cenario.mjs sem-academia",
+    "e2e:teclado": "node scripts/e2e-cenario.mjs teclado",
     "e2e:mcp": "node scripts/e2e-mcp.mjs",
     "mcp:local": "node scripts/mcp-local.mjs",
     "demo": "npm run dev -w @ciclo/web -- --open /?demo"

@@ -77,6 +77,8 @@ test("MCP sem academia: ciclo_planejar_dia e ciclo_estado geram e dizem equipame
     assert.equal(r.status, 200, r.text);
     return JSON.parse(r.data.result.content[0].text);
   };
+  // a semana de D já passou (D é fixo): o treino do dia lê a semana gravada; abre-a antes como o app faria
+  assert.equal((await c("GET", `/api/week?date=${D}`)).status, 200);
   const dia = await tool("ciclo_planejar_dia", { date: D, daysLeft: 3 });
   assert.equal(dia.vazio, undefined, JSON.stringify(dia));
   assert.equal(dia.equipamento, "sem_academia");

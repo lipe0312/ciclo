@@ -69,3 +69,10 @@
 .lug-kind{width:160px;max-width:60%;aspect-ratio:4/3;margin:18px auto 0;border-radius:12px;overflow:hidden}
 :root[data-theme="dark"] .ap-img{filter:invert(.92)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ap-img{filter:invert(.92)}}
+/* #139 oferta "Refazer a semana" depois do 1º lugar: os dois botões com a mesma largura (empilham no celular) */
+.lug-refazer{align-items:flex-start;margin-top:12px;border-left:4px solid var(--acc)}
+.lug-refazer>svg{flex:none;margin-top:2px}
+.lug-refazer-t{flex:1;min-width:0}
+.lug-refazer-a{display:flex;gap:8px;margin-top:10px}
+.lug-refazer-a .btn{flex:1 1 0;min-width:0;white-space:nowrap}
+@media (max-width:520px){.lug-refazer-a{flex-direction:column}.lug-refazer-a .btn{flex:none;width:100%}}

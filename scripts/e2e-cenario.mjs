@@ -8,7 +8,7 @@ import { CENARIOS, urlAbertura } from "./cenarios/index.mjs";
 import { abrirChrome, sleep } from "./cenarios/cdp.mjs";
 
 const PORTA = Number(process.env.CENARIO_PORTA) || 8793;
-const ROTEIROS = { "primeiro-acesso": primeiroAcesso, pular, "treino-atual": treinoAtual, navegacao, chat };
+const ROTEIROS = { "primeiro-acesso": primeiroAcesso, pular, "treino-atual": treinoAtual, navegacao, chat, "sem-academia": semAcademia, teclado };
 /** Cenário de cada roteiro (padrão: vazio). #74: o "Meu treino atual" roda na conta em uso (semi). */
 const CENARIO_DO = { "treino-atual": "semi", navegacao: "semi" };
 const CENARIO = CENARIO_DO[process.argv[2]] ?? "vazio";
@@ -185,9 +185,9 @@ async function primeiroAcesso(c) {
     ok(await c.esperar("location.hash === '#hoje'", 15000), `não chegou no Hoje (tela: ${(await c.texto()).replace(/\s+/g, " ").slice(-140)} · console: ${c.consola.map((x) => x.texto.slice(0, 140)).join(" | ")})`);
     const st = await c.ev("fetch('/api/state?date=' + new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())).then((r) => r.json())");
     ok(st.onboarding === "concluido", "Primeiros passos não foi concluído");
-    // Dias padrão do perfil: seg, ter, qui, sex. Em dia de descanso (qua, sáb, dom) não há treino de hoje, e isso é certo.
+    // #139 o roteiro marca seg, qua e sex (passo Rotina). Em dia de descanso não há treino de hoje, e isso é certo.
     const dow = await c.ev("new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', weekday: 'short' }).format(new Date())");
-    if (["Mon", "Tue", "Thu", "Fri"].includes(dow)) ok(st.dayPlan?.plan?.items?.length > 0, "o servidor não tem o treino de hoje");
+    if (["Mon", "Wed", "Fri"].includes(dow)) ok(st.dayPlan?.plan?.items?.length > 0, "o servidor não tem o treino de hoje");
     // sem recarregar: o Hoje tem de sair do começo vazio sozinho (antes ficava "Seu Hoje está vazio" até o F5)
     ok(await c.esperar("!(document.querySelector('#app')?.innerText ?? '').includes('Seu Hoje está vazio') && (document.querySelector('#app')?.innerText ?? '').includes('O caminho até aqui')", 10000), `o Hoje continua vazio (${(await c.texto()).replace(/\s+/g, " ").slice(0, 160)})`);
   }, c);
@@ -260,7 +260,9 @@ async function pular(c) {
   await passo("abre direto em Primeiros passos (passo 1), já logado", async () => {
     await abrirNoCenario(c, "primeiros-passos/0");
     igual(await c.hash(), "#primeiros-passos/0", "tela");
-    ok((await c.texto()).includes("Pular por agora"), "não há 'Pular por agora' no passo 1");
+    // #139 o topo dos Primeiros passos troca "Sair" por "Pular por agora" só depois que /api/account responde (onboarding pendente)
+    ok(await c.esperar("(document.querySelector('#app')?.innerText ?? '').includes('Pular por agora')", 8000),
+      `não há 'Pular por agora' no passo 1 (topo: ${(await c.ev("document.querySelector('.pp-top')?.innerText ?? '-'")).replace(/\s+/g, " ")})`);
   }, c);
   await passo("toca em Pular por agora e o app continua de pé", async () => {
     await c.clicar("Pular por agora"); await sleep(1500);
@@ -276,6 +278,110 @@ async function pular(c) {
     const t = await c.texto();
     ok(t.includes("Completar Perfil de treino"), "sem o secundário");
     ok(!(await c.ev("!!document.querySelector('.hm-dia')")), "apareceu um treino no Hoje vazio");
+  }, c);
+}
+
+// ---------- #139 teclado: digitar letra a letra (teclas de verdade via CDP) não tira o foco do campo nem perde letra ----------
+async function digitarLetraALetra(c, seletor, texto) {
+  ok(await c.esperar(`!!document.querySelector(${JSON.stringify(seletor)})`, 8000), `campo ${seletor} não apareceu`);
+  await c.ev(`(() => { const el = document.querySelector(${JSON.stringify(seletor)}); el.focus(); el.select?.(); })()`);
+  await c.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+  await c.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+  for (const [i, ch] of [...texto].entries()) {
+    await c.send("Input.insertText", { text: ch }); await sleep(60);
+    const foco = await c.ev(`document.activeElement === document.querySelector(${JSON.stringify(seletor)})`);
+    if (!foco) throw new Error(`${seletor}: perdeu o foco na letra ${i + 1} ("${ch}"); foco em ${await c.ev("document.activeElement?.outerHTML.slice(0, 80) ?? 'nada'")}`);
+  }
+  await sleep(300);
+  igual(await c.ev(`document.querySelector(${JSON.stringify(seletor)}).value`), texto, `${seletor}: valor final`);
+  ok(await c.ev(`document.activeElement === document.querySelector(${JSON.stringify(seletor)})`), `${seletor}: perdeu o foco depois de digitar`);
+}
+const NOME_ACAD = "Academia do Bairro";
+
+async function teclado(c) {
+  await passo("Primeiros passos: o foco do objetivo aceita letra a letra sem perder o foco", async () => {
+    await abrirNoCenario(c, "primeiros-passos/0");
+    ok(await c.esperar("(document.querySelector('#app')?.innerText ?? '').includes('Pular por agora')", 8000), `tela: ${(await c.texto()).replace(/\s+/g, " ").slice(0, 120)}`);
+    await c.clicar(OBJETIVO, ".pp-body");
+    await digitarLetraALetra(c, "#pp-foco", "Ombro largo e cintura fina");
+    // conta nova fica presa nos Primeiros passos: pula para abrir as outras telas
+    await c.clicar("Pular por agora"); ok(await c.esperar("location.hash === '#hoje'", 8000), "não foi para o Hoje");
+  }, c);
+  await passo("Academias (assistente da 1ª vez): o nome aceita letra a letra", async () => {
+    await c.abrir(`${BASE}/#academias`);
+    ok(await c.esperar("location.hash === '#academias' && !!document.querySelector('.pp')", 8000), `o assistente de Academias não abriu (${await c.hash()}: ${(await c.texto()).replace(/\s+/g, " ").slice(0, 120)})`);
+    await c.clicar("Continuar");
+    await digitarLetraALetra(c, "#ass-nome", NOME_ACAD);
+  }, c);
+  await passo("Academias (passo a passo completo): o nome aceita letra a letra", async () => {
+    await c.abrir(`${BASE}/#academias/novo`);
+    await digitarLetraALetra(c, "#lug-nome", "Casa da Praia");
+  }, c);
+  await passo("Perfil de treino: o texto livre (dia típico) aceita letra a letra", async () => {
+    await c.abrir(`${BASE}/#perfil/comida`);
+    await digitarLetraALetra(c, "textarea[aria-label='Dia típico']", "café com ovo");
+  }, c);
+}
+
+// ---------- #139 sem academia: Primeiros passos → Gerar semana → faixa; cadastrar a 1ª academia e refazer → a faixa some ----------
+const semanaApi = (c) => c.ev(`fetch('/api/week?date=' + ${HOJE_JS}).then((r) => r.json())`);
+async function semAcademia(c) {
+  await passo("conta sem academia: pula os Primeiros passos e volta para responder (assim nenhum lugar é criado)", async () => {
+    await abrirNoCenario(c, "primeiros-passos/0");
+    ok(await c.esperar("(document.querySelector('#app')?.innerText ?? '').includes('Pular por agora')", 8000), "sem 'Pular por agora'");
+    await c.clicar("Pular por agora");
+    ok(await c.esperar("location.hash === '#hoje'", 8000), "não foi para o Hoje");
+    await c.abrir(`${BASE}/#primeiros-passos/0`); await c.esperar("document.querySelector('.pp')");
+    igual(await c.ev("fetch('/api/gyms').then((r) => r.json()).then((j) => j.gyms.length)"), 0, "academias");
+  }, c);
+  await passo("responde o básico (objetivo, experiência, 7 dias, 60 min, casa) e marca halteres em 'O que você tem sem academia'", async () => {
+    await c.clicar(OBJETIVO, ".pp-body"); await c.clicar("Continuar");
+    await c.clicar("Continuar"); // músculos (opcional)
+    await c.clicar("Menos de 1 ano", ".pp-body"); await c.clicar("Continuar");
+    for (const d of ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]) await c.clicar(d, ".pp-body");
+    await c.clicar("60 min", ".pp-body"); await c.clicar("Continuar");
+    await c.clicar("Casa", ".pp-body");
+    ok(await c.esperar("(document.querySelector('.pp-body')?.innerText ?? '').includes('O que você tem sem academia')"), "sem o campo de equipamentos");
+    await c.clicar("Halteres", ".pp-body");
+    ok((await marcados(c)).some((t) => t === "Halteres"), "halteres não ficou marcado");
+    for (let i = 0; i < 7; i++) await c.clicar("Continuar");
+    igual(await passoAtual(c), 11, "passo (Resumo)");
+  }, c);
+  await passo("Gerar semana funciona sem academia e o perfil guardou os equipamentos", async () => {
+    await c.clicar("Gerar minha semana e abrir o Hoje");
+    ok(await c.esperar("location.hash === '#hoje'", 15000), `não chegou no Hoje (${(await c.texto()).replace(/\s+/g, " ").slice(-140)})`);
+    const st = await c.ev(`fetch('/api/state?date=' + ${HOJE_JS}).then((r) => r.json())`);
+    igual(st.profile.equipamentos, ["halteres"], "equipamentos no perfil");
+    ok((await semanaApi(c)).week, "a semana não foi gerada");
+  }, c);
+  await passo("Semana: a faixa 'peso corporal e o que você marcou' aparece, com os dois CTAs", async () => {
+    await c.abrir(`${BASE}/#semana`);
+    ok(await c.esperar("!!document.querySelector('.sem-academia')", 10000), "sem a faixa sem academia");
+    const t = await c.ev("document.querySelector('.sem-academia').innerText");
+    ok(t.includes("peso corporal e o que você marcou"), `texto da faixa: ${t}`);
+    ok(t.includes("Cadastrar academia") && t.includes("Refazer a semana"), "faltam os CTAs");
+  }, c);
+  await passo("cadastra a 1ª academia pelo assistente e a página dela oferece 'Refazer a semana' na hora", async () => {
+    await c.abrir(`${BASE}/#academias`);
+    ok(await c.esperar("location.hash === '#academias' && !!document.querySelector('.pp')", 8000), "o assistente não abriu");
+    ok(await c.esperar("(document.querySelector('.pp-body')?.innerText ?? '').includes('Academia completa')", 8000), "sem o passo do tipo");
+    await c.clicar("Academia completa", ".pp-body"); await c.clicar("Continuar");
+    await digitarLetraALetra(c, "#ass-nome", NOME_ACAD); await c.clicar("Continuar");
+    ok(await c.esperar("(document.querySelector('.pp-q')?.textContent ?? '').includes('Onde fica')", 8000), "não chegou no passo do mapa");
+    await c.clicar("Pular"); // mapa (opcional)
+    ok(await c.esperar("(document.querySelector('.pp-q')?.textContent ?? '').includes('Em quais dias')", 8000), "não chegou no passo dos dias");
+    await c.clicar("Salvar lugar");
+    ok(await c.esperar("/^#academias\\/[a-z0-9_-]+$/.test(location.hash) && !!document.querySelector('.lug-refazer')", 10000), `sem a oferta (${await c.hash()}: ${(await c.texto()).replace(/\s+/g, " ").slice(0, 200)})`);
+  }, c);
+  await passo("Refazer a semana: a semana passa a usar a academia e a faixa some", async () => {
+    await c.clicar("Refazer a semana", ".lug-refazer");
+    ok(await c.esperar("!document.querySelector('.lug-refazer')", 15000), "a oferta não sumiu depois de refazer");
+    const w = (await semanaApi(c)).week, hoje = await c.ev(HOJE_JS);
+    const abertos = w.days.filter((d) => d.date >= hoje && d.plan?.items?.length);
+    ok(abertos.length && abertos.every((d) => d.gymId), `dias abertos sem a academia nova: ${JSON.stringify(abertos.map((d) => [d.date, d.kind, d.gymId]))}`);
+    await c.abrir(`${BASE}/#semana`); await c.esperar("location.hash === '#semana' && !!document.querySelector('.view.on h1')");
+    await sleep(500);
+    ok(!(await c.ev("!!document.querySelector('.sem-academia')")), "a faixa sem academia continua");
   }, c);
 }
 

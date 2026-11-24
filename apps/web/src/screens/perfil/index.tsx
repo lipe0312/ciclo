@@ -12,6 +12,7 @@ import { Mic } from "../../lib/voz/index.tsx";
 import { DOW, DOW_NM, fmt, getPath, setPath } from "../../lib/util.ts";
 import { CATS } from "../claude/caixa.tsx";
 import TreinoAtual from "./treino-atual.tsx";
+import { SeletorEquipamentos } from "./equipamentos.tsx";
 import { classePulso, pararPulso } from "../../lib/pulso/index.ts";
 import { telaLenta } from "../../lib/tela-lenta/index.tsx";
 
@@ -92,6 +93,8 @@ function Rotina() {
     <div class="chips">{([["academia", "Academia"], ["casa", "Casa"]] as [C.PlaceChoice, string][]).map(([k, nm]) => <button type="button" key={k} class="chip tall" aria-pressed={(p.places ?? []).includes(k)}
       onClick={() => { const a = (p.places ?? []).includes(k) ? p.places.filter((x) => x !== k) : [...(p.places ?? []), k]; if (!a.length) return toast("Escolha ao menos uma opção"); pset("places", C.PLACES.filter((x) => a.includes(x))); }}>{nm}</button>)}</div>
     <p class="tiny sub" style="margin:6px 0 16px">Os aparelhos de cada lugar ficam em <a class="link44" href="#academias">Academias</a>.</p>
+    <SeletorEquipamentos valor={p.equipamentos} temAcademia={S.gyms.length > 0} onMudar={(v) => pset("equipamentos", v)} />
+    <div style="margin-bottom:16px" />
     <span class="f">Dias que normalmente dá para ir</span><div class="chips">{DOW.map((d, i) => <button type="button" key={d} class="chip tall" aria-pressed={p.daysUsual.includes(d)} onClick={() => ptoggle("daysUsual", d)}>{DOW_NM[i]}</button>)}</div>
     <div class="row wrapx" style="gap:16px;margin-top:16px"><div><span class="f">Meta por semana</span><PSeg k="daysTarget" label="Meta por semana" opts={[[2, "2"], [3, "3"], [4, "4"], [5, "5"]]} /></div><div><span class="f">Duração típica</span><PSeg k="minutes" label="Duração" opts={[[45, "45 min"], [60, "60 min"], [75, "75 min"], [90, "90 min"]]} /></div></div>
     <div class="row wrapx" style="gap:16px;margin-top:16px"><div><span class="f">Semana</span><PSeg k="flexWeek" label="Tipo de semana" opts={[[true, "flexível (orçamento)"], [false, "dias fixos"]]} /></div>

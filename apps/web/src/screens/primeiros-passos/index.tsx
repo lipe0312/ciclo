@@ -20,6 +20,7 @@ import { garantirSemana } from "../semana/estado.ts";
 import { AvisoSemAcademia } from "../semana/aviso-sem-academia.tsx";
 import { classePulso, pararPulso } from "../../lib/pulso/index.ts";
 import { TelaIa, TelaIaAcesso } from "./ia.tsx";
+import { SeletorEquipamentos } from "../perfil/equipamentos.tsx";
 
 const KEY = "ciclo:pp";
 /** `semDor`: tocou em "Nenhuma dor" (sem isso, nada aparece marcado nesse passo). */
@@ -140,7 +141,9 @@ function Onde() {
   return <><div class="opts" role="group" aria-label="Onde você treina (pode marcar os dois)">{LUGARES.map(([k, nm, d]) => <Opt key={k} on={places.includes(k)} title={nm} desc={d} onClick={() => toggle(k)} />)}</div>
     <div class="note" style="margin-top:14px"><Icon id="gym" /><span>{novaConta() ? <>Os aparelhos de cada lugar você ajusta depois, em <a class="link44" href="#academias">Academias</a>, com um passo a passo rápido.</>
       : S.gyms.length ? <>Seus lugares ficam como estão ({S.gyms.map((x) => x.name).join(", ")}). Para mexer nos aparelhos, use <a class="link44" href="#academias">Academias</a>.</>
-      : <>Sem academia cadastrada, o treino sai com peso corporal. Cadastre quando quiser em <a class="link44" href="#academias">Academias</a>.</>}</span></div></>;
+      : <>Sem academia cadastrada, o treino sai com peso corporal e o que você marcar abaixo. Cadastre quando quiser em <a class="link44" href="#academias">Academias</a>.</>}</span></div>
+    {/* #139 sem academia: o que a pessoa tem (halteres, elástico…) entra no treino */}
+    {!S.gyms.length && <div style="margin-top:16px"><SeletorEquipamentos valor={S.profile.equipamentos} temAcademia={false} onMudar={(v) => { S.profile.equipamentos = v; mudou("onde"); }} /></div>}</>;
 }
 
 function resolvePain(region: string) {

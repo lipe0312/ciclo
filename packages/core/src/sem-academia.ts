@@ -1,24 +1,12 @@
 // #79 Treino sem academia cadastrada: o app sempre gera. Sem academia, o equipamento é o peso corporal (exercícios sem
 // aparelho) mais o que a pessoa marcou; a faixa de aviso convida a cadastrar a academia e pode ser dispensada por 7 dias.
 
-import { EQUIPMENT_BY_ID } from "./catalog.ts";
+// equipamentoSemAcademia e PESO_CORPORAL ficam em equipamentos.ts (#139: a semana usa sem ciclo de import).
 import type { Visibilidade } from "./home-inicio.ts";
 import { faltaParaGerar } from "./perfil.ts";
 
-/** Peso corporal não pede aparelho: os exercícios dele têm `eq: []` e entram com qualquer equipamento. */
-export const PESO_CORPORAL: readonly string[] = Object.freeze([]);
 /** Marca, no retorno do MCP e da API, que o treino saiu sem academia (para o Claude avisar a pessoa). */
 export const EQUIPAMENTO_SEM_ACADEMIA = "sem_academia" as const;
-
-/**
- * Equipamento quando não há academia: 1) o que a pessoa marcou em `equipamentos` (só IDs do catálogo, sem repetir);
- * 2) sem nada marcado, só peso corporal (elástico e halteres entram apenas se marcados).
- */
-export function equipamentoSemAcademia(perfil: { equipamentos?: unknown } | null | undefined): string[] {
-  const marcados = perfil && Array.isArray(perfil.equipamentos) ? perfil.equipamentos : [];
-  const ok = marcados.filter((q): q is string => typeof q === "string" && Object.hasOwn(EQUIPMENT_BY_ID, q));
-  return ok.length ? [...new Set(ok)] : [...PESO_CORPORAL];
-}
 
 /** "Dispensar" da faixa "Treino montado com peso corporal" esconde por 7 dias (o mesmo prazo do "Lembrar depois" da #73). */
 export const FAIXA_SEM_ACADEMIA_DIAS = 7;
