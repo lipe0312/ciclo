@@ -6,8 +6,9 @@ import { SERVER, api } from "../api/index.ts";
 import { S } from "../store/index.ts";
 import { lsGet, lsSet } from "../util.ts";
 
-export interface ContaIa { conector: C.EstadoConector; chaves: C.ChaveResumo[] }
-const VAZIO: ContaIa = { conector: "nenhum", chaves: [] };
+/** #138 `consumo`: chaves ativas a partir de 80% do teto do dia ou do mês (texto pronto do servidor, sem segredo). */
+export interface ContaIa { conector: C.EstadoConector; chaves: C.ChaveResumo[]; consumo?: { id: string; texto: string; pct: number }[] }
+const VAZIO: ContaIa = { conector: "nenhum", chaves: [], consumo: [] };
 let cache: ContaIa | null = SERVER ? null : VAZIO;
 let pedindo: Promise<void> | null = null;
 const subs = new Set<() => void>();

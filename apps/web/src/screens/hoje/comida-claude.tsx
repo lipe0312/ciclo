@@ -9,11 +9,13 @@ import { useEffect, useState } from "preact/hooks";
 import type { FunctionComponent } from "preact";
 
 // #134 O aviso de IA do cartão baixa depois da 1ª pintura (fora do JS inicial). Até lá não mostra nada (é dispensável).
+// #138 + o aviso de consumo da chave (≥ 80% do teto), do mesmo módulo.
 let Aviso: FunctionComponent | null = null;
+let Consumo: FunctionComponent | null = null;
 function AvisoIa() {
   const [, set] = useState(0);
-  useEffect(() => { if (!Aviso) import("../../lib/sua-ia/aviso.tsx").then((m) => { Aviso = m.AvisoIa; set(1); }).catch(() => {}); }, []);
-  return Aviso ? <Aviso /> : null;
+  useEffect(() => { if (!Aviso) import("../../lib/sua-ia/aviso.tsx").then((m) => { Aviso = m.AvisoIa; Consumo = m.AvisoConsumo; set(1); }).catch(() => {}); }, []);
+  return Aviso ? <>{Consumo && <Consumo />}<Aviso /></> : null;
 }
 
 const Linha = ({ nome, valor, meta, pct, un }: { nome: string; valor: number | null; meta: number; pct: number | null; un: string }) =>
