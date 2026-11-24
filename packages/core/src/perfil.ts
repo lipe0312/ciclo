@@ -1,7 +1,8 @@
 // Perfil de treino: formato, padrões, validação (app e Claude usam a MESMA regra), prioridades por subdivisão,
 // "treino desatualizado" e o resumo de contexto entregue ao Claude. TS puro, sem dependências.
 
-import { EXERCISE_BY_ID, MUSCLE_IDS, SUB_MUSCLES, SUB_MUSCLE_IDS } from "./catalog.ts";
+import { EQUIPMENT_BY_ID, EXERCISE_BY_ID, MUSCLE_IDS, SUB_MUSCLES, SUB_MUSCLE_IDS } from "./catalog.ts";
+import { MAX_EQUIPAMENTOS } from "./equipamentos.ts";
 import type { MuscleId, SubMuscleId } from "./catalog.ts";
 import type { Remembered } from "./loads.ts";
 import { MAX_PRIORITIES, MAX_PRIORITY_SUBS, groupsOfSubs, limitSubs, priorityGroups } from "./prioridades.ts";
@@ -50,6 +51,7 @@ export const DEFAULT_PROFILE = {
 };
 /** `treinoAtual` (#74) é opcional e não tem padrão: sem cadastro, o gerador funciona igual. */
 export type ProfileData = typeof DEFAULT_PROFILE & { treinoAtual?: TreinoAtual; divisaoEscolha?: DivisaoEscolha; /** #133 Sua IA */ ia?: PerfilIa;
+  /** #139 o que a pessoa tem sem academia (IDs do catálogo); [] = só peso corporal. Só vale com 0 academias. */ equipamentos?: string[];
   /** #105 sinais de saúde (opcional): só avisos que encaminham a um profissional; dado de saúde, nunca em log */ saude?: AvisoSaude[] };
 
 // ---------- prioridades ----------
@@ -107,7 +109,9 @@ const oneOf = (opts: readonly (string | number)[]): Rule => (v, p, err) => (opts
 /** Texto aceita "" como valor (apagar a frase); `vazioOk` avisa o rascunho para não tratar "" como "não respondido". */
 const text = (max: number): Rule => Object.assign((v: unknown, p: string, err: Err) => (typeof v === "string" && v.length <= max ? v : (err(`${p} deve ser texto de até ${max} caracteres`), undefined)), { vazioOk: true });
 const slug: Rule = (v, p, err) => (typeof v === "string" && /^[a-z0-9_-]{1,40}$/.test(v) ? v : (err(`${p} inválido`), undefined));
-const exerciseId: Rule = (v, p, err) => (typeof v === "string" && own(EXERCISE_BY_ID, v) ? v : (err(`${p}: exercício "${typeof v === "string" ? v.slice(0, 60) : typeof v}" não existe no catálogo`), undefined));
+/** ID do catálogo (exercício ou, #139, aparelho). */
+const doCatalogo = (tab: object, o: string): Rule => (v, p, err) => (typeof v === "string" && own(tab, v) ? v : (err(`${p}: ${o} "${typeof v === "string" ? v.slice(0, 60) : typeof v}" não existe no catálogo`), undefined));
+const exerciseId = doCatalogo(EXERCISE_BY_ID, "exercício");
 const list = (item: Rule, max: number, unique = true): Rule => (v, p, err) => {
   if (!Array.isArray(v)) return err(`${p} deve ser uma lista`), undefined;
   if (v.length > max) return err(`${p}: até ${max} itens`), undefined;
@@ -186,6 +190,8 @@ const SCHEMA: Record<string, Rule> = {
   ia: (v, p, err) => { const r = validarPerfilIa(v); if (!r.ok) { r.erros.forEach(err); return undefined; } return r.valor; },
   // #105 saúde (opcional; nunca entra no faltaParaGerar nem muda o treino): só os avisos que encaminham a um profissional
   saude: list(oneOf(AVISOS_SAUDE), AVISOS_SAUDE.length),
+  // #139 o que a pessoa tem sem academia (opcional; nunca entra no faltaParaGerar); lista vazia = só peso corporal
+  equipamentos: list(doCatalogo(EQUIPMENT_BY_ID, "aparelho"), MAX_EQUIPAMENTOS),
   treinoAtual: (v, p, err, ctx) => { const r = validarTreinoAtual(v, p, ctx?.personalizados); if (!r.ok) { r.errors.forEach(err); return undefined; } return r.value; },
   // #82 "Manter minha divisão" / "Ajustar": vale só para a divisão (assinatura dos grupos) em que foi escolhido
   divisaoEscolha: (v, p, err) => {
@@ -226,6 +232,7 @@ export const PERFIL_ROTULO: Record<string, string> = {
   mobility: "mobilidade", dayGym: "lugar de cada dia", diet: "comida", autonomy: "o que o Chat muda sozinho", tone: "tom do Chat",
   reviewTime: "horário da revisão", tiers: "modelos do Chat", places: "academia, casa ou os dois", meta: "dados do perfil",
   treinoAtual: "meu treino atual", divisaoEscolha: "manter ou ajustar a divisão", ia: "sua IA", saude: "saúde",
+  equipamentos: "equipamentos",
 };
 const juntar = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}`);
 const maiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -441,7 +448,7 @@ export function patchDoPasso(passo: string, perfil: Partial<PerfilApp> | Record<
     case "musculos": return Array.isArray(p.subPriorities) ? { subPriorities: [...p.subPriorities] } : {};
     case "experiencia": return so(p, ["level"]);
     case "rotina": return { ...(Array.isArray(p.daysUsual) ? { daysUsual: [...p.daysUsual] } : {}), ...so(p, ["daysTarget", "minutes"]) };
-    case "onde": return so(p, ["places"]);
+    case "onde": return { ...so(p, ["places"]), ...(Array.isArray(p.equipamentos) && { equipamentos: [...p.equipamentos] }) }; // #139
     case "corpo": return so(p, ["sex", "age", "heightCm", "weightKg"]);
     case "comovoce": return so(p, ["bodyType"]);
     case "comida": { const m = isObj(p.diet) ? p.diet.mode : null; return temValor(m) ? { diet: { mode: m } } : {}; }
