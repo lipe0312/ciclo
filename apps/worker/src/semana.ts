@@ -2,7 +2,7 @@
 // por dia. Todo SQL com bind e filtrado por user_id; o uid vem da autenticação.
 import {
   EQUIPMENT_BY_ID, JANELA_MES, MAX_SESSION_MS, respostaTreinei, semBaseParaGerar, MUSCLE_IDS, altsDoBanco, applyDayAction, exerciciosCansados, parametrosDoPerfil, diffWeeks, empurrarTreinos, entradaTreinoAtual, formatoDe, mondayOf, planWeek, resumirDia, avisosDaSemana, semanaComGerador, salvosSubstituidos, treinoDoDia, trocasDoDia,
-  weekDates, weekProgression, weekView, weeklyTargets,
+  weekDates, weekProgression, weekView, weeklyTargets, validateProfilePatch,
 } from "@ciclo/core";
 import type { CardioEntry, DayAction, DayOpts, DayOverride, DayPlan, Intensity, MuscleId, Progression, Sets, WeekInput, WeekPlan, WeekProfile } from "@ciclo/core";
 import type { Env } from "./env.ts";
@@ -48,7 +48,7 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
   const weekStart = mondayOf(today), dates = weekDates(weekStart), [from, to] = [dates[0], dates[6]];
   const [profile, gyms, week] = await Promise.all([getProfile(env, uid), listGyms(env, uid), weekState(env, uid, today)]);
   if (!profile || semBaseParaGerar(profile, gyms.length)) return { empty: "sem_perfil" };
-  // #79 sem academia a semana sai com peso corporal (gyms vazio → equipamento [] no core) e gymId null
+  // #79/#139 sem academia a semana sai com o que a pessoa marcou em `equipamentos` (ou peso corporal; core: equipamentoDoDia) e gymId null
   const [sets, ovr, fixed, vers, latest, cardio, porEx, mes, abertas] = await env.DB.batch([
     env.DB.prepare(`SELECT s.date AS date, l.muscle AS muscle, COUNT(*) AS n FROM set_log l JOIN session s ON s.user_id = l.user_id AND s.id = l.session_id
       WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 GROUP BY s.date, l.muscle`).bind(uid, from, to),
@@ -76,7 +76,7 @@ export async function loadCtx(env: Env, uid: string, today: string): Promise<Ctx
     profile: {
       daysUsual: strs(p.daysUsual), daysTarget: typeof p.daysTarget === "number" ? p.daysTarget : 4, minutes: typeof p.minutes === "number" ? p.minutes : 60,
       priorities: (p.priorities ?? []).filter((m) => MUSCLE_IDS.includes(m)), dayGym: (p.dayGym ?? {}) as Record<string, string>,
-      gyms: gyms.map((g) => ({ id: g.id, equipment: g.equipment })), prefs: p.prefs, pinned: p.pinned, avoid: p.avoid,
+      gyms: gyms.map((g) => ({ id: g.id, equipment: g.equipment })), equipamentos: strs(p.equipamentos), prefs: p.prefs, pinned: p.pinned, avoid: p.avoid,
       pains: week.pains.map((x) => ({ region: x.region, intensity: x.intensity })),
       goalId: typeof (p.goal as { id?: unknown } | undefined)?.id === "string" ? (p.goal as { id: string }).id : null,
       ...entradaTreinoAtual(p), // #74 "Meu treino atual": só prioriza; sem cadastro, igual a antes
@@ -261,6 +261,13 @@ export async function lerTreinoDoDia(env: Env, uid: string, d: string, hoje: str
 /** Regenerar: devolve o diff; com apply grava. `reset` descarta as trocas dos dias que ainda não passaram. */
 export async function regenerate(env: Env, uid: string, b: Record<string, unknown>) {
   const c = await ready(env, uid, date(b.date));
+  // #139 prévia do Manter/Ajustar da divisão: "como ficaria" com a escolha, sem salvar (só sem apply; a escolha grava no PATCH do perfil)
+  if (b.divisaoEscolha != null) {
+    if (b.apply === true) throw new HttpError(400, "divisaoEscolha só vale na prévia");
+    const v = validateProfilePatch({ divisaoEscolha: b.divisaoEscolha });
+    if (!v.ok) throw new HttpError(400, "divisaoEscolha inválida");
+    c.profile = { ...c.profile, divisaoEscolha: v.value.divisaoEscolha };
+  }
   const keep = Object.fromEntries(Object.entries(c.overrides).filter(([d]) => !b.reset || d < c.today || !!c.sets[d]));
   // #121 regerar substitui: o treino salvo (IA ou gerado; à mão só com reset) dos dias abertos sai e o algoritmo gera de novo
   const fora = substituir(c, salvosSubstituidos({ tipo: "semana" }, c.fixed, c, { manual: !!b.reset }));

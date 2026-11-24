@@ -105,6 +105,8 @@ test("academias no ciclo_estado e no ciclo_contexto (id, nome, aparelhos) e a do
 test("academia sem leg press: montar o dia ali nunca traz leg press; salvar com leg press recusa e sugere ciclo_treino_trocar", async () => {
   const env = makeEnv();
   const a = await conta(env, "ana", { treinoAtual: TA });
+  // D é fixo (semana passada quando o teste roda depois): sem pedido especial o treino do dia lê a semana gravada; abre-a antes
+  assert.equal((await a.c("GET", `/api/week?date=${D}`)).status, 200);
   const usaLeg = (id: string) => EXERCISE_BY_ID[id]?.eq.includes("legpress");
   for (const focus of [["quad"], ["pant"], ["gluteo"], []]) {
     for (const gym of [{ gymId: "casa" }, {}]) { // {} = a do dia (segunda → casa)
