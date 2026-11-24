@@ -13,7 +13,9 @@ import { useEstadoIa } from "../../lib/sua-ia/estado.ts";
 import { ClaudeLigado, MemoriaCard, loadClaude, useClaude } from "./memoria.tsx";
 import { FaixaPedidos, MiniPrompt } from "./faixa.tsx";
 import { Composer } from "./composer.tsx";
-import { abrirConversa, apagarConversa, carregarConversas, chat, iaDoDemo, mudou, novaConversa, useChat } from "./conversa.ts";
+import { abrirConversa, apagarConversa, carregarConversas, chat, iaDoDemo, mudou, novaConversa, novaResposta, propostaMudou, useChat } from "./conversa.ts";
+import { CardProposta } from "./proposta.tsx";
+import { RotinasCard } from "./rotinas.tsx";
 import type { Envio, MsgChat } from "./conversa.ts";
 import "./chat.css";
 
@@ -38,11 +40,13 @@ function Balao({ m, e }: { m: MsgChat; e: Envio }) {
     <p>Virou um pedido na rotina{e.caminho.conector ? ` do ${e.caminho.conector.nome}` : ""}. A resposta aparece na faixa “pedidos na rotina”, lá em cima.</p>
     {e.caminho.conector && <MiniPrompt ia={e.caminho.conector} texto={m.texto} />}
   </div>;
-  if (m.papel === "chave") return <div class="ch-msg ia"><p>Guardei na conversa. A resposta na hora com a sua chave{m.texto ? ` do ${m.texto}` : ""} chega numa próxima versão.</p></div>;
-  return <div class="ch-msg ia"><p class="ch-txt">{m.texto}</p></div>;
+  if (m.papel === "chave") return <div class="ch-msg ia"><p>Guardei na conversa.</p></div>;
+  return <div class={`ch-msg ia${m.propostas?.length ? " ch-larga" : ""}`}><p class="ch-txt">{m.texto}</p>
+    {m.propostas?.map((p) => <CardProposta key={p.id} p={p} provedor={e.caminho.chave?.provedor ?? null} onMuda={propostaMudou} onResposta={novaResposta} />)}
+  </div>;
 }
 
-function abrirMenu() {
+function abrirMenu(e: Envio) {
   void carregarConversas();
   const Corpo = () => {
     useChat(); const info = useClaude();
@@ -58,6 +62,7 @@ function abrirMenu() {
         </li>)}</ul>}
       <p class="tiny sub">Apagar uma conversa apaga de verdade. As conversas entram no export e no apagar da conta.</p>
       <div class="stack ch-menu-cards">
+        {e.caminho.chave && <RotinasCard provedor={e.caminho.chave.provedor} nome={e.caminho.chave.nome} />}
         <MemoriaCard info={info} />
         <Card><h2>Como mudar seu treino</h2>
           <ol class="small ch-lista">
@@ -117,7 +122,7 @@ export default function Chat({ route }: { route: Route }) {
       {topo && (e.caminho.chaves.length > 1
         ? <button type="button" class="ch-ia" onClick={() => abrirSeletor(e)} aria-label={`IA desta conversa: ${topo}. Trocar`}>{topo}<Icon id="arrow" cls="ch-seta" /></button>
         : <span class="ch-ia">{topo}</span>)}
-      <button type="button" class="btn ghost sm ch-mais" aria-label="Conversas e opções do Chat" onClick={abrirMenu}><Icon id="chat" />Conversas</button>
+      <button type="button" class="btn ghost sm ch-mais" aria-label="Conversas e opções do Chat" onClick={() => abrirMenu(e)}><Icon id="chat" />Conversas</button>
     </header>
     <FaixaPedidos ia={e.caminho.conector} />
     <div class="ch-thread" aria-live="polite">

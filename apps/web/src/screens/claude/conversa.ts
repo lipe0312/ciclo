@@ -8,9 +8,10 @@ import { S, commit } from "../../lib/store/index.ts";
 import { toast } from "../../lib/ui/index.tsx";
 import { uid } from "../../lib/util.ts";
 import { sendInbox } from "./caixa.tsx";
+import type { PropostaChat } from "./proposta.tsx";
 
 export type Papel = "usuario" | "aviso" | "ia" | "sem_ia" | "pedido" | "chave";
-export interface MsgChat { id: string; papel: Papel; texto: string; pedidoId?: string | null; criadaEm: number; anexo?: string | null }
+export interface MsgChat { id: string; papel: Papel; texto: string; pedidoId?: string | null; criadaEm: number; anexo?: string | null; /** #89 propostas da IA nesta resposta */ propostas?: PropostaChat[] }
 export interface ConversaResumo { id: string; titulo: string; criadaEm: number; atualizadaEm: number }
 export interface Anexo { nome: string; tipo: CH.TipoAnexo }
 
@@ -70,12 +71,45 @@ export async function enviar(e: Envio): Promise<void> {
     chat.msgs.push(msg("pedido", v.texto, { pedidoId: m?.id ?? null })); mudou();
     await guardar(v.texto, SERVER ? m?.id ?? null : null);
   } else {
-    S.ui.inboxDraft = ""; commit();
-    chat.msgs.push(msg("chave", e.caminho.chave?.nome ?? "")); mudou();
+    S.ui.inboxDraft = ""; commit(); mudou();
     await guardar(v.texto, null);
+    // #89 anexo: o Chat com a chave ainda não manda arquivo ao modelo (mensagem fixa); o texto segue
+    if (anexo) chat.msgs.push(msg("aviso", "Este modelo não lê arquivos aqui. Descreva em texto o que está na foto ou no PDF."));
+    await responder(e.caminho.chave?.provedor ?? null);
   }
   mudou();
 }
+
+/** #89 Resposta com a chave: o servidor lê a última mensagem guardada e responde (texto + propostas; nada grava antes do Aprovar). */
+async function responder(provedor: C.ProvedorIa | null): Promise<void> {
+  chat.pensando = true; mudou();
+  try {
+    if (!SERVER) { chat.msgs.push(msg("ia", DEMO.texto, { propostas: [{ ...DEMO.proposta, id: uid(), criadoEm: Date.now() }] })); return; }
+    if (!chat.conversaId || !provedor) { chat.msgs.push(msg("aviso", "Não deu para guardar a mensagem: tente de novo.")); return; }
+    const r = await api<{ mensagem: { papel: Papel; texto: string }; propostas: PropostaChat[] }>("POST", "/api/chat/responder", { conversaId: chat.conversaId, provedor });
+    novaResposta(r);
+  } catch { chat.msgs.push(msg("aviso", "A IA não respondeu agora. Tente de novo em instantes.")); }
+  finally { chat.pensando = false; mudou(); }
+}
+/** Uma resposta da IA (do Chat ou de "Pedir alteração") entra na conversa com as propostas dela. */
+export function novaResposta(r: { mensagem: { papel: string; texto: string }; propostas: PropostaChat[] }) {
+  chat.msgs.push(msg(r.mensagem.papel === "ia" ? "ia" : "aviso", r.mensagem.texto, { propostas: r.propostas?.length ? r.propostas : undefined })); mudou();
+}
+/** A proposta mudou de status (aprovada, descartada, alterada). */
+export function propostaMudou(p: PropostaChat) {
+  for (const m of chat.msgs) if (m.propostas) m.propostas = m.propostas.map((x) => (x.id === p.id ? p : x));
+  mudou();
+}
+
+// demonstração (sem servidor): uma proposta ilustrativa, com dados fictícios
+const DEMO: { texto: string; proposta: Omit<PropostaChat, "id" | "criadoEm"> } = {
+  texto: "Montei o treino de hoje com foco em ombro lateral, mantendo bíceps e tríceps. Confira antes de aprovar.",
+  proposta: {
+    ferramenta: "ciclo_salvar_treino_do_dia", status: "pendente",
+    args: { motivo: "foco em ombro lateral (demonstração)", itens: [{ id: "a", sets: 4 }, { id: "b", sets: 3 }, { id: "c", sets: 3 }] },
+    previa: { tipo: "treino", data: new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10), nome: "Ombro e braços", antes: ["Supino reto 3×8–10", "Remada baixa 3×10–12"], depois: ["Elevação lateral 4×12–15", "Rosca alternada 3×10–12", "Tríceps na polia 3×10–12"], avisos: [] },
+  },
+};
 
 export function novaConversa() {
   Object.assign(chat, { conversaId: null, msgs: [], pensando: false, chaveEscolhida: null, paraRotina: false, anexo: null });
@@ -94,9 +128,17 @@ export async function abrirConversa(id: string): Promise<void> {
     novaConversa(); chat.conversaId = id; chat.msgs = d.msgs.slice(); mudou(); return;
   }
   try {
-    const r = await api<{ mensagens: { id: string; papel: Papel; texto: string; pedidoId: string | null; criadaEm: number }[] }>("GET", `/api/conversas/${encodeURIComponent(id)}`);
+    const [r, ps] = await Promise.all([
+      api<{ mensagens: { id: string; papel: Papel; texto: string; pedidoId: string | null; criadaEm: number }[] }>("GET", `/api/conversas/${encodeURIComponent(id)}`),
+      api<{ propostas: PropostaChat[] }>("GET", `/api/chat/propostas?conversaId=${encodeURIComponent(id)}`).catch(() => ({ propostas: [] as PropostaChat[] })),
+    ]);
     novaConversa(); chat.conversaId = id;
     chat.msgs = r.mensagens.flatMap((m) => (m.pedidoId ? [{ ...m, papel: "usuario" as Papel }, { ...m, id: `${m.id}-p`, papel: "pedido" as Papel }] : [m]));
+    // #89 cada proposta volta junto da resposta da IA que veio logo depois dela
+    for (const p of [...ps.propostas].sort((a, b) => a.criadoEm - b.criadoEm)) {
+      const m = chat.msgs.find((x) => (x.papel === "ia" || x.papel === "aviso") && x.criadaEm >= p.criadoEm);
+      if (m) (m.propostas ??= []).push(p);
+    }
     mudou();
   } catch { toast("Não deu para abrir a conversa"); }
 }
