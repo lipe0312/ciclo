@@ -6,6 +6,7 @@ import { MEMORIA, configOpenai, ftsQuery, pedidoDaAcao, statusClaude, validarMem
 import type { AuthUser, Env } from "./env.ts";
 import type { Handler } from "./comida.ts";
 import { HttpError, date, id, json, oneOf, readJson, str } from "./http.ts";
+import { registerChatIa } from "./cerebro-chat.ts";
 
 type Args = Record<string, unknown>;
 interface Tool { name: string; description: string; inputSchema: Record<string, unknown>; readOnly?: boolean; run: (a: Args, env: Env, uid: string) => Promise<unknown> }
@@ -91,6 +92,7 @@ export const TOOLS_CHAT: Tool[] = [
 
 // ---- rotas do app ----
 export function registerClaude(on: (method: string, path: string, h: Handler) => void) {
+  registerChatIa(on); // #89 Chat com a chave: responder, propostas e rotinas
   on("GET", "/api/claude", async (_req, env, _p, u: AuthUser) => {
     const [beats, tok, pend, mem] = await Promise.all([
       env.DB.prepare("SELECT origem, at FROM claude_heartbeat WHERE user_id = ?1").bind(u.id).all<{ origem: string; at: number }>(),

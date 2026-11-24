@@ -15,6 +15,7 @@ import { handleOauth, purgeOauth } from "./oauth.ts";
 import { podeEscrever, wwwAuthenticate } from "@ciclo/core";
 import { handleDevCenario } from "./dev-cenario.ts";
 import { subirVersaoDepois } from "./versao.ts";
+import { rodarRotinas } from "./cerebro-chat.ts";
 
 const LIVRE_SEM_ACEITE = new Set(["GET /api/account", "POST /api/account/consent", "GET /api/account/export", "DELETE /api/account", "POST /api/account/logout-all"]);
 // #66: o 401 diz onde está a metadata OAuth (RFC 9728): o claude.ai descobre o login sozinho a partir da URL do /mcp.
@@ -100,8 +101,9 @@ export default {
     return env.ASSETS.fetch(req);
   },
 
-  // Cron de 1 min (sem IA): avisa o fim do descanso por Web Push (#25) e, a cada 30 min, fecha treinos esquecidos
-  // de todas as contas (iniciou = foi; máx. 2 h) e apaga o texto bruto de exames vencidos (#27).
+  // Cron de 1 min: avisa o fim do descanso por Web Push (#25) e, a cada 30 min, fecha treinos esquecidos
+  // de todas as contas (iniciou = foi; máx. 2 h) e apaga o texto bruto de exames vencidos (#27). De hora em hora, as
+  // rotinas do Chat (#89) que a pessoa ligou, com a chave e o teto dela (nunca escrita direta: o resultado é proposta).
   async scheduled(c: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(sendDueRests(env).catch(() => 0));
     if (new Date(c.scheduledTime).getUTCMinutes() % 30 === 0) {
@@ -114,6 +116,7 @@ export default {
       ctx.waitUntil(purgeLimites(env, c.scheduledTime).catch(() => null)); // falhas de login e uso diário antigos (#56)
       ctx.waitUntil(purgeOauth(env, c.scheduledTime).catch(() => null)); // pedidos/códigos OAuth vencidos e clientes ociosos (#66)
       ctx.waitUntil(purgePrevias(env, c.scheduledTime).catch(() => null)); // prévias do MCP vencidas há mais de 1 dia (#81)
+      ctx.waitUntil(rodarRotinas(env, c.scheduledTime).catch(() => 0)); // #89 rotinas com a chave da pessoa (liga/desliga, hora, teto do cofre)
     }
   },
 } satisfies ExportedHandler<Env>;

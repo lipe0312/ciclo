@@ -87,3 +87,18 @@ button.ch-ia{cursor:pointer}
   .ch-composer[data-teclado]{bottom:0}
   .ch-fim{height:var(--sp-3)}
 }
+
+/* #89 propostas da IA (Aprovar / Corrigir / Pedir alteração) e rotinas com a chave */
+.ch-msg.ch-larga{max-width:100%;width:100%}
+.ch-prop{display:grid;gap:var(--sp-2);width:100%;padding:var(--sp-3);border:1px solid var(--borda);border-radius:var(--r);background:var(--bg)}
+.ch-prop p{margin:0}
+.ch-prop-topo{gap:8px}
+.ch-prop-diff{margin-top:0;overflow-wrap:anywhere}
+.ch-prop-form{display:grid;gap:var(--sp-2)}
+.ch-prop-sets{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.ch-prop-sets li{gap:var(--sp-2);min-width:0}
+.ch-prop-sets label{flex:1;min-width:0;overflow-wrap:anywhere}
+.ch-prop-num,.ch-rot-hora{width:auto;flex:none;min-width:104px}
+.ch-rot-lista{list-style:none;margin:var(--sp-2) 0;padding:0;display:grid;gap:4px}
+.ch-rot-lista li{gap:var(--sp-2);min-width:0}
+.ch-rot-lista .ch-rotina{flex:1;min-width:0}

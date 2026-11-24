@@ -83,7 +83,12 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   const chave = `chv_${tag.slice(-1).toLowerCase()}_${SID.slice(0, 8)}`;
   env.DB.raw.prepare(`INSERT INTO chave_ia (id, user_id, provedor, apelido, ultimos4, impressao, ciphertext, iv, dek_cifrada, kek_versao, modelos_json, teto_dia, teto_mes, criado_em)
     VALUES (?1, ?2, 'openai', ?3, 'ABCD', 'abcdef012345', 'Y3Q=', 'aXY=', 'ZGVr', 1, '["gpt-4.1-mini"]', 100, 500, 1)`).run(chave, exp.user.id, `${tag} chave`);
-  return { chave, sessao: dev.sessions[0]?.id ?? "x1", passkey: dev.passkeys[0]?.id ?? "x1", mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id, previa, livre, revisao, cus, conversa };
+  // #89 uma proposta pendente da IA do Chat (com a marca na prévia) e uma rotina ligada
+  const prop = `prop_${tag.slice(-1).toLowerCase()}_${SID.slice(0, 8)}`;
+  env.DB.raw.prepare(`INSERT INTO chat_proposta (user_id, id, conversa_id, ferramenta, args, previa, status, criado_em) VALUES (?1, ?2, ?3, 'ciclo_comida_registrar', ?4, ?5, 'pendente', 1)`)
+    .run(exp.user.id, prop, conversa, JSON.stringify({ texto: `${tag} 2 ovos` }), JSON.stringify({ tipo: "comida", data: "2026-11-04", refeicoes: [{ refeicao: "cafe", resumo: `${tag} ovos`, kcal: 140, proteina: 12 }] }));
+  env.DB.raw.prepare("INSERT INTO rotina_chat (user_id, rotina, ligada, hora, provedor, atualizado_em) VALUES (?1, 'comida', 1, 20, 'openai', 1)").run(exp.user.id);
+  return { prop, chave, sessao: dev.sessions[0]?.id ?? "x1", passkey: dev.passkeys[0]?.id ?? "x1", mem, sid: SID, ex, cardio, food, tpl, endpoint, pain, inbox, media, lug, mediaLug, exam, tokenId: tok.id, token: tok.token, edit: exp.plan_edit[0].id, uid: exp.user.id, previa, livre, revisao, cus, conversa };
 }
 const snap = async (env: any, user: string) => {
   const e = (await call(env, "GET", "/api/account/export", { user })).data;
@@ -96,7 +101,7 @@ async function matriz(env: any, ana: string, bia: string) {
   const A = await seed(env, ana, "MARCA_A", SID_A, 10);
   const before = await snap(env, bia);
   const r2Before = [...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length;
-  const secrets = [B.chave, B.mem, "MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, B.revisao, B.cus, B.conversa, String(MARK_KG), "bia@"];
+  const secrets = [B.prop, B.chave, B.mem, "MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, B.revisao, B.cus, B.conversa, String(MARK_KG), "bia@"];
   const subsB = () => env.DB.raw.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE endpoint = ?1").get(B.endpoint).n;
   const restB = () => JSON.stringify(env.DB.raw.prepare("SELECT fire_at, sent_at FROM rest_timer WHERE user_id = ?1").get(B.uid));
   const restBefore = restB();
@@ -223,6 +228,14 @@ async function matriz(env: any, ana: string, bia: string) {
     ["POST /api/conversas/mensagens", () => a("POST", "/api/conversas/mensagens", { conversaId: B.conversa, texto: "hackeado" }), 404],
     ["POST /api/conversas/mensagens (pedido da B)", () => a("POST", "/api/conversas/mensagens", { texto: "A oi", pedidoId: B.inbox }), 404],
     ["DELETE /api/conversas/:id", () => a("DELETE", `/api/conversas/${B.conversa}`), 404],
+    // #89 Chat com a chave: a A não responde na conversa da B, não vê nem aprova/descarta/altera a proposta da B e só mexe nas próprias rotinas
+    ["POST /api/chat/responder", () => a("POST", "/api/chat/responder", { conversaId: B.conversa, provedor: "openai" }), 404],
+    ["GET /api/chat/propostas", () => a("GET", `/api/chat/propostas?conversaId=${B.conversa}`)],
+    ["POST /api/chat/propostas/:id/aprovar", () => a("POST", `/api/chat/propostas/${B.prop}/aprovar`, {}), 404],
+    ["POST /api/chat/propostas/:id/descartar", () => a("POST", `/api/chat/propostas/${B.prop}/descartar`, {}), 404],
+    ["POST /api/chat/propostas/:id/alterar", () => a("POST", `/api/chat/propostas/${B.prop}/alterar`, { texto: "hackeado", provedor: "openai" }), 404],
+    ["GET /api/chat/rotinas", () => a("GET", "/api/chat/rotinas")],
+    ["PUT /api/chat/rotinas/:rotina", () => a("PUT", "/api/chat/rotinas/comida", { ligada: false, hora: 7, provedor: "gemini" })],
     ["PATCH /api/exercicios-personalizados/:id", () => a("PATCH", `/api/exercicios-personalizados/${B.cus}`, { nome: "hackeado" }), 404],
     ["DELETE /api/exercicios-personalizados/:id", () => a("DELETE", `/api/exercicios-personalizados/${B.cus}`), 404],
   ];

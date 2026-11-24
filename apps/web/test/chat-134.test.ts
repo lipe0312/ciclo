@@ -137,7 +137,8 @@ for (const [ia, nome] of [["gemini", "Gemini"], ["deepseek", "DeepSeek"]] as con
     assert.match(tela(), new RegExp(`${nome} · modelo padrão`));
     await enviar("como foi minha semana?");
     assert.equal(M.S.inbox.length, 0);
-    assert.match(tela(), new RegExp(`chave do ${nome}`));
+    // #89 a chave responde na hora (no demo, uma proposta ilustrativa com Aprovar / Corrigir / Pedir alteração)
+    assert.match(tela(), /Proposta · Treino de/); assert.match(tela(), /Aprovar/); assert.match(tela(), /Pedir alteração/);
     assert.equal(M.chat.conversaId != null, true, "não entrou no histórico");
     assert.ok(!raiz.porClasse("ch-faixa").length, "faixa sem pedidos");
   });
@@ -164,7 +165,7 @@ test("rotina de uma IA + chave de outra: 2 pedidos esperando não bloqueiam a co
   assert.match(tela(), /2 pedidos na rotina/);
   assert.ok(!raiz.porClasse("ch-pedido").length, "a faixa começa recolhida");
   await enviar("conversa com a chave");
-  assert.match(tela(), /chave do Gemini/);
+  assert.match(tela(), /Proposta · Treino de/);
   assert.equal(M.S.inbox.length, 2, "a conversa virou pedido");
   await clicar("2 pedidos na rotina");
   assert.equal(raiz.porClasse("ch-pedido").length, 2);
@@ -216,4 +217,38 @@ test("ataque: anexo de tipo errado é recusado; foto entra", async () => {
   (inp as any).files = [{ name: "prato.jpg", type: "image/jpeg", size: 2000 }]; inp.dispatch("change"); await tick();
   assert.deepEqual(M.chat.anexo, { nome: "prato.jpg", tipo: "foto" });
   assert.ok(botao("Tirar o anexo"));
+});
+
+// ---------- #89 propostas da IA da chave: Aprovar / Corrigir / Pedir alteração (demo) ----------
+test("#89 proposta no Chat: Corrigir edita as séries no card e Aprovar corrigido marca aprovada; Pedir alteração pede o texto", async () => {
+  await abrir("?demo&ia=chave&chave=claude");
+  await enviar("hoje quero ombro");
+  assert.match(tela(), /Nada é gravado antes de você aprovar/);
+  await clicar("Corrigir");
+  const sel = els("select");
+  assert.equal(sel.length, 3, "uma escolha de séries por exercício");
+  sel[0].value = "5"; sel[0].dispatch("change"); await tick();
+  await clicar("Aprovar corrigido");
+  await tick(20);
+  assert.match(tela(), /aprovada/);
+  assert.ok(!raiz.todos().some((e) => e.localName === "button" && texto(e) === "Aprovar"), "aprovada não mostra os botões");
+  await enviar("outra proposta");
+  await clicar("Pedir alteração");
+  const enviarAlt = raiz.todos().filter((e) => e.localName === "button" && texto(e) === "Pedir alteração").pop()!;
+  assert.ok(enviarAlt.hasAttribute("disabled"), "sem texto não envia");
+});
+
+test("#89 faixa: pedido da rotina com proposta mostra o card (sem o Aplicar antigo); Aprovar aplica o pedido; texto da IA vira texto", async () => {
+  const xss = "<img src=x onerror=alert(1)>";
+  await abrir("?demo&ia=chave&chave=gemini", {}, [{
+    id: "r9", text: "Revisão de domingo", status: "respondido", created_at: Date.now(), tier: "opus", response: `Revisão fictícia ${xss}`,
+    change: { propostas: [{ id: "p9", ferramenta: "ciclo_comida_registrar", status: "pendente", criadoEm: Date.now(), args: { texto: "1 iogurte" }, previa: { tipo: "comida", data: "2026-11-22", refeicoes: [{ refeicao: "lanche", resumo: `iogurte ${xss}`, kcal: 120, proteina: 9 }], duvidas: [], escolha: false } }] },
+  }]);
+  await clicar("1 pedido na rotina");
+  assert.match(tela(), /Proposta · Comida de 22\/11/);
+  assert.ok(!raiz.todos().some((e) => e.localName === "img"), "nenhum elemento criado a partir do texto");
+  assert.ok(!raiz.todos().some((e) => e.localName === "button" && texto(e) === "Aplicar"));
+  await clicar("Aprovar", raiz.porClasse("ch-prop")[0]);
+  await tick(20);
+  assert.equal(M.S.inbox[0].status, "aplicado");
 });

@@ -6,6 +6,9 @@ import { S } from "../../lib/store/index.ts";
 import { Icon, toast } from "../../lib/ui/index.tsx";
 import { applyInbox, dropInbox, hhmm } from "./caixa.tsx";
 import { StatusFila, useClaude } from "./memoria.tsx";
+import { CardProposta } from "./proposta.tsx";
+import type { PropostaChat } from "./proposta.tsx";
+import { commit } from "../../lib/store/index.ts";
 
 const ROTULO: Record<CH.StatusPedido, [string, string]> = { aguardando: ["aguardando", "warn"], respondido: ["respondido", "ok"], erro: ["erro", "bad"] };
 
@@ -25,7 +28,14 @@ function Pedido({ m, ia }: { m: any; ia: CH.IaDoCaminho | null }) {
   const [abrir, setAbrir] = useState(false);
   const st = CH.statusPedido(m)!;
   const [rot, cls] = ROTULO[st];
-  const diff: { minus?: string; plus?: string }[] | null = m.change?.diff ?? (m.change?.itens ? m.change.itens.map((t: string) => ({ plus: t })) : null);
+  // #89 pedido respondido pela rotina com a chave: as propostas (Aprovar / Corrigir) no lugar do "Aplicar"
+  const propostas: PropostaChat[] | null = Array.isArray(m.change?.propostas) ? m.change.propostas : null;
+  const diff: { minus?: string; plus?: string }[] | null = propostas ? null : m.change?.diff ?? (m.change?.itens ? m.change.itens.map((t: string) => ({ plus: t })) : null);
+  const mudou = (p: PropostaChat) => {
+    m.change = { ...m.change, propostas: propostas!.map((x) => (x.id === p.id ? p : x)) };
+    if (p.status === "aprovada") m.status = "aplicado";
+    commit();
+  };
   return <li class="ch-pedido">
     <div class="row between start" style="gap:8px">
       <p class="small ch-txt">{m.text}</p>
@@ -33,10 +43,11 @@ function Pedido({ m, ia }: { m: any; ia: CH.IaDoCaminho | null }) {
     </div>
     <p class="tiny sub">para {ia?.nome ?? "sua IA"}{m.created_at ? ` · ${hhmm(m.created_at)}` : ""}</p>
     {m.response && <div class="msg small ch-resp"><span class="ch-txt">{m.response}</span>
+      {propostas?.map((p) => <CardProposta key={p.id} p={p} provedor={null} onMuda={mudou} onResposta={() => {}} />)}
       {!!diff?.length && <div class="diff">{diff.map((d, i) => <div key={i}>{d.minus && <div class="minus">− {d.minus}</div>}{d.plus && <div class="plus">+ {d.plus}</div>}</div>)}</div>}</div>}
     <div class="row wrapx ch-acoes">
       {st === "aguardando" && <button type="button" class="btn sm ghost" aria-expanded={abrir} onClick={() => setAbrir(!abrir)}><Icon id="arrow" />Abrir</button>}
-      {CH.podeAplicar(m) && <button type="button" class="btn sm pri" onClick={() => applyInbox(m)}><Icon id="check" />Aplicar</button>}
+      {CH.podeAplicar(m) && !propostas && <button type="button" class="btn sm pri" onClick={() => applyInbox(m)}><Icon id="check" />Aplicar</button>}
       <button type="button" class="btn sm ghost" onClick={() => { dropInbox(m); toast("Pedido cancelado"); }}><Icon id="x" />Cancelar</button>
     </div>
     {abrir && st === "aguardando" && <MiniPrompt ia={ia} texto={m.text} />}
