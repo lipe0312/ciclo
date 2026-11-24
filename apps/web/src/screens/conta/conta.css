@@ -39,3 +39,10 @@
 @media (min-width:720px){.chv-grade{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.chv-acoes .btn{flex:0 0 auto}}
 /* botão parado legível (o motivo vem escrito ao lado; a cor não é o único sinal) */
 .btn.pri.chv-salvar:disabled{opacity:1;background:var(--sup-2);color:var(--sub);border-color:var(--borda-ctrl);box-shadow:none}
+/* #138 tetos da chave, subida pendente e histórico */
+.chv-tetos{display:flex;flex-direction:column;gap:8px}
+.chv-tetos .btn{align-self:flex-start;min-height:var(--alvo)}
+.chv-pend{flex-wrap:wrap;align-items:center;gap:8px}
+.chv-pend-txt{flex:1 1 220px}
+.chv-hist summary{min-height:var(--alvo);line-height:var(--alvo);cursor:pointer;font-size:13px;font-weight:600}
+.chv-hist ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}

@@ -8,11 +8,14 @@ import { SERVER, api } from "../../lib/api/index.ts";
 import { Icon } from "../../lib/ui/index.tsx";
 import { PrivacidadeDados } from "./dados.tsx";
 import { Perfil } from "./perfil.tsx";
-import { Pessoas } from "./pessoas.tsx";
-import { Seguranca } from "./seguranca.tsx";
+import { preloadNoOcio, telaLenta } from "../../lib/tela-lenta/index.tsx";
 import { Avatar, Sub, nomeCompleto, sair } from "./comum.tsx";
 import type { Account } from "./comum.tsx";
 import "./conta.css";
+
+// #138 Segurança e Pessoas baixam ao abrir (fora do JS inicial); com o menu da Conta aberto, baixam no ócio para o service worker guardar.
+const Seguranca = telaLenta<object>(() => import("./seguranca.tsx").then((m) => ({ default: m.Seguranca })));
+const Pessoas = telaLenta<object>(() => import("./pessoas.tsx").then((m) => ({ default: m.Pessoas })));
 
 const ITENS: { id: string; nm: string; desc: string; icon: string; dono?: boolean }[] = [
   { id: "perfil", nm: "Perfil", desc: "Nome, sexo, nascimento, altura e peso", icon: "user" },
@@ -27,7 +30,7 @@ export default function Conta({ route }: { route: Route }) {
   const [setup, setSetup] = useState(false);
   const [erro, setErro] = useState("");
   const load = async () => { const r = await api<{ account: Account; setupPendente?: boolean }>("GET", "/api/account"); setAcc(r.account); setSetup(!!r.setupPendente); };
-  useEffect(() => { if (SERVER) load().catch(() => setErro("Não deu para carregar a conta.")); }, []);
+  useEffect(() => { if (SERVER) { load().catch(() => setErro("Não deu para carregar a conta.")); preloadNoOcio([Seguranca, Pessoas]); } }, []);
   const sub = route.parts[0] ?? "";
   // #133 #conta/chat e #conta/chaves são redirecionadas pelo roteador (canonico) antes de chegar aqui
 

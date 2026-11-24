@@ -15,3 +15,14 @@ export function AvisoIa() {
     <button type="button" class="btn ghost sm aviso-ia-x" aria-label="Dispensar o aviso por 7 dias" onClick={() => dispensarAviso(a)}><Icon id="x" /></button>
   </div>;
 }
+
+/** #138 Aviso de consumo: uma chave passou de 80% do teto do dia ou do mês. Não se dispensa (some quando o gasto zera ou o teto muda). */
+export function AvisoConsumo() {
+  const e = useEstadoIa();
+  const c = e?.conta.consumo ?? [];
+  if (!c.length) return null;
+  return <div class="note warn aviso-ia" role="status">
+    <Icon id="warn" />
+    <a class="link44 aviso-ia-txt" href="#perfil/ia">{c.length === 1 ? c[0].texto : `${c[0].texto} ${c.length === 2 ? "Mais 1 chave" : `Mais ${c.length - 1} chaves`} perto do teto.`}</a>
+  </div>;
+}
