@@ -202,10 +202,11 @@ test("teto de gasto por chave: o pior caso tem de caber no dia E no mês; bateu 
   const now = Date.parse(`${D}T12:00:00Z`);
   let n = 0;
   const usar = (usd: number, t = now) => comChaveDoUsuario(env, uid, "openai", () => usd, async () => { n++; return { valor: "ok" }; }, t);
+  // #138 as chamadas ficam a mais de 10 min uma da outra (senão o disjuntor de velocidade pausa antes do teto)
   assert.deepEqual(await usar(0.6), { ok: true, valor: "ok" });
-  assert.deepEqual(await usar(0.6), { ok: false, motivo: "teto" }, "estoura o dia (US$ 1)");
+  assert.deepEqual(await usar(0.6, now + 11 * 60_000), { ok: false, motivo: "teto" }, "estoura o dia (US$ 1)");
   assert.deepEqual(await usar(0.6, now + 86_400_000), { ok: true, valor: "ok" }, "dia novo");
-  assert.deepEqual(await usar(0.6, now + 2 * 86_400_000), { ok: false, motivo: "teto" }, "estoura o mês (US$ 1,50)");
+  assert.deepEqual(await usar(0.6, now + 86_400_000 + 11 * 60_000), { ok: false, motivo: "teto" }, "estoura o mês (US$ 1,50)");
   assert.equal(n, 2, "bateu o teto: nem chama");
   assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM chave_ia_evento WHERE tipo = 'teto'").get().n, 2);
   // uso real acerta a reserva
@@ -234,7 +235,7 @@ test("rate limit: uso 20/min por conta; validar chave 10/h por conta (429 sem ch
   assert.equal((await call(env, "POST", "/api/account/chaves", { user: "bia", body: nova() })).status, 201, "outra conta segue");
 });
 
-test("step-up: cadastrar, trocar, mudar e apagar pedem Face ID dos últimos 5 min (conta de verdade, cookie)", async (t) => {
+test("step-up: cadastrar, trocar e ajustar pedem Face ID dos últimos 5 min (conta de verdade, cookie); desativar e apagar, não (#138)", async (t) => {
   let agora = Date.parse(`${D}T12:00:00Z`);
   t.mock.method(Date, "now", () => agora);
   const env = envConta({ KEK_V1: KEK });
@@ -246,12 +247,15 @@ test("step-up: cadastrar, trocar, mudar e apagar pedem Face ID dos últimos 5 mi
   const id = r.data.chave.id;
   agora += 6 * 60_000;
   const calls = provedorFalso();
-  for (const [m, p, b] of [["POST", "/api/account/chaves", nova()], ["PUT", `/api/account/chaves/${id}/segredo`, { chave: CANARIO }], ["PATCH", `/api/account/chaves/${id}`, { ativo: false }], ["DELETE", `/api/account/chaves/${id}`, undefined]] as const) {
+  for (const [m, p, b] of [["POST", "/api/account/chaves", nova()], ["PUT", `/api/account/chaves/${id}/segredo`, { chave: CANARIO }], ["PATCH", `/api/account/chaves/${id}`, { esforco: "alto" }], ["PATCH", `/api/account/chaves/${id}`, { tetoDia: 2 }]] as const) {
     const x = await call(env, m, p, { ...h, body: b });
     assert.equal(x.status, 403, `${m} ${p}`); assert.equal(x.data.code, "reauth");
   }
   assert.equal(calls.length, 0, "sem Face ID recente nem chega ao provedor");
   assert.equal((await call(env, "GET", "/api/account/chaves", h)).status, 200, "ver a lista (só metadados) não pede");
+  // #138 reduzir risco nunca pede prova (a assimetria completa está em chaves-138.test.ts)
+  assert.equal((await call(env, "PATCH", `/api/account/chaves/${id}`, { ...h, body: { ativo: false } })).status, 200);
+  assert.equal((await call(env, "DELETE", `/api/account/chaves/${id}`, h)).status, 200);
 });
 
 test("apelido: SQL vai por bind (salva literal, tabela intacta); < e > recusados; formato e provedor validados", async () => {
@@ -280,7 +284,7 @@ test("Claude e Gemini: validação com o cabeçalho de cada um (chave nunca na U
   assert.equal(calls[0].headers["x-api-key"], ANT); assert.equal(calls[0].headers["anthropic-version"], "2023-06-01");
   assert.deepEqual(ra.data.chave.modelos.map((m: any) => m.familia), ["Haiku", "Sonnet", "Opus"]);
   assert.equal(ra.data.chave.modelo, "claude-sonnet-5-5");
-  const rg = await c("POST", "/api/account/chaves", { provedor: "gemini", apelido: "Gemini", chave: GEM, tetoDia: 1, tetoMes: 2 });
+  const rg = await c("POST", "/api/account/chaves", { provedor: "gemini", apelido: "Gemini", chave: GEM, tetoDia: 1, tetoMes: 2, aceiteAvisoGratis: true });
   assert.equal(rg.status, 201, rg.text);
   assert.equal(calls[1].headers["x-goog-api-key"], GEM); assert.ok(!calls[1].url.includes(GEM));
   assert.deepEqual(rg.data.chave.modelos.map((m: any) => m.id), ["gemini-2.5-flash"]);
@@ -347,7 +351,7 @@ test("uso real acima da estimativa: o teto estoura em no máximo uma chamada; a 
   const now = Date.parse(`${D}T12:00:00Z`);
   assert.equal((await comChaveDoUsuario(env, uid, "openai", () => 0.1, async () => ({ valor: 1, usdReal: 2 }), now)).ok, true);
   assert.equal(env.DB.raw.prepare("SELECT usd_micro FROM chave_ia_uso").get().usd_micro, 2_000_000, "cobra o real");
-  assert.deepEqual(await comChaveDoUsuario(env, uid, "openai", () => 0.000001, async () => ({ valor: 2 }), now), { ok: false, motivo: "teto" });
+  assert.deepEqual(await comChaveDoUsuario(env, uid, "openai", () => 0.000001, async () => ({ valor: 2 }), now + 11 * 60_000), { ok: false, motivo: "teto" });
 });
 
 test("migration: gasto e contadores nunca negativos (CHECK)", () => {

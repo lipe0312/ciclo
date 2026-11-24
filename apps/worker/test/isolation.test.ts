@@ -221,6 +221,7 @@ async function matriz(env: any, ana: string, bia: string) {
     ["PUT /api/account/chaves/:id/segredo", () => a("PUT", `/api/account/chaves/${B.chave}/segredo`, { chave: "sk-" + "y".repeat(30) }), 404],
     ["PATCH /api/account/chaves/:id", () => a("PATCH", `/api/account/chaves/${B.chave}`, { ativo: false }), 404],
     ["DELETE /api/account/chaves/:id", () => a("DELETE", `/api/account/chaves/${B.chave}`), 404],
+    ["DELETE /api/account/chaves/:id/subida", () => a("DELETE", `/api/account/chaves/${B.chave}/subida`), 404], // #138 cancelar a subida da B
     // #134 histórico do Chat: a A não lista, não abre, não escreve nem apaga a conversa da B (nem liga ao pedido da B)
     ["GET /api/conversas", () => a("GET", "/api/conversas")],
     ["GET /api/conversas/:id", () => a("GET", `/api/conversas/${B.conversa}`), 404],

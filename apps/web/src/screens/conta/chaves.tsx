@@ -1,7 +1,9 @@
 // #88 Chaves de API (BYOK, ADR-0015), dentro de Perfil → Sua IA (#133). A pessoa usa o Chat conectado (assinatura), a própria chave de API, ou os dois.
 // A chave só sai deste aparelho no POST/PUT: o campo é password, sem autocomplete, nunca vai para estado, URL, query,
 // localStorage ou IndexedDB, e é limpo do DOM logo depois de lido. Depois de salva, a tela só vê
-// provedor · apelido · ••••últimos4 · impressão · criada · último uso. Cadastrar, trocar, mudar e apagar pedem Face ID.
+// provedor · apelido · ••••últimos4 · impressão · criada · último uso. Não existe "revelar" (#138: padrão de mercado).
+// #138 Limites blindados: baixar teto, desativar, cancelar subida e apagar valem sem Face ID; subir teto, ativar e
+// trocar pedem Face ID (60 s, o servidor decide). Subida fica pendente 24 h; pausa do disjuntor; aviso a 80%.
 import { useEffect, useRef, useState } from "preact/hooks";
 import * as C from "@ciclo/core";
 import { HttpError, api } from "../../lib/api/index.ts";
@@ -16,8 +18,10 @@ interface ChaveIa {
   id: string; provedor: Provedor; nomeProvedor: string; apelido: string; mascara: string; impressao: string;
   modelos: { id: string; familia: string }[]; modelo: string | null; esforco: Esforco;
   tetoDia: number; tetoMes: number; gastoDia: number; gastoMes: number; criadoEm: number; usadoEm: number | null; ativo: boolean;
+  pendente: { tetoDia: number; tetoMes: number; valeEm: number } | null; pausada: { em: number; motivo: string | null; texto: string } | null;
+  alerta: C.AlertaConsumo | null; historico: { tipo: string; codigo: string | null; em: number }[];
 }
-interface Lista { chaves: ChaveIa[]; max: number; cofre: boolean; provedores: { id: Provedor; nome: string }[]; padraoServidor: { openai: boolean } }
+interface Lista { chaves: ChaveIa[]; max: number; cofre: boolean; provedores: { id: Provedor; nome: string }[]; padraoServidor: { openai: boolean }; tetoConta?: number }
 
 const ESFORCOS: [Esforco, string][] = [["baixo", "Baixo"], ["medio", "Médio"], ["alto", "Alto"]];
 const usd = (v: number) => `US$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -29,6 +33,13 @@ function tirarChave(ref: { current: HTMLInputElement | null }): string {
   return v;
 }
 const msgErro = (e: unknown) => (e instanceof HttpError ? e.message : erroPasskey(e));
+const quando = (ms: number) => new Date(ms).toLocaleString("pt-BR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+/** Trilha da chave em pt-BR (o código é curto e sem segredo; nunca vira HTML). */
+const EVENTO: Record<string, string> = {
+  criada: "Cadastrada", validada: "Validada no provedor", trocada: "Chave trocada", desativada: "Desativada", ativada: "Ativada", falhou: "Falhou",
+  teto: "Bateu o teto", apagada: "Apagada", subida_pedida: "Subida de teto pedida", subida_aplicada: "Subida de teto aplicada", subida_cancelada: "Subida cancelada",
+  teto_baixado: "Teto baixado", pausada: "Pausada pelo freio automático", reativada: "Reativada", aviso_aceito: "Aviso do nível grátis aceito",
+};
 
 /** Campo da chave: password, sem autocomplete/correção, sem name (nada vai para a URL), sem valor controlado. */
 function CampoChave({ id, rotulo, refEl }: { id: string; rotulo: string; refEl: { current: HTMLInputElement | null } }) {
@@ -51,15 +62,41 @@ function Item({ k, busy, act, onMudou }: { k: ChaveIa; busy: string; act: (id: s
     await comFaceId(() => api("PUT", `/api/account/chaves/${encodeURIComponent(k.id)}/segredo`, { chave }));
     setTrocando(false); toast("Chave trocada e validada"); await onMudou();
   });
+  const [dia0, setDia0] = useState(String(k.tetoDia).replace(".", ","));
+  const [mes0, setMes0] = useState(String(k.tetoMes).replace(".", ","));
+  useEffect(() => { setDia0(String(k.tetoDia).replace(".", ",")); setMes0(String(k.tetoMes).replace(".", ",")); }, [k.tetoDia, k.tetoMes]);
+  // subir pede Face ID (o servidor responde "reauth" e o comFaceId pede); baixar vale na hora, sem prova
+  const salvarTetos = () => act(`l${k.id}`, async () => {
+    const r = await comFaceId(() => api<{ chave: ChaveIa }>("PATCH", `/api/account/chaves/${encodeURIComponent(k.id)}`, { tetoDia: numero(dia0), tetoMes: numero(mes0) }));
+    toast(r.chave.pendente ? "Subida pedida: vale em 24 h" : "Teto salvo"); await onMudou();
+  });
+  const cancelarSubida = () => act(`c${k.id}`, async () => {
+    await api("DELETE", `/api/account/chaves/${encodeURIComponent(k.id)}/subida`); toast("Subida cancelada"); await onMudou();
+  });
   const cheio = k.gastoDia >= k.tetoDia || k.gastoMes >= k.tetoMes;
   return <li class="chv-item">
     <div class="chv-topo">
       <div class="chv-nome"><strong>{k.nomeProvedor} · {k.apelido}</strong>
-        <span class={`badge ${k.ativo ? "ok" : ""}`}>{k.ativo ? "ativa" : "desativada"}</span>
+        {k.ativo && k.pausada ? <span class="badge bad">pausada</span> : <span class={`badge ${k.ativo ? "ok" : ""}`}>{k.ativo ? "ativa" : "desativada"}</span>}
         {cheio && <span class="badge warn">teto atingido</span>}</div>
       <p class="tiny sub"><span class="mono">{k.mascara}</span> · impressão <span class="mono">{k.impressao}</span> · criada em {dia(k.criadoEm)} · último uso {dia(k.usadoEm)}</p>
       <p class="tiny sub num">Hoje {usd(k.gastoDia)} de {usd(k.tetoDia)} · mês {usd(k.gastoMes)} de {usd(k.tetoMes)}</p>
     </div>
+    {k.pausada && <div class="note warn" role="status"><Icon id="warn" /><span>Pausada em {quando(k.pausada.em)}: {k.pausada.texto}. Confira o uso e reative com o Face ID.</span></div>}
+    {k.alerta && !k.pausada && <div class="note warn" role="status"><Icon id="warn" /><span>{C.textoAlertaConsumo(k.apelido, k.alerta)}</span></div>}
+    <form class="chv-tetos" onSubmit={(e) => { e.preventDefault(); salvarTetos(); }} noValidate>
+      <div class="conta-duas">
+        <div><label class="f" for={`td-${k.id}`}>Teto por dia (US$)</label>
+          <input id={`td-${k.id}`} class="input num" inputMode="decimal" value={dia0} maxLength={6} onInput={(e) => setDia0((e.currentTarget as HTMLInputElement).value)} /></div>
+        <div><label class="f" for={`tm-${k.id}`}>Teto por mês (US$)</label>
+          <input id={`tm-${k.id}`} class="input num" inputMode="decimal" value={mes0} maxLength={6} onInput={(e) => setMes0((e.currentTarget as HTMLInputElement).value)} /></div>
+      </div>
+      <p class="tiny sub">Baixar vale na hora. Subir pede o Face ID e só vale 24 h depois.</p>
+      <button type="submit" class="btn sm" disabled={!!busy}>{busy === `l${k.id}` ? "Salvando…" : "Salvar tetos"}</button>
+    </form>
+    {k.pendente && <div class="note chv-pend" role="status"><Icon id="info" />
+      <span class="num chv-pend-txt">Subida pendente: {usd(k.pendente.tetoDia)}/dia e {usd(k.pendente.tetoMes)}/mês, vale a partir de {quando(k.pendente.valeEm)}.</span>
+      <button type="button" class="btn sm" disabled={!!busy} onClick={cancelarSubida}>Cancelar subida</button></div>}
     <div class="chv-grade">
       <div><label class="f" for={`m-${k.id}`}>Modelo</label>
         <select id={`m-${k.id}`} class="input" value={k.modelo ?? ""} disabled={!!busy} onChange={(e) => patch({ modelo: (e.currentTarget as HTMLSelectElement).value }, "Modelo salvo")}>
@@ -77,12 +114,16 @@ function Item({ k, busy, act, onMudou }: { k: ChaveIa; busy: string; act: (id: s
     </form>}
     {!trocando && <div class="chv-acoes">
       <button type="button" class="btn sm" disabled={!!busy} onClick={() => setTrocando(true)}>Trocar chave</button>
-      <button type="button" class="btn sm" disabled={!!busy} onClick={() => patch({ ativo: !k.ativo }, k.ativo ? "Chave desativada" : "Chave ativada")}>{k.ativo ? "Desativar" : "Ativar"}</button>
+      {k.ativo && k.pausada
+        ? <button type="button" class="btn sm" disabled={!!busy} onClick={() => patch({ ativo: true }, "Chave reativada")}>Reativar</button>
+        : <button type="button" class="btn sm" disabled={!!busy} onClick={() => patch({ ativo: !k.ativo }, k.ativo ? "Chave desativada" : "Chave ativada")}>{k.ativo ? "Desativar" : "Ativar"}</button>}
       <button type="button" class="btn sm danger" disabled={!!busy} aria-label={`Apagar ${k.apelido}`} onClick={() => {
         if (!confirm(`Apagar a chave "${k.apelido}"? Ela some do servidor agora (o histórico de uso fica, sem a chave).`)) return;
-        act(`d${k.id}`, async () => { await comFaceId(() => api("DELETE", `/api/account/chaves/${encodeURIComponent(k.id)}`)); toast("Chave apagada"); await onMudou(); });
+        act(`d${k.id}`, async () => { await api("DELETE", `/api/account/chaves/${encodeURIComponent(k.id)}`); toast("Chave apagada"); await onMudou(); });
       }}>Apagar</button>
     </div>}
+    {k.historico.length > 0 && <details class="chv-hist"><summary>Histórico</summary>
+      <ul>{k.historico.map((e, i) => <li key={i} class="tiny"><span class="sub num">{quando(e.em)}</span> · {EVENTO[e.tipo] ?? e.tipo}</li>)}</ul></details>}
   </li>;
 }
 
@@ -110,11 +151,13 @@ export function Chaves({ demo = false, inicial }: { demo?: boolean; inicial?: Pr
   useEffect(() => { if (!demo) load().catch(() => setErro("Não deu para carregar as chaves.")); }, []);
   const act = (id: string, f: () => Promise<void>) => {
     setErro(""); setBusy(id);
-    void f().catch((e) => setErro(msgErro(e))).finally(() => setBusy(""));
+    // #138 409 = a chave mudou no meio (outra aba ou aparelho): mostra o aviso e recarrega o estado verdadeiro
+    void f().catch((e) => { setErro(msgErro(e)); if (e instanceof HttpError && e.status === 409 && !demo) void load().catch(() => {}); }).finally(() => setBusy(""));
   };
   const salvar = () => act("nova", async () => {
     const chave = tirarChave(chaveRef);
-    await comFaceId(() => api("POST", "/api/account/chaves", { provedor: prov, apelido: apelido.trim() || undefined, chave, tetoDia: numero(tetoDia), tetoMes: numero(tetoMes) }));
+    // #138 o "Entendi" do aviso grátis vai ao servidor (sem ele, o servidor recusa)
+    await comFaceId(() => api("POST", "/api/account/chaves", { provedor: prov, apelido: apelido.trim() || undefined, chave, tetoDia: numero(tetoDia), tetoMes: numero(tetoMes), ...(aviso ? { aceiteAvisoGratis: !!entendi[prov] } : {}) }));
     setApelido(""); toast("Chave validada e guardada"); await load();
   });
   const nomes = lista?.provedores ?? [];
@@ -154,7 +197,7 @@ export function Chaves({ demo = false, inicial }: { demo?: boolean; inicial?: Pr
         <div><label class="f" for="chv-mes">Teto por mês (US$)</label>
           <input id="chv-mes" class="input num" inputMode="decimal" value={tetoMes} maxLength={6} onInput={(e) => setTetoMes((e.currentTarget as HTMLInputElement).value)} /></div>
       </div>
-      <p class="tiny sub">Ao salvar, o app confere a chave no provedor (lista os modelos dela) e pede o Face ID. Bateu o teto, para e avisa.</p>
+      <p class="tiny sub">Ao salvar, o app confere a chave no provedor (lista os modelos dela) e pede o Face ID. Bateu o teto, para e avisa. Todas as chaves juntas gastam no máximo {usd(lista?.tetoConta ?? C.CHAVE_TETO_CONTA_CENT.mes / 100)} por mês.</p>
       {motivo && <p id="chv-motivo" class="note warn" role="status"><Icon id="warn" />{motivo}</p>}
       <button type="submit" class="btn pri full chv-salvar" disabled={!!busy || !!motivo} aria-describedby={motivo ? "chv-motivo" : undefined}>{busy === "nova" ? "Validando…" : "Validar e salvar"}</button>
     </form>
