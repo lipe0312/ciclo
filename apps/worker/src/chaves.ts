@@ -136,8 +136,11 @@ async function gastos(env: Env, uid: string, now = Date.now()) {
 async function historicos(env: Env, uid: string, ids: string[]) {
   const m = new Map<string, Evento[]>();
   if (!ids.length) return m;
-  const { results } = await env.DB.prepare("SELECT chave_id, tipo, codigo, criado_em FROM chave_ia_evento WHERE user_id = ?1 ORDER BY id DESC LIMIT ?2")
-    .bind(uid, ids.length * 40).all<{ chave_id: string; tipo: string; codigo: string | null; criado_em: number }>();
+  // os N mais recentes POR chave (eventos "teto" de uma chave não empurram a pausa ou a subida de outra para fora)
+  const { results } = await env.DB.prepare(`SELECT chave_id, tipo, codigo, criado_em FROM (
+      SELECT chave_id, tipo, codigo, criado_em, id, ROW_NUMBER() OVER (PARTITION BY chave_id ORDER BY id DESC) AS n
+      FROM chave_ia_evento WHERE user_id = ?1 AND chave_id IN (SELECT value FROM json_each(?2))) WHERE n <= ?3 ORDER BY id DESC`)
+    .bind(uid, JSON.stringify(ids), HISTORICO_POR_CHAVE).all<{ chave_id: string; tipo: string; codigo: string | null; criado_em: number }>();
   for (const e of results) {
     const l = m.get(e.chave_id) ?? [];
     if (l.length < HISTORICO_POR_CHAVE) l.push({ tipo: e.tipo, codigo: e.codigo, em: e.criado_em });
@@ -269,19 +272,26 @@ export function registerChaves(on: (method: string, path: string, h: Handler) =>
     exigirProva(u, provaExigida({ ativa, sobeTeto: !!plano?.sobe, ajuste: has("apelido") || has("modelo") || has("esforco") }), now);
     const tetos = plano?.agora ?? { dia: r.teto_dia, mes: r.teto_mes };
     const pend = plano ? plano.pendente : pendDe(r);
-    const ev = [];
-    if (ativo !== r.ativo) ev.push(evento(env, u.id, r.id, ativo ? "ativada" : "desativada", null, now));
-    if (reativa) ev.push(evento(env, u.id, r.id, "reativada", r.pausa_motivo, now));
-    if (plano?.baixa) ev.push(evento(env, u.id, r.id, "teto_baixado", codTetos(plano.agora), now));
-    if (plano && (plano.anterior === "cancelada" || plano.anterior === "substituida")) ev.push(evento(env, u.id, r.id, "subida_cancelada", plano.anterior === "cancelada" ? "baixa" : "substituida", now));
-    if (plano?.sobe && plano.pendente) ev.push(evento(env, u.id, r.id, "subida_pedida", codTetos(plano.pendente), now));
-    await env.DB.batch([
+    // eventos só se o UPDATE gravou (cada um confere o changes() do anterior: a cadeia para no 1º que não gravou)
+    const ev: ReturnType<typeof eventoSeMudou>[] = [];
+    const ev1 = (tipo: string, codigo: string | null) => ev.push(eventoSeMudou(env, u.id, r.id, tipo, codigo, now));
+    if (ativo !== r.ativo) ev1(ativo ? "ativada" : "desativada", null);
+    if (reativa) ev1("reativada", r.pausa_motivo);
+    if (plano?.baixa) ev1("teto_baixado", codTetos(plano.agora));
+    if (plano && (plano.anterior === "cancelada" || plano.anterior === "substituida")) ev1("subida_cancelada", plano.anterior === "cancelada" ? "baixa" : "substituida");
+    if (plano?.sobe && plano.pendente) ev1("subida_pedida", codTetos(plano.pendente));
+    // #138 controle otimista: a prova foi decidida sobre a linha lida; o UPDATE só grava se ela ainda é a mesma. Uma baixa,
+    // desativação, pausa ou cancelamento de subida no meio → 409 (nada é desfeito; o app recarrega e a pessoa repete).
+    const [up] = await env.DB.batch([
       env.DB.prepare(`UPDATE chave_ia SET apelido = ?3, modelo = ?4, esforco = ?5, teto_dia = ?6, teto_mes = ?7, ativo = ?8,
           teto_dia_pend = ?9, teto_mes_pend = ?10, pend_vale_em = ?11, pausada_em = CASE WHEN ?12 THEN NULL ELSE pausada_em END, pausa_motivo = CASE WHEN ?12 THEN NULL ELSE pausa_motivo END
-        WHERE id = ?1 AND user_id = ?2`)
-        .bind(r.id, u.id, apelido, modelo, esforco, tetos.dia, tetos.mes, ativo, pend?.dia ?? null, pend?.mes ?? null, pend?.valeEm ?? null, reativa ? 1 : 0),
+        WHERE id = ?1 AND user_id = ?2 AND apelido = ?13 AND modelo IS ?14 AND esforco = ?15 AND teto_dia = ?16 AND teto_mes = ?17 AND ativo = ?18
+          AND teto_dia_pend IS ?19 AND teto_mes_pend IS ?20 AND pend_vale_em IS ?21 AND pausada_em IS ?22 RETURNING id`)
+        .bind(r.id, u.id, apelido, modelo, esforco, tetos.dia, tetos.mes, ativo, pend?.dia ?? null, pend?.mes ?? null, pend?.valeEm ?? null, reativa ? 1 : 0,
+          r.apelido, r.modelo, r.esforco, r.teto_dia, r.teto_mes, r.ativo, r.teto_dia_pend, r.teto_mes_pend, r.pend_vale_em, r.pausada_em),
       ...ev,
     ]);
+    if (!up.results?.length) throw new HttpError(409, "A chave mudou enquanto você editava. Confira e tente de novo.", "mudou");
     return json({ chave: await metaCompleta(env, u.id, r.id, now) });
   });
 

@@ -151,7 +151,8 @@ export function Chaves({ demo = false, inicial }: { demo?: boolean; inicial?: Pr
   useEffect(() => { if (!demo) load().catch(() => setErro("Não deu para carregar as chaves.")); }, []);
   const act = (id: string, f: () => Promise<void>) => {
     setErro(""); setBusy(id);
-    void f().catch((e) => setErro(msgErro(e))).finally(() => setBusy(""));
+    // #138 409 = a chave mudou no meio (outra aba ou aparelho): mostra o aviso e recarrega o estado verdadeiro
+    void f().catch((e) => { setErro(msgErro(e)); if (e instanceof HttpError && e.status === 409 && !demo) void load().catch(() => {}); }).finally(() => setBusy(""));
   };
   const salvar = () => act("nova", async () => {
     const chave = tirarChave(chaveRef);

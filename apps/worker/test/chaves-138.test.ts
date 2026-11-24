@@ -312,3 +312,51 @@ test("migration 0028: aplicada sobre chave e trilha da 0027, as linhas ficam igu
   db.prepare("DELETE FROM user WHERE id = 'u-fict'").run();
   for (const t of ["chave_ia", "chave_ia_evento", "chave_ia_chamada"]) assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n, 0, t);
 });
+
+test("corrida no PATCH: uma baixa, desativação ou cancelamento de subida no meio não é desfeito por um PATCH sem prova (409)", async () => {
+  const env = makeEnv({ KEK_V1: KEK });
+  provedorFalso();
+  const c = (m: string, p: string, body?: unknown) => call(env, m, p, { user: "ana", body });
+  const k = (await c("POST", "/api/account/chaves", nova({ tetoDia: 1, tetoMes: 10 }))).data.chave;
+  const p = `/api/account/chaves/${k.id}`;
+  // outra requisição grava entre a leitura e o UPDATE deste PATCH (o lote do PATCH é o que começa com UPDATE chave_ia SET apelido)
+  const orig = env.DB.batch.bind(env.DB);
+  let noMeio: (() => void) | null = null;
+  env.DB.batch = async (st: any[]) => {
+    if (noMeio && /^\s*UPDATE chave_ia SET apelido/.test(st[0]?.sql ?? "")) { const f = noMeio; noMeio = null; f(); }
+    return orig(st);
+  };
+  const casos: [string, unknown, () => void, (l: any) => void][] = [
+    ["{} depois de desativar", {}, () => env.DB.raw.prepare("UPDATE chave_ia SET ativo = 0 WHERE id = ?1").run(k.id), (l) => assert.equal(l.ativo, 0)],
+    ["ativo:true (já ativa na leitura) depois de desativar", { ativo: true }, () => env.DB.raw.prepare("UPDATE chave_ia SET ativo = 0 WHERE id = ?1").run(k.id), (l) => assert.equal(l.ativo, 0)],
+    ["teto igual depois de baixar", { tetoDia: 1, tetoMes: 10 }, () => env.DB.raw.prepare("UPDATE chave_ia SET teto_dia = 50, teto_mes = 500 WHERE id = ?1").run(k.id), (l) => assert.deepEqual([l.teto_dia, l.teto_mes], [50, 500])],
+    ["{} depois de cancelar a subida", {}, () => env.DB.raw.prepare("UPDATE chave_ia SET teto_dia_pend = NULL, teto_mes_pend = NULL, pend_vale_em = NULL WHERE id = ?1").run(k.id), (l) => assert.equal(l.pend_vale_em, null)],
+  ];
+  for (const [nome, body, meio, conferir] of casos) {
+    env.DB.raw.prepare("UPDATE chave_ia SET ativo = 1, teto_dia = 100, teto_mes = 1000, teto_dia_pend = 200, teto_mes_pend = 2000, pend_vale_em = ?2 WHERE id = ?1").run(k.id, Date.now() + 3_600_000);
+    const antes = eventos(env, k.id).length;
+    noMeio = meio;
+    const r = await c("PATCH", p, body);
+    assert.equal(r.status, 409, `${nome}: ${r.text}`); assert.equal(r.data.code, "mudou");
+    conferir(linhaK(env, k.id));
+    assert.equal(eventos(env, k.id).length, antes, `${nome}: sem evento de mudança que não gravou`);
+  }
+  env.DB.batch = orig;
+  // sem corrida, o mesmo PATCH passa
+  assert.equal((await c("PATCH", p, { apelido: "Sem corrida" })).status, 200);
+});
+
+test("histórico por chave: muitos eventos de uma chave não empurram a pausa da outra para fora", async () => {
+  const env = makeEnv({ KEK_V1: KEK });
+  provedorFalso();
+  const c = (m: string, p: string, body?: unknown) => call(env, m, p, { user: "ana", body });
+  const ka = (await c("POST", "/api/account/chaves", nova())).data.chave;
+  const kb = (await c("POST", "/api/account/chaves", { provedor: "anthropic", apelido: "Claude fictício", chave: ANT, tetoDia: 1, tetoMes: 2 })).data.chave;
+  const uid = uidDe(env, ka.id);
+  env.DB.raw.prepare("INSERT INTO chave_ia_evento (user_id, chave_id, tipo, codigo, criado_em) VALUES (?1, ?2, 'pausada', 'rajada', 1)").run(uid, kb.id);
+  for (let i = 0; i < 200; i++) env.DB.raw.prepare("INSERT INTO chave_ia_evento (user_id, chave_id, tipo, codigo, criado_em) VALUES (?1, ?2, 'teto', 'chave', 2)").run(uid, ka.id);
+  const l = (await c("GET", "/api/account/chaves")).data.chaves;
+  const hb = l.find((x: any) => x.id === kb.id).historico, ha = l.find((x: any) => x.id === ka.id).historico;
+  assert.ok(hb.some((e: any) => e.tipo === "pausada"), JSON.stringify(hb));
+  assert.equal(ha.length, 8);
+});
