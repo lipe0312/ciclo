@@ -55,7 +55,7 @@ async function conta(env: any, user: string, provedor = "openai", extra: Record<
   const c = (m: string, p: string, body?: unknown) => call(env, m, p, { user, body });
   assert.equal((await c("PUT", "/api/profile", { data: { level: 1, subPriorities: ["ombro_lat", "biceps", "triceps_longa"], priorities: ["ombro", "biceps", "triceps"], minutes: 60, daysTarget: 4, goal: { id: "bracos_ombros", statement: "objetivo fictício", horizonWeeks: 12 } } })).status, 200);
   assert.equal((await c("PUT", "/api/gyms/acad1", { name: "Academia fictícia", equipment: ALL })).status, 200);
-  const k = await c("POST", "/api/account/chaves", { provedor, apelido: "Chave fictícia", chave: CHAVES[provedor], tetoDia: 5, tetoMes: 10, ...extra });
+  const k = await c("POST", "/api/account/chaves", { provedor, apelido: "Chave fictícia", chave: CHAVES[provedor], tetoDia: 5, tetoMes: 10, aceiteAvisoGratis: true, ...extra }); // #138: chave grátis pede o "Entendi"
   assert.equal(k.status, 201, k.text);
   return { c, chaveId: k.data.chave.id as string };
 }
@@ -346,6 +346,25 @@ test("rotina 'pedidos': sem chave, teto ou limite o pedido real da pessoa contin
   await worker.scheduled({ scheduledTime: Date.parse("2026-11-24T12:00:00Z"), cron: "* * * * *" }, env, { waitUntil: (p: Promise<unknown>) => ps.push(p) });
   await Promise.all(ps);
   assert.equal(chats.length, 0);
+  const row = env.DB.raw.prepare("SELECT status, response FROM inbox WHERE id = ?1").get(ped.data.id);
+  assert.equal(row.status, "pendente"); assert.equal(row.response, null);
+});
+
+test("chave pausada pelo freio automático (#138): o Chat mostra a mensagem fixa sem chamar; na rotina 'pedidos' o pedido real fica pendente", async () => {
+  const worker = (await import("../src/index.ts")).default as any;
+  const env = makeEnv({ KEK_V1: KEK });
+  const chats = provedores();
+  const { c, chaveId } = await conta(env, "ana");
+  env.DB.raw.prepare("UPDATE chave_ia SET pausada_em = 1, pausa_motivo = 'rajada' WHERE id = ?1").run(chaveId);
+  const r = await falar(c, "o que treino hoje?");
+  assert.equal(r.status, 200); assert.equal(r.data.motivo, "pausada");
+  assert.match(r.data.mensagem.texto, /freio automático/); assert.equal(r.data.mensagem.papel, "aviso");
+  const ped = await c("POST", "/api/inbox", { text: "troca o supino por outro" });
+  await c("PUT", "/api/chat/rotinas/pedidos", { ligada: true, hora: 9, provedor: "openai" });
+  const ps: Promise<unknown>[] = [];
+  await worker.scheduled({ scheduledTime: Date.parse("2026-11-24T12:00:00Z"), cron: "* * * * *" }, env, { waitUntil: (p: Promise<unknown>) => ps.push(p) });
+  await Promise.all(ps);
+  assert.equal(chats.length, 0, "pausada: nem chama o provedor");
   const row = env.DB.raw.prepare("SELECT status, response FROM inbox WHERE id = ?1").get(ped.data.id);
   assert.equal(row.status, "pendente"); assert.equal(row.response, null);
 });

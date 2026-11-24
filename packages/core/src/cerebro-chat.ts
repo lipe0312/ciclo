@@ -249,13 +249,14 @@ const PEDE_CHAVE = /\b(api[ -]?key|chaves? (de|da) api|minha chave|sua chave|cha
 /** A pessoa (ou um texto colado) pede a chave de API? O Chat responde fixo, sem chamar o modelo. */
 export const pedeAChave = (texto: string) => PEDE_CHAVE.test(SEM_ACENTO(String(texto ?? "")));
 
-export type MotivoChat = "teto" | "limite" | "sem_chave" | "cofre" | "falhou" | "chave_pedida";
+export type MotivoChat = "teto" | "limite" | "sem_chave" | "cofre" | "falhou" | "pausada" | "chave_pedida";
 const MOTIVO: Record<MotivoChat, string> = {
   teto: "Esta chave bateu o teto de gasto do dia ou do mês. Ajuste o teto em Perfil → Sua IA ou espere a virada.",
   limite: "Muitas mensagens em pouco tempo. Espere um minuto e tente de novo.",
   sem_chave: "Não há chave ativa deste provedor. Cadastre ou ative em Perfil → Sua IA.",
   cofre: "O cofre de chaves está desligado neste servidor, então a IA não responde agora.",
   falhou: "O provedor não respondeu agora. Tente de novo em instantes.",
+  pausada: "Esta chave foi pausada pelo freio automático de gasto. Para voltar a usar, reative em Perfil → Sua IA.",
   chave_pedida: "Eu não tenho acesso à sua chave: ela fica cifrada no cofre do app e só o servidor usa, na hora de chamar o provedor. Para ver o final dela ou trocar, vá em Perfil → Sua IA.",
 };
 /** Mensagem fixa do Chat (nunca o corpo do provedor, que pode ecoar a chave). */

@@ -300,7 +300,7 @@ const ACAO_ROTINA: Record<Exclude<RotinaChat, "pedidos">, { acao: string; tier: 
 /** Responde um pedido da caixa com a chave: vira "respondido" com as propostas (nunca escrita direta). */
 async function responderPedido(env: Env, uid: string, provedor: ProvedorIa, pedidoId: string, texto: string, hoje: string, real: boolean): Promise<MotivoChat | null> {
   const r = await responderComChave(env, uid, provedor, texto, hoje, { pedidoId });
-  // pedido real da pessoa sem resposta (teto, limite, sem chave, cofre, falha): continua pendente para o conector/rotina do Claude.
+  // pedido real da pessoa sem resposta (teto, limite, pausada, sem chave, cofre, falha): continua pendente para o conector/rotina do Claude.
   // pedido criado pela própria rotina: no teto/limite fica a mensagem fixa (a pessoa vê por que não rodou); falha de rede: pendente
   if (!r.ok && (real || r.motivo === "falhou")) return r.motivo;
   const change = r.ok && r.propostas.length ? { propostas: r.propostas } : null;
