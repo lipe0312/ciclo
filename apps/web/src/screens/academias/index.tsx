@@ -15,6 +15,7 @@ import { AssistenteAcademias } from "./assistente.tsx";
 import { assistenteVisto } from "../../lib/mini-assistente/index.tsx";
 import { Mapa, linkMapa } from "./mapa.tsx";
 import { PaginaAparelho } from "./aparelho.tsx";
+import { OfertaRefazer, antesDoPrimeiro } from "./refazer.tsx";
 import "./academias.css";
 import { Estado } from "../../lib/estado/index.tsx";
 
@@ -47,10 +48,11 @@ function Apagar({ g }: { g: Gym }) {
 }
 const abrirApagar = (g: Gym) => { destino = null; apagando = false; openSheet(() => <Apagar g={g} />); };
 
-/** #79 Sem ponto: "Definir local no mapa"; com ponto: "Mudar local". Abre direto o passo do mapa da edição. */
+/** #79 Sem ponto: "Definir local no mapa" (#139: link de texto, ação secundária); com ponto: "Mudar local". Abre direto o passo do mapa. */
 function BotaoLocal({ g, temPonto, sm }: { g: Gym; temPonto: boolean; sm?: boolean }) {
-  return <a class={`btn ${sm ? "sm" : ""} ${temPonto ? "ghost" : ""}`} href={href("academias", [g.id, "local"])} aria-label={`${temPonto ? "Mudar local" : "Definir local no mapa"}: ${g.name}`}>
-    <Icon id="target" />{temPonto ? "Mudar local" : "Definir local no mapa"}</a>;
+  const rotulo = temPonto ? "Mudar local" : "Definir local no mapa";
+  if (!temPonto) return <a class="link44 small" href={href("academias", [g.id, "local"])} aria-label={`${rotulo}: ${g.name}`}>{rotulo}</a>;
+  return <a class={`btn ghost ${sm ? "sm" : ""}`} href={href("academias", [g.id, "local"])} aria-label={`${rotulo}: ${g.name}`}><Icon id="target" />{rotulo}</a>;
 }
 
 // ---------- lista ----------
@@ -85,6 +87,7 @@ function Lugar({ g }: { g: Gym }) {
         <button type="button" class="btn sm danger" onClick={() => abrirApagar(g)}><Icon id="x" />Apagar</button></div></div>
     <p class="kicker">{kindNm(g.kind)}</p><h1 style="margin:2px 0 4px">{g.name}</h1>
     <p class="sub">{g.address || "Sem endereço"}</p>
+    <OfertaRefazer gymId={g.id} nome={g.name} />
     <div class="grid dash" style="margin-top:14px"><div class="stack">
       <div class="card"><h2>No mapa</h2>
         {ponto ? <><div style="margin-top:10px"><Mapa ponto={ponto} rotulo={`Mapa com a localização de ${g.name}`} /></div>
@@ -106,7 +109,7 @@ function Lugar({ g }: { g: Gym }) {
 
 export default function Academias({ route }: { route?: Route }) {
   const [a, b, c] = route?.parts ?? [];
-  if (a === "novo") return <PassoAPasso key="novo" onDone={(g) => go(href("academias", [g.id]))} onCancel={() => go(href("academias"))} />;
+  if (a === "novo") { const depois = antesDoPrimeiro(); return <PassoAPasso key="novo" onDone={(g) => { depois(g.id); go(href("academias", [g.id])); }} onCancel={() => go(href("academias"))} />; }
   if (a) {
     const g = S.gyms.find((x) => x.id === a);
     if (!g) return <Estado tipo="vazio" titulo="Lugar não encontrado" acao={{ label: "Ver lugares", href: href("academias") }} />;
