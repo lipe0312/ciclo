@@ -52,7 +52,8 @@ export function CardProposta({ p, provedor, onMuda, onResposta }: {
     if (!t) { toast("Diga o que mudar"); return; }
     if (!SERVER) { onMuda({ ...p, status: "alterada" }); onResposta({ mensagem: { papel: "ia", texto: "Na demonstração a IA não refaz a proposta." }, propostas: [] }); return; }
     const r = await api("POST", `/api/chat/propostas/${encodeURIComponent(p.id)}/alterar`, { texto: t, provedor });
-    onMuda({ ...p, status: "alterada" }); onResposta(r); setPedido(""); setModo("ver");
+    // sem proposta nova, a anterior continua valendo (o servidor só a tira quando a nova existe)
+    onMuda({ ...p, status: r.anterior === "alterada" ? "alterada" : "pendente" }); onResposta(r); setPedido(""); setModo("ver");
   });
 
   const [rot, cls] = STATUS[p.status] ?? ["", ""];

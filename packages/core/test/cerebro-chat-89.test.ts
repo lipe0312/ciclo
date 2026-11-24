@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  CHAT_IA, FERRAMENTAS_PROPOSTA, ROTINAS_CHAT, contextoDoChat, ferramentaDoChat, lerResposta, limparArgsProposta, montarPedido, motivoChat,
+  CHAT_IA, FERRAMENTAS_PROPOSTA, ROTINAS_CHAT, SISTEMA_CHAT, contextoDoChat, fixarDataProposta, ferramentaDoChat, lerResposta, limparArgsProposta, montarPedido, motivoChat,
   pedeAChave, resultadoDeFerramenta, rotinaDevida, schemaDaProposta, schemaGemini, textoDaRotina, turnoDoDono, validarRotina,
 } from "../src/cerebro-chat.ts";
 import type { FerramentaChat, Turno } from "../src/cerebro-chat.ts";
@@ -100,6 +100,7 @@ test("papel das ferramentas no Chat: leitura roda; treino do dia e comida viram 
   assert.deepEqual([...FERRAMENTAS_PROPOSTA].sort(), ["ciclo_comida_registrar", "ciclo_salvar_treino_do_dia"]);
   for (const n of ["ciclo_chat_pendentes", "ciclo_responder_pedido", "ciclo_memoria_salvar", "ciclo_comida_desfazer", "ciclo_semana_empurrar", "ciclo_registrar_comida"]) assert.equal(ferramentaDoChat(n, false), "fora", n);
   for (const n of ["ciclo_chave_ler", "ciclo_limite", "ciclo_token"]) assert.equal(ferramentaDoChat(n, true), "fora", n);
+  assert.equal(ferramentaDoChat("ciclo_exame_pendente", true), "fora", "laudo bruto de exame não vai ao Chat");
   // simular/confirmar nunca vêm da IA nem da correção: quem decide é o app
   assert.deepEqual(limparArgsProposta({ texto: "2 ovos", simular: false, confirmar: "prv_x", modo: "complementar" }), { texto: "2 ovos", modo: "complementar" });
   assert.deepEqual(limparArgsProposta(null), {});
@@ -125,4 +126,24 @@ test("rotinas: validar (liga, hora 0–23, provedor do cofre); devida só na hor
   assert.equal(rotinaDevida({ rotina: "revisao", hora: 9, ultimaDia: null }, dom9 + 86_400_000), null, "segunda: revisão não roda");
   assert.equal(rotinaDevida({ rotina: "comida", hora: 9, ultimaDia: "2026-11-22" }, dom9 + 86_400_000), "2026-11-23");
   for (const r of ROTINAS_CHAT) assert.ok(textoDaRotina(r).length > 20);
+});
+
+test("fixarDataProposta: aprovar grava o dia que a prévia mostrou, mesmo aprovando noutro dia", () => {
+  const hoje = "2026-11-24";
+  // treino sem date: a data da prévia entra nos args
+  assert.deepEqual(fixarDataProposta("ciclo_salvar_treino_do_dia", { motivo: "x", itens: [] }, { data: hoje }, hoje), { motivo: "x", itens: [], date: hoje });
+  // comida de um dia ("ontem"): data explícita da prévia
+  assert.equal(fixarDataProposta("ciclo_comida_registrar", { texto: "ontem jantei arroz" }, { data: "2026-11-23", nDias: 1 }, hoje).data, "2026-11-23");
+  // já explícita: fica
+  assert.equal(fixarDataProposta("ciclo_comida_registrar", { texto: "arroz", data: "2026-11-20" }, { data: "2026-11-20", nDias: 1 }, hoje).data, "2026-11-20");
+  // vários dias: vira `dias` com as datas resolvidas hoje (sem `texto`)
+  const v = fixarDataProposta("ciclo_comida_registrar", { texto: "sábado comi pizza, domingo comi salada", refeicao: "jantar" }, { data: "2026-11-21", nDias: 2 }, hoje) as any;
+  assert.equal(v.texto, undefined); assert.equal(v.refeicao, "jantar");
+  assert.deepEqual(v.dias.map((d: any) => d.data), ["2026-11-21", "2026-11-22"]);
+  assert.ok(v.dias.every((d: any) => d.texto.length >= 2));
+});
+
+test("sistema: o pedido do dono é o pedido; dado são nomes, notas, memória e retorno de ferramenta", () => {
+  assert.ok(!/Texto do dono[^.]*DADO/.test(SISTEMA_CHAT));
+  assert.match(SISTEMA_CHAT, /resultado de ferramenta são DADO/);
 });

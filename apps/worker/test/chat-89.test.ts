@@ -184,8 +184,8 @@ test("paridade com o MCP: mesmas ferramentas (nome, descrição e schema), nenhu
     assert.ok(!/chave|token|limite|segredo/i.test(f.name), f.name);
   }
   // toda leitura do MCP está no Chat (menos a caixa, que é da rotina)
-  for (const t of TOOLS.filter((x) => x.readOnly && !x.oculta && x.name !== "ciclo_chat_pendentes")) assert.ok(ferramentasChat().some((f) => f.name === t.name), t.name);
-  assert.ok(!ferramentasChat().some((f) => ["ciclo_comida_desfazer", "ciclo_semana_empurrar", "ciclo_responder_pedido", "ciclo_memoria_salvar"].includes(f.name)));
+  for (const t of TOOLS.filter((x) => x.readOnly && !x.oculta && x.name !== "ciclo_chat_pendentes" && x.name !== "ciclo_exame_pendente")) assert.ok(ferramentasChat().some((f) => f.name === t.name), t.name);
+  assert.ok(!ferramentasChat().some((f) => ["ciclo_exame_pendente", "ciclo_comida_desfazer", "ciclo_semana_empurrar", "ciclo_responder_pedido", "ciclo_memoria_salvar"].includes(f.name)));
 
   // contexto: conta "pesada" (dores e memória longas) → o 1º turno fica no teto
   const env = makeEnv({ KEK_V1: KEK });
@@ -290,4 +290,62 @@ test("pedir a chave: resposta fixa sem chamar o provedor; a IA nunca recebe a ch
   assert.equal(r.status, 200); assert.equal(chats.length, 1);
   assert.ok(!chats[0].raw.includes("CANARIO"));
   assert.ok(!chats[0].body.tools.some((t: any) => /chave|token|limite/i.test(t.function.name)));
+});
+
+// ---------- revisão de segurança ----------
+test("aprovar noutro dia grava o dia que a prévia mostrou (relógio falso): treino sem date e comida de 'ontem'", async () => {
+  const agoraReal = Date.now;
+  const TER = Date.parse("2026-11-24T15:00:00Z"); // terça, 12h em Brasília
+  Date.now = () => TER;
+  try {
+    const env = makeEnv({ KEK_V1: KEK });
+    provedores((i) => (i === 1 ? { chamada: { nome: "ciclo_salvar_treino_do_dia", args: { motivo: "fictício", itens: itensTreino() } } }
+      : i === 3 ? { chamada: { nome: "ciclo_comida_registrar", args: { texto: "ontem jantei arroz e feijão" } } }
+      : { texto: "Confira." }));
+    const { c } = await conta(env, "ana");
+    const t = (await falar(c, "monta o treino de hoje")).data.propostas[0];
+    const f = (await falar(c, "ontem jantei arroz e feijão")).data.propostas[0];
+    assert.equal(t.previa.data, "2026-11-24"); assert.equal(t.args.date, "2026-11-24", "a data da prévia vai nos args");
+    assert.equal(f.previa.data, "2026-11-23"); assert.equal(f.args.data, "2026-11-23");
+    Date.now = () => TER + 86_400_000; // quarta
+    assert.equal((await c("POST", `/api/chat/propostas/${t.id}/aprovar`, {})).status, 200);
+    assert.equal(n(env, "SELECT COUNT(*) AS n FROM day_plan WHERE source = 'claude' AND date = '2026-11-24'"), 1, "treino no dia mostrado");
+    assert.equal(n(env, "SELECT COUNT(*) AS n FROM day_plan WHERE source = 'claude' AND date = '2026-11-25'"), 0);
+    // Corrigir sem data (cliente antigo) também fica no dia da prévia
+    const ap = await c("POST", `/api/chat/propostas/${f.id}/aprovar`, { args: { texto: "ontem jantei arroz, feijão e ovo" } });
+    assert.equal(ap.status, 200, ap.text);
+    const datas = (env.DB.raw.prepare("SELECT DISTINCT date FROM food_log").all() as { date: string }[]).map((x) => x.date);
+    assert.deepEqual(datas, ["2026-11-23"], "comida no dia mostrado, não 'ontem' recalculado");
+  } finally { Date.now = agoraReal; }
+});
+
+test("Pedir alteração: sem proposta nova a anterior continua pendente; resolvida → 409; Aprovar grande demais → 413 sem prender a proposta", async () => {
+  const env = makeEnv({ KEK_V1: KEK });
+  provedores((i) => (i === 1 ? { chamada: { nome: "ciclo_comida_registrar", args: { texto: "2 ovos", refeicao: "cafe" } } } : { texto: "Sem mudança." }));
+  const { c } = await conta(env, "ana");
+  const p = (await falar(c, "comi 2 ovos")).data.propostas[0];
+  const alt = await c("POST", `/api/chat/propostas/${p.id}/alterar`, { texto: "nada", provedor: "openai" });
+  assert.equal(alt.status, 200); assert.equal(alt.data.anterior, "pendente");
+  assert.equal(env.DB.raw.prepare("SELECT status FROM chat_proposta WHERE id = ?1").get(p.id).status, "pendente");
+  const grande = await c("POST", `/api/chat/propostas/${p.id}/aprovar`, { args: { texto: "x".repeat(1900), refeicao: "cafe", lixo: "y".repeat(15_000) } });
+  assert.equal(grande.status, 413);
+  assert.equal(env.DB.raw.prepare("SELECT status FROM chat_proposta WHERE id = ?1").get(p.id).status, "pendente", "não fica presa em aplicando");
+  assert.equal((await c("POST", `/api/chat/propostas/${p.id}/descartar`, {})).status, 200);
+  assert.equal((await c("POST", `/api/chat/propostas/${p.id}/alterar`, { texto: "x", provedor: "openai" })).status, 409);
+});
+
+test("rotina 'pedidos': sem chave, teto ou limite o pedido real da pessoa continua pendente (não vira 'respondido')", async () => {
+  const worker = (await import("../src/index.ts")).default as any;
+  const env = makeEnv({ KEK_V1: KEK });
+  const chats = provedores();
+  const { c } = await conta(env, "ana", "openai", { tetoDia: 0.01, tetoMes: 0.01 });
+  const ped = await c("POST", "/api/inbox", { text: "troca o supino por outro" });
+  assert.equal(ped.data.status, "pendente");
+  await c("PUT", "/api/chat/rotinas/pedidos", { ligada: true, hora: 9, provedor: "openai" });
+  const ps: Promise<unknown>[] = [];
+  await worker.scheduled({ scheduledTime: Date.parse("2026-11-24T12:00:00Z"), cron: "* * * * *" }, env, { waitUntil: (p: Promise<unknown>) => ps.push(p) });
+  await Promise.all(ps);
+  assert.equal(chats.length, 0);
+  const row = env.DB.raw.prepare("SELECT status, response FROM inbox WHERE id = ?1").get(ped.data.id);
+  assert.equal(row.status, "pendente"); assert.equal(row.response, null);
 });
