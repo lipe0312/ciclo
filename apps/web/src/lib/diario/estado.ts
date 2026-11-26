@@ -8,7 +8,9 @@ import { addDays, lsGet, lsSet, uid } from "../util.ts";
 export interface CheckoutCardio { type?: string; minutes?: number; steps?: number; intensity?: C.Intensity }
 export interface Checkout {
   date: string; trained: boolean | null; cardio: CheckoutCardio | null; waterMl: number | null; alcohol: number | null;
-  smoke: boolean | null; smokeQty: number | null; caffeineLate: boolean | null; mood: number | null; sleptWell: boolean | null; note: string | null; source?: string;
+  smoke: boolean | null; smokeQty: number | null; caffeineLate: boolean | null; mood: number | null; sleptWell: boolean | null; note: string | null;
+  /** #124 justificativa opcional do "Treinou? → Não" (≤ 280); a IA lê como dado na revisão */
+  motivoFalta?: string | null; source?: string;
 }
 export interface Lembrete { lastOpen: string | null; snoozedOn: string | null; absenceDays: number; absence: { from: string; to: string } | null; recap?: C.RecapPeriodo | null; hoje?: string }
 export interface Marcador { nome: string; valor: string | number; unidade?: string; referencia?: string; status: "dentro" | "fora" | "sem_referencia" }
@@ -26,7 +28,7 @@ export const D = {
   sel: today,
 };
 
-export const emptyCheckout = (date: string): Checkout => ({ date, trained: null, cardio: null, waterMl: null, alcohol: null, smoke: null, smokeQty: null, caffeineLate: null, mood: null, sleptWell: null, note: null });
+export const emptyCheckout = (date: string): Checkout => ({ date, trained: null, cardio: null, waterMl: null, alcohol: null, smoke: null, smokeQty: null, caffeineLate: null, mood: null, sleptWell: null, note: null, motivoFalta: null });
 /** check-in do dia: a semana do /api/state manda; o resto vem do Diário. */
 export const checkinOf = (d: string): CheckinVals | undefined => S.week.checkins[d] ?? D.checkins[d];
 /** Dia do diário (vira às 07:00). Servidor: o que o /abrir respondeu; demo: a "quinta" fictícia. */
@@ -92,7 +94,8 @@ export function saveCheckin(date: string, v: CheckinVals) {
   send("PUT", `/api/checkin/${date}`, { sleepH: v.sleepH, energy: v.energy, soreness: v.soreness, stress: v.stress, food: v.food, weightKg: v.weightKg ?? null, note: v.note?.trim().slice(0, 500) || null }).catch(() => {});
 }
 
-export function saveCheckout(c: Checkout) {
+export function saveCheckout(co: Checkout) {
+  const c = { ...co, motivoFalta: C.motivoAoSalvar(co.trained, co.motivoFalta) }; // #124 só no "não treinou"
   D.checkouts[c.date] = { ...c, source: "app" };
   // o cardio do checkout entra no resumo da semana (mesmo id do servidor: ck-<data>)
   const e = C.checkoutCardioEntry(c.date, c.cardio);

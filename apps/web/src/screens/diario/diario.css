@@ -3,6 +3,7 @@
 .dia-campos .ckrow{grid-template-columns:112px minmax(0,1fr)}
 @media (max-width:420px){.dia-campos .ckrow{grid-template-columns:92px minmax(0,1fr)}}
 .dia-sel{flex:1;min-width:0;max-width:260px}
+.dia-motivo{padding-bottom:8px}
 .dia-confira,.dia-alerta,.dia-aviso{display:flex;gap:8px;align-items:flex-start}
 .dia-confira svg{color:var(--info)}
 .dia-alerta{margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--sup-2);border-left:4px solid var(--warn)}

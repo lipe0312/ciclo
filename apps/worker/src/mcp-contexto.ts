@@ -1,12 +1,13 @@
 // #45 ciclo_contexto: busca só o que a fatia do pedido precisa (todo SQL com bind e filtrado por user_id) e entrega ao core
 // (contexto()), que monta a fatia enxuta. Notas, texto de comida, contexto da dor e pedidos não são lidos; o treino do dia
 // (#121 o da semana, fonte única) é lido, mas o core só aproveita IDs do catálogo e séries (o nome, texto livre, é descartado).
+// #124 exceção na revisão: o motivo das faltas da semana, marcado {tipo:"dado_do_usuario"}.
 import { JANELA_MES, MEMORIA, MUSCLE_IDS, PEDIDOS, academiaDoDia, academiasMcp, contexto, foodAverages, mondayOf, resumoClaude, resumoHistorico, weeklyTargets } from "@ciclo/core";
 import type { EstadoContexto, EstadoResumo, FoodEntry, Meal, MuscleId, Pedido } from "@ciclo/core";
 import type { Env } from "./env.ts";
 import { EMPTY_MSG, getProfile, listGyms, parse, weekState } from "./db.ts";
 import { date, int, oneOf, str } from "./http.ts";
-import { healthOfWeek } from "./diario.ts";
+import { faltasDaSemana, healthOfWeek } from "./diario.ts";
 import { lerTreinoDoDia } from "./semana.ts";
 
 const addDays = (iso: string, n: number) => new Date(Date.parse(iso + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
@@ -36,7 +37,7 @@ export async function ciclo_contexto(a: Args, env: Env, uid: string, today: stri
   const monday = mondayOf(d);
   const precisa = { treino: pedido === "trocar" || pedido === "dor", semana: pedido !== "comida" && pedido !== "recap", comida: pedido === "comida" || pedido === "recap" || pedido === "revisao", revisao: pedido === "revisao", historico: pedido === "gerar" || pedido === "tempo" };
 
-  const [gyms, week, plan, food, series, medidas, hist] = await Promise.all([
+  const [gyms, week, plan, food, series, medidas, hist, faltas] = await Promise.all([
     precisa.treino ? listGyms(env, uid) : Promise.resolve([]),
     precisa.semana ? weekState(env, uid, d) : Promise.resolve(null),
     precisa.treino ? lerTreinoDoDia(env, uid, d, today) : Promise.resolve(null), // #121 o treino do dia da fonte única (a semana)
@@ -53,6 +54,8 @@ export async function ciclo_contexto(a: Args, env: Env, uid: string, today: stri
         WHERE l.user_id = ?1 AND s.date BETWEEN ?2 AND ?3 ORDER BY s.date DESC LIMIT 3000`).bind(uid, addDays(d, -(JANELA_MES - 1)), d),
       env.DB.prepare("SELECT date FROM attendance WHERE user_id = ?1 AND status = 'nao_fui' AND date BETWEEN ?2 AND ?3 ORDER BY date DESC LIMIT 40").bind(uid, addDays(d, -(JANELA_MES - 1)), d),
     ]) : Promise.resolve(null),
+    // #124 revisão: as faltas da semana com o motivo (dado do usuário)
+    precisa.revisao ? faltasDaSemana(env, uid, d, today) : Promise.resolve(null),
   ]);
 
   const wanted = gymId ?? plan?.gymId ?? (profile.dayGym as Record<string, string> | undefined)?.[DOW[new Date(d + "T12:00:00Z").getUTCDay()]];
@@ -83,6 +86,7 @@ export async function ciclo_contexto(a: Args, env: Env, uid: string, today: stri
       dores,
       faltas: (hist[1].results as { date: string }[]).map((r) => r.date),
     }, pedido === "gerar" ? { tipo: "semana" } : { tipo: "dia", dias: 7 }) : null,
+    faltas,
   };
   // #95 as academias com os aparelhos (IDs) e a do dia, para montar "na academia tal" sem errar a máquina
   const [academias, planoGym] = precisa.treino ? [gyms, plan?.gymId] : await Promise.all([
