@@ -350,12 +350,12 @@ export async function takeGeocodeSlot(env: Env, now = Date.now()): Promise<numbe
 
 // ---- direitos da conta (LGPD) ----
 /** Tabelas de dado pessoal (todas têm user_id). Ordem de apagar: filhas antes das mães. */
-export const USER_TABLES = ["oauth_code", "set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym_weekday", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "porcao_pessoal", "porcao_cache", "porcao_sombra", "claude_memory", "claude_heartbeat", "busca", "auth_challenge", "recovery_codes", "sessions", "passkeys", "invites", "consent", "ui_pref", "mcp_previa", "exercicio_personalizado", "conta_versao", "chave_ia_uso", "chave_ia_evento", "chave_ia_chamada", "chave_ia", "chat_proposta", "rotina_chat", "conversa_msg", "conversa"] as const;
+export const USER_TABLES = ["oauth_code", "set_log", "exercise_skip", "media", "week_plan", "day_override", "day_plan", "session", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "gym_weekday", "gym", "profile_history", "profile", "mcp_token", "rate_limit", "cardio_log", "push_subscription", "rest_timer", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "porcao_pessoal", "porcao_cache", "porcao_sombra", "claude_memory", "claude_heartbeat", "busca", "auth_challenge", "recovery_codes", "sessions", "passkeys", "invites", "consent", "ui_pref", "mcp_previa", "exercicio_personalizado", "conta_versao", "chave_ia_uso", "chave_ia_evento", "chave_ia_chamada", "chave_ia", "chat_proposta", "rotina_chat", "conversa_msg", "conversa", "food_nao_comi"] as const;
 
 /** Tudo da conta em JSON (mídia: só metadados; tokens: sem hash). */
 export async function exportAccount(env: Env, uid: string) {
   const q = (sql: string) => env.DB.prepare(sql).bind(uid);
-  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "gym_weekday", "mcp_token", "week_plan", "day_override", "cardio_log", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat", "passkeys", "sessions", "recovery_codes", "invites", "consent", "ui_pref", "mcp_previa", "porcao_pessoal", "porcao_sombra", "porcao_cache", "exercicio_personalizado", "chave_ia", "chave_ia_uso", "chave_ia_evento", "chave_ia_chamada", "conversa", "conversa_msg", "chat_proposta", "rotina_chat"] as const;
+  const names = ["user", "profile", "profile_history", "gym", "day_plan", "session", "set_log", "exercise_skip", "attendance", "checkin", "pain", "inbox", "plan_edit", "food_log", "measurement", "media", "gym_weekday", "mcp_token", "week_plan", "day_override", "cardio_log", "meal_template", "diet_target_history", "checkout", "health_exam", "reminder_state", "food_item", "claude_memory", "claude_heartbeat", "passkeys", "sessions", "recovery_codes", "invites", "consent", "ui_pref", "mcp_previa", "porcao_pessoal", "porcao_sombra", "porcao_cache", "exercicio_personalizado", "chave_ia", "chave_ia_uso", "chave_ia_evento", "chave_ia_chamada", "conversa", "conversa_msg", "chat_proposta", "rotina_chat", "food_nao_comi"] as const;
   const res = await env.DB.batch([
     q("SELECT id, email, name, sobrenome, sexo, nascimento, altura_cm, peso_kg, role, created_at, last_seen_at, onboarding_done_at FROM user WHERE id = ?1"),
     q("SELECT data, updated_at FROM profile WHERE user_id = ?1"),
@@ -395,7 +395,7 @@ export async function exportAccount(env: Env, uid: string) {
     // #62: aceites dos termos e da privacidade (versão e data; o HMAC do IP não sai)
     q("SELECT doc, versao, aceito_em FROM consent WHERE user_id = ?1 ORDER BY aceito_em"),
     // #73 preferências de interface (datas de "dispensar" e "lembrar depois")
-    q("SELECT boas_vindas_dispensado_em, perfil_adiado_em, comida_aprovacao, updated_at FROM ui_pref WHERE user_id = ?1"),
+    q("SELECT boas_vindas_dispensado_em, perfil_adiado_em, comida_aprovacao, comida_medias, updated_at FROM ui_pref WHERE user_id = ?1"),
     // #81 prévias do MCP (o token só existe como hash e não sai)
     q("SELECT kind, payload, created_at, expires_at, used_at FROM mcp_previa WHERE user_id = ?1 ORDER BY created_at"),
     // #80 porções: as pessoais, a comparação do modo sombra (sem texto) e o cache da IA (só o hash do texto)
@@ -416,6 +416,8 @@ export async function exportAccount(env: Env, uid: string) {
     // #89 propostas da IA do Chat e as rotinas do cron
     q("SELECT id, conversa_id, pedido_id, ferramenta, args, previa, status, resultado, criado_em, resolvido_em FROM chat_proposta WHERE user_id = ?1 ORDER BY criado_em"),
     q("SELECT rotina, ligada, hora, provedor, ultima_dia, atualizado_em FROM rotina_chat WHERE user_id = ?1 ORDER BY rotina"),
+    // #115 "não comi" (dia e refeição)
+    q("SELECT date, meal, via, created_at FROM food_nao_comi WHERE user_id = ?1 ORDER BY date, meal"),
   ]);
   const out: Record<string, unknown> = { formato: "ciclo-export-1", exportadoEm: new Date().toISOString() };
   names.forEach((n, i) => { out[n] = n === "user" || n === "profile" ? res[i].results[0] ?? null : res[i].results; });

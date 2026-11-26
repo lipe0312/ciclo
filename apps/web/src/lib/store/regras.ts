@@ -93,11 +93,14 @@ export interface FoodRow { id: string; date: string; text: string; kcal: number 
 export interface Template { id: string; name: string; meal: C.Meal | null; text: string; kcal: number | null; prot: number | null }
 export interface DietHist { date: string; before: number; after: number; adjust: number; tdee: number | null; trendKgWeek: number | null; code: string; reason: string }
 /** Estado da tela Comida que não é do perfil: refeições salvas, histórico das metas e pesos (tendência). */
-export const DIET = { templates: [] as Template[], history: [] as DietHist[], weights: [] as C.WeightPoint[], loaded: false, /** por que a meta não mudou (sem dados, revisão recente) */ note: "", /** #81 Comida → Ajustes: aprovação da comida dita na conversa */ aprovacao: "sempre" as C.ComidaAprovacao };
+export const DIET = { templates: [] as Template[], history: [] as DietHist[], weights: [] as C.WeightPoint[], loaded: false, /** por que a meta não mudou (sem dados, revisão recente) */ note: "", /** #81 Comida → Ajustes: aprovação da comida dita na conversa */ aprovacao: "sempre" as C.ComidaAprovacao,
+  /** #115 Configurações de métricas como vieram do servidor (a tela Comida normaliza com o core: screens/comida/medias.ts) */ medias: null as unknown };
+/** #115 "não comi" (dia e refeição): conta 0 de verdade e não é completado pela média. */
+export const NAOCOMI = { list: [] as { date: string; meal: C.Meal }[] };
 
 export const foodRows = (): FoodRow[] => S.food as FoodRow[];
 export const foodTotals = (d: string) => foodRows().filter((f) => f.date === d).reduce((a, f) => ({ kcal: a.kcal + (f.kcal ?? 0), prot: a.prot + (f.prot ?? 0) }), { kcal: 0, prot: 0 });
-const entries = (): C.FoodEntry[] => foodRows().map((f) => ({ id: f.id, date: f.date, meal: f.meal, kcal: f.kcal, prot: f.prot, text: f.text }));
+export const entries = (): C.FoodEntry[] => foodRows().map((f) => ({ id: f.id, date: f.date, meal: f.meal, kcal: f.kcal, prot: f.prot, text: f.text }));
 
 // ---------- base de alimentos pessoal (#43) ----------
 export type ItemBase = C.Alimento & { usos: number };
@@ -135,13 +138,6 @@ export function faltaDoDia(d: string) {
   const t = foodTotals(d), diet = calc().diet;
   return C.faltaHoje({ kcal: diet.kcal, protein: diet.protein }, t, FOODBASE.itens);
 }
-/** Painel: média dos últimos 7 dias contra a meta, e a semana anterior para a tendência. */
-export function foodPanel() {
-  const d = calc().diet, targets = { kcal: d.kcal, protein: d.protein };
-  const cur = C.foodAverages(entries(), today, targets), prev = C.foodAverages(entries(), addDays(today, -7), targets);
-  const week = foodRows().filter((f) => f.date >= cur.from && f.date <= today);
-  return { cur, prev, top: C.topProteinFoods(week as unknown as C.FoodEntry[]), targets, semana: C.semanaComida(entries(), today, targets) };
-}
 export const hourNow = () => Number(new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", hourCycle: "h23" }).format(new Date()));
 
 const fromServer = (e: any): FoodRow => ({ id: e.id, date: e.date, text: e.text, kcal: e.kcal, prot: e.prot, meal: e.meal, source: e.source, confidence: e.confidence, via: e.via ?? null, createdAt: e.createdAt });
@@ -149,16 +145,18 @@ export async function loadFood() {
   if (!SERVER) return seedDemoComida();
   try {
     await flush();
-    const [r, b] = await Promise.all([api<{ entries: any[] }>("GET", `/api/food?from=${addDays(today, -13)}&to=${today}`), api<{ itens: any[] }>("GET", "/api/food-items")]);
-    S.food = r.entries.map(fromServer); FOODBASE.itens = b.itens.flatMap((i) => { const x = fromItem(i); return x ? [x] : []; }); commit();
+    const [r, b] = await Promise.all([api<{ entries: any[]; naoComi?: { date: string; meal: C.Meal }[] }>("GET", `/api/food?from=${addDays(today, -13)}&to=${today}`), api<{ itens: any[] }>("GET", "/api/food-items")]);
+    S.food = r.entries.map(fromServer);
+    const de = addDays(today, -13); // os dias antigos abertos no seletor ficam
+    NAOCOMI.list = [...NAOCOMI.list.filter((n) => n.date < de), ...(r.naoComi ?? [])]; FOODBASE.itens = b.itens.flatMap((i) => { const x = fromItem(i); return x ? [x] : []; }); commit();
   } catch { /* offline: fica o que há */ }
 }
 let adaptTried = false;
 export async function loadDiet() {
   if (!SERVER) return demoDiet();
   try {
-    const r = await api<{ templates: any[]; history: DietHist[]; weights: C.WeightPoint[]; aprovacao?: C.ComidaAprovacao }>("GET", `/api/diet?date=${today}`);
-    DIET.templates = r.templates; DIET.history = r.history; DIET.weights = r.weights; DIET.loaded = true; DIET.aprovacao = r.aprovacao ?? "sempre";
+    const r = await api<{ templates: any[]; history: DietHist[]; weights: C.WeightPoint[]; aprovacao?: C.ComidaAprovacao; medias?: unknown }>("GET", `/api/diet?date=${today}`);
+    DIET.templates = r.templates; DIET.history = r.history; DIET.weights = r.weights; DIET.loaded = true; DIET.aprovacao = r.aprovacao ?? "sempre"; DIET.medias = r.medias ?? null;
     if (!adaptTried) { // o servidor só revisa 1× a cada 7 dias; abrir a tela várias vezes não muda nada
       adaptTried = true;
       const a = await api<{ changed: boolean; kcal: number; code: string; reason: string }>("POST", "/api/diet/adapt", { date: today });
@@ -230,7 +228,11 @@ function seedDemoComida() {
   }
   // bebida do Diário (#42): vira registro "bebida-…" na Comida; o painel mostra à parte
   for (const [i, text, kcal] of [[15, "2 latas de cerveja", 300], [19, "1 taça de vinho", 125]] as const) rows.push({ id: `bebida-demo-${i}`, date: addDays(today, -20 + i), text, kcal, prot: 0, meal: null, source: "local", confidence: null });
-  S.food = rows; commit();
+  S.food = rows;
+  // #115 demonstração: um café marcado "não comi" (conta 0) e um dia sem café (completado pela média)
+  NAOCOMI.list = [{ date: addDays(today, -3), meal: "cafe" }];
+  S.food = S.food.filter((f) => !(f.date === addDays(today, -1) && f.meal === "cafe") && !(f.date === addDays(today, -3) && f.meal === "cafe"));
+  commit();
 }
 function demoDiet() {
   DIET.note = "";

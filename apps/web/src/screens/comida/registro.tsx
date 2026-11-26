@@ -1,11 +1,13 @@
 // Registrar o que comeu (voz ou texto), registro rápido (igual ao típico, refeições salvas) e o histórico do dia com editar/apagar.
 import { useEffect, useState } from "preact/hooks";
 import { MEALS, MEAL_NM, guessMeal } from "@ciclo/core";
+import { MEAL_FIM } from "@ciclo/core/comida-medias";
 import { faltaHojeVariada } from "@ciclo/core/alimentos-variedade";
 import type { Meal } from "@ciclo/core";
 import { TETO, type ItemPorcao, type PorcaoPessoal } from "@ciclo/core/porcoes";
 import { S, calc, commit, today } from "../../lib/store/index.ts";
-import { DIET, FOODBASE, addFood, deleteFood, deleteTemplate, editFood, estimarTexto, foodRows, foodTotals, hourNow, saveTemplate } from "../../lib/store/regras.ts";
+import { DIET, FOODBASE, NAOCOMI, addFood, deleteFood, deleteTemplate, editFood, estimarTexto, foodRows, foodTotals, hourNow, saveTemplate } from "../../lib/store/regras.ts";
+import { diaMedias, faltandoDoDia, naoComi } from "./medias.ts";
 import { SERVER, api, send } from "../../lib/api/index.ts";
 import type { FoodRow } from "../../lib/store/regras.ts";
 import { Card, Chip, Icon, toast } from "../../lib/ui/index.tsx";
@@ -232,6 +234,28 @@ function Falta({ dia }: { dia: string }) {
   </div>;
 }
 
+const NAO_NM: Record<Meal, string> = { cafe: "Não tomei café", almoco: "Não almocei", lanche: "Não lanchei", jantar: "Não jantei", ceia: "Sem ceia" };
+
+/** #115 Refeições que faltam no dia: as completadas pela média (≈, entram nas médias) e o "não comi" (conta 0 de verdade). */
+function Faltando({ dia }: { dia: string }) {
+  const m = diaMedias(dia), semMedia = faltandoDoDia(dia).filter((f) => !f.media);
+  const comeu = new Set(foodRows().filter((f) => f.date === dia && f.meal).map((f) => f.meal));
+  const marcado = new Set(NAOCOMI.list.filter((n) => n.date === dia).map((n) => n.meal));
+  // hoje, só o que já passou (às 9h não faz sentido "não jantei"); o que já foi marcado sempre aparece para desfazer
+  const opcoes = MEALS.filter((x) => !comeu.has(x) && (marcado.has(x) || dia < today || hourNow() >= MEAL_FIM[x]));
+  if (!m.estimadas.length && !semMedia.length && !opcoes.length) return null;
+  return <div style="margin-top:12px">
+    {m.estimadas.length > 0 && <p class="small num"><b>≈ Entra{m.estimadas.length > 1 ? "m" : ""} nas médias pela média da refeição:</b>{" "}
+      {m.estimadas.map((e) => `${MEAL_NM[e.meal]} ~${fmt(e.kcal)} kcal e ${fmt(e.prot)} g`).join("; ")}.{" "}
+      <span class="sub">Esqueceu? Registre acima. Não comeu? Marque abaixo.</span></p>}
+    {semMedia.length > 0 && <p class="tiny sub" style="margin-top:4px">{semMedia.map((f) => MEAL_NM[f.meal]).join(", ")}: ainda sem média (registre alguns dias e ela aparece).</p>}
+    {opcoes.length > 0 && <><p class="tiny sub" style="margin-top:8px">Não comeu? Conta 0 de verdade e não é completado.</p>
+      <div class="nao-comi" role="group" aria-label={`Não comi em ${dia === today ? "hoje" : longDate(dia)}`}>
+        {opcoes.map((x) => <Chip key={x} on={marcado.has(x)} onClick={() => naoComi(dia, x, !marcado.has(x))}>{NAO_NM[x]}</Chip>)}
+      </div></>}
+  </div>;
+}
+
 /** O dia escolhido (hoje por padrão): totais contra a meta, registros com editar e apagar, e navegação pelos últimos dias. */
 export function DiaCard({ dia, setDia }: { dia: string; setDia: (d: string) => void }) {
   const d = calc().diet, t = foodTotals(dia), rows = foodRows().filter((f) => f.date === dia);
@@ -242,6 +266,7 @@ export function DiaCard({ dia, setDia }: { dia: string; setDia: (d: string) => v
     <div class="vol num" style="margin-top:12px"><span>Calorias</span><BarraSimples pct={(t.kcal / d.kcal) * 100} /><span>{fmt(t.kcal)}</span></div>
     <div class="vol num"><span>Proteína</span><BarraSimples pct={(t.prot / d.protein) * 100} color="var(--acc)" /><span>{fmt(t.prot)} g</span></div>
     <Falta dia={dia} />
+    <Faltando dia={dia} />
     <hr />
     {rows.length === 0 ? <p class="small sub">Nada registrado {dia === today ? "hoje" : "neste dia"}.</p> : rows.map((f) => <div key={f.id} class="food-row">
       <span class="tx">{f.text}</span>

@@ -4,6 +4,7 @@
 import { useEffect } from "preact/hooks";
 import { DIAS_PARA_TRAS } from "@ciclo/core";
 import { S, commit, today } from "../../lib/store/index.ts";
+import { NAOCOMI } from "../../lib/store/regras.ts";
 import type { FoodRow } from "../../lib/store/regras.ts";
 import { SERVER, api } from "../../lib/api/index.ts";
 import { Icon } from "../../lib/ui/index.tsx";
@@ -18,7 +19,8 @@ async function carregarDia(d: string) {
   if (!SERVER || d >= JANELA || buscados.has(d)) return;
   buscados.add(d);
   try {
-    const r = await api<{ entries: any[] }>("GET", `/api/food?from=${d}&to=${d}`);
+    const r = await api<{ entries: any[]; naoComi?: { date: string; meal: any }[] }>("GET", `/api/food?from=${d}&to=${d}`);
+    NAOCOMI.list = [...NAOCOMI.list.filter((n) => n.date !== d), ...(r.naoComi ?? [])]; // #115
     const tem = new Set(S.food.map((f) => f.id));
     const novos: FoodRow[] = r.entries.filter((e) => !tem.has(e.id)).map((e) => ({
       id: e.id, date: e.date, text: e.text, kcal: e.kcal, prot: e.prot, meal: e.meal, source: e.source, confidence: e.confidence, via: e.via ?? null, createdAt: e.createdAt,
@@ -33,7 +35,8 @@ export async function recarregarDiasBuscados() {
   if (!SERVER) return;
   for (const d of [...buscados]) {
     try {
-      const r = await api<{ entries: any[] }>("GET", `/api/food?from=${d}&to=${d}`);
+      const r = await api<{ entries: any[]; naoComi?: { date: string; meal: any }[] }>("GET", `/api/food?from=${d}&to=${d}`);
+      NAOCOMI.list = [...NAOCOMI.list.filter((n) => n.date !== d), ...(r.naoComi ?? [])]; // #115
       const dia: FoodRow[] = r.entries.map((e) => ({ id: e.id, date: e.date, text: e.text, kcal: e.kcal, prot: e.prot, meal: e.meal, source: e.source, confidence: e.confidence, via: e.via ?? null, createdAt: e.createdAt }));
       S.food = S.food.filter((f) => f.date !== d).concat(dia);
     } catch { /* offline: fica sem esse dia até abri-lo de novo */ }

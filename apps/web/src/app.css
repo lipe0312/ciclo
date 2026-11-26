@@ -464,6 +464,9 @@ a.sec{color:inherit;text-decoration:none}
 .dia-bar{position:relative;width:100%;max-width:34px;height:88px;background:var(--sup-3);border-radius:8px;overflow:hidden}
 .dia-bar i{position:absolute;left:0;right:0;bottom:0;background:var(--txt);border-radius:0 0 8px 8px}
 .dia-bar i.hit{background:var(--acc-bg)}
+/* #115 valor com refeição estimada pela média: listrado (o "≈" no número é o sinal que não depende de cor) */
+.dia-bar i.est{background-image:repeating-linear-gradient(135deg,transparent 0 4px,var(--sup-3) 4px 7px)}
+.nao-comi{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-2)}
 .dia-bar .mk{position:absolute;left:0;right:0;height:2px;background:var(--sub)}
 .food-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:center;padding:10px 0;border-top:1px solid var(--borda)}
 .food-row:first-child{border-top:0}

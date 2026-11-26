@@ -7,6 +7,7 @@ import { HttpError, date, id, json, num, oneOf, readJson, str } from "./http.ts"
 import { getProfile, saveProfile } from "./db.ts";
 import { MEDIDAS_IDS, PRATO_BY_KEY } from "@ciclo/core/porcoes";
 import { MAX_PORCOES_PESSOAIS, porcoesPessoais, salvarPorcao } from "./porcao-ia.ts";
+import { desmarcarNaoComi, marcarNaoComi, naoComiDe, naoComiIn, regrasMedias, salvarRegrasMedias } from "./comida-medias.ts";
 
 export type Handler = (req: Request, env: Env, p: Record<string, string>, u: AuthUser) => Promise<Response>;
 export const MAX_AUDIO = 4 * 1024 * 1024;
@@ -97,8 +98,22 @@ export function registerComida(on: (method: string, path: string, h: Handler) =>
     if (to < from || diffDays(from, to) > WINDOW_DAYS) throw new HttpError(400, `período inválido (máx. ${WINDOW_DAYS} dias)`);
     const { results } = await env.DB.prepare(`SELECT ${FOOD_COLS} FROM food_log WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date, created_at LIMIT 600`)
       .bind(u.id, from, to).all<FoodRow>();
-    return json({ entries: results.map(foodOut) });
+    return json({ entries: results.map(foodOut), naoComi: await naoComiDe(env, u.id, from, to) }); // #115
   });
+
+  // ---- #115 "não comi" (conta 0 de verdade, nunca completado pela média) e as regras das médias ----
+  on("PUT", "/api/food-nao-comi", async (req, env, _p, u) => {
+    const b = await readJson<Record<string, unknown>>(req, 1024);
+    await marcarNaoComi(env, u.id, naoComiIn(b.date, b.meal)).run();
+    return json({ ok: true });
+  });
+  on("DELETE", "/api/food-nao-comi/:date/:meal", async (_req, env, p, u) => {
+    const r = await desmarcarNaoComi(env, u.id, naoComiIn(p.date, p.meal)).run();
+    if (!r.meta.changes) throw new HttpError(404, "marca não encontrada");
+    return json({ ok: true });
+  });
+  on("GET", "/api/food-metricas", async (_req, env, _p, u) => json({ regras: await regrasMedias(env, u.id) }));
+  on("PUT", "/api/food-metricas", async (req, env, _p, u) => json({ regras: await salvarRegrasMedias(env, u.id, await readJson(req, 2 * 1024)) }));
 
   on("POST", "/api/food", async (req, env, _p, u) => {
     const b = await readJson<Record<string, unknown>>(req);
@@ -220,11 +235,13 @@ export function registerComida(on: (method: string, path: string, h: Handler) =>
       env.DB.prepare("SELECT date, weight_kg FROM checkin WHERE user_id = ?1 AND weight_kg IS NOT NULL AND date BETWEEN ?2 AND ?3 ORDER BY date").bind(u.id, addDays(today, -60), today).all<{ date: string; weight_kg: number }>(),
       env.DB.prepare("SELECT comida_aprovacao AS v FROM ui_pref WHERE user_id = ?1").bind(u.id).first<{ v: string | null }>(),
     ]);
+    const medias = await regrasMedias(env, u.id);
     return json({
       templates: tpl.results.map((t) => ({ id: t.id, name: t.name, meal: t.meal, text: t.text, kcal: t.kcal, prot: t.protein })),
       history: hist.results.map((h) => ({ date: h.date, before: h.kcal_before, after: h.kcal_after, adjust: h.adjust, tdee: h.tdee, trendKgWeek: h.trend_kg_week, code: h.code, reason: h.reason })),
       weights: w.results.map((x) => ({ date: x.date, kg: x.weight_kg })),
       aprovacao: pref?.v ?? "sempre", // #81 Comida → Ajustes
+      medias, // #115 Configurações de métricas
     });
   });
 

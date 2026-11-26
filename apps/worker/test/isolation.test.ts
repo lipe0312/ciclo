@@ -71,6 +71,9 @@ async function seed(env: any, user: string, tag: string, SID: string, kg: number
   const pv1 = JSON.parse((await ok(mcp(env, tok.token, "ciclo_comida_registrar", { texto: `almocei 2 ovos ${tag}`, simular: true }))).data.result.content[0].text);
   await ok(mcp(env, tok.token, "ciclo_comida_registrar", { confirmar: pv1.token }));
   const previa = JSON.parse((await ok(mcp(env, tok.token, "ciclo_comida_registrar", { texto: `jantei 150 g de frango ${tag}`, simular: true }))).data.result.content[0].text).token as string;
+  // #115 "não comi" (lanche de D, só na B) e as regras das médias
+  // (só na B: a A tenta desmarcar, e a matriz fica dentro do limite de escritas por minuto)
+  if (tag === "MARCA_B") { await ok(c("PUT", "/api/food-nao-comi", { date: D, meal: "lanche" })); await ok(c("PUT", "/api/food-metricas", { completar: { ceia: true }, diaVazio: "zero" })); }
   // #107 exercício personalizado criado pela IA (nome e descrição com a marca)
   // (só na B: a matriz fica dentro do limite de escritas por minuto)
   const cus = tag !== "MARCA_B" ? "" : JSON.parse((await ok(mcp(env, tok.token, "ciclo_exercicio_criar", { jaBusqueiNoCatalogo: true, nome: `${tag} elevação`, musculo: "ombro", descricao: `${tag} execução` }))).data.result.content[0].text).exercicio.id as string;
@@ -100,6 +103,7 @@ async function matriz(env: any, ana: string, bia: string) {
   const B = await seed(env, bia, "MARCA_B", SID_B, MARK_KG);
   const A = await seed(env, ana, "MARCA_A", SID_A, 10);
   const before = await snap(env, bia);
+  env.DB.raw.exec("DELETE FROM rate_limit"); // #115 a semeadura das duas contas já gasta boa parte da janela de escritas: as rotas começam do zero
   const r2Before = [...env.MEDIA.m.keys()].filter((k: string) => k.includes(B.uid)).length;
   const secrets = [B.prop, B.chave, B.mem, "MARCA_B", B.food, B.tpl, B.uid, B.pain, B.inbox, B.media, B.mediaLug, B.lug, "-10.123", "-20.456", B.tokenId, B.edit, B.cardio, B.exam, B.revisao, B.cus, B.conversa, String(MARK_KG), "bia@"];
   const subsB = () => env.DB.raw.prepare("SELECT COUNT(*) AS n FROM push_subscription WHERE endpoint = ?1").get(B.endpoint).n;
@@ -187,6 +191,11 @@ async function matriz(env: any, ana: string, bia: string) {
     ["PUT /api/food/:id", () => a("PUT", `/api/food/${B.food}`, { text: "hackeado", kcal: 1 }), 404],
     ["DELETE /api/food/:id", () => a("DELETE", `/api/food/${B.food}`), 404],
     ["GET /api/food-items", () => a("GET", "/api/food-items")],
+    // #115 a A marca o dela; desmarcar o "não comi" da B = não encontrado; regras só da própria conta
+    ["PUT /api/food-nao-comi", () => a("PUT", "/api/food-nao-comi", { date: D, meal: "cafe" })],
+    ["DELETE /api/food-nao-comi/:date/:meal", () => a("DELETE", `/api/food-nao-comi/${D}/lanche`), 404],
+    ["GET /api/food-metricas", () => a("GET", "/api/food-metricas")],
+    ["PUT /api/food-metricas", () => a("PUT", "/api/food-metricas", { completar: { cafe: false } })],
     ["GET /api/porcao-pessoal", () => a("GET", "/api/porcao-pessoal")],
     ["PUT /api/porcao-pessoal", () => a("PUT", "/api/porcao-pessoal", { alimento: "feijao", medida: "prato", gramas: 300 })],
     ["DELETE /api/porcao-pessoal/:alimento/:medida", () => a("DELETE", "/api/porcao-pessoal/feijao/concha"), 404],
