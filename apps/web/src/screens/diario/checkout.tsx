@@ -35,11 +35,12 @@ export function CheckoutCard() {
     <div class="dia-campos">
       <div class="ckrow"><span class="small">Treinou?</span>{ses ? <span class="small"><b>{ses.name ?? "treino"}</b> <span class="sub">· sessão do dia</span></span>
         : <Seg opts={SIMNAO} value={c.trained} label="Treinou?" onPick={(v) => set({ trained: v })} />}</div>
-      {trained === false && <div><label class="f" for="coMotivo">Por que não deu? <span class="sub">(opcional)</span></label>
-        <div class="row start" style="gap:8px"><textarea class="input" id="coMotivo" key={`mf-${d}`} rows={2} maxLength={C.MOTIVO_FALTA_MAX}
+      {trained === false && <div class="dia-motivo"><label class="f" for="coMotivo">Por que não deu? <span class="sub">(opcional)</span></label>
+        <div class="row start" style="gap:8px"><textarea class="input" id="coMotivo" key={`mf-${d}`} rows={2} maxLength={C.MOTIVO_FALTA_MAX} aria-describedby="coMotivoAjuda"
           placeholder="ex.: stress, afazeres, reunião até tarde" value={c.motivoFalta ?? ""} onInput={(e) => set({ motivoFalta: e.currentTarget.value || null })} />
           <Mic value={c.motivoFalta ?? ""} onChange={(v) => set({ motivoFalta: v.slice(0, C.MOTIVO_FALTA_MAX) || null })} label="Ditar o motivo" /></div>
-        <p class="tiny sub" style="margin-top:4px">Fica só na sua conta. O Chat usa para achar padrões na revisão da semana.</p></div>}
+        <p class="tiny sub" id="coMotivoAjuda" style="margin-top:4px">Fica só na sua conta. O Chat usa para achar padrões na revisão da semana.
+          {" "}<span class="num" aria-live="polite">{(c.motivoFalta ?? "").length}/{C.MOTIVO_FALTA_MAX}</span></p></div>}
       <div><span class="f">Cardio ou atividade</span>
         <div class="row wrapx" style="gap:8px">
           <select class="input dia-sel" aria-label="Tipo de cardio" value={c.cardio?.type ?? ""} onChange={(e) => setCardio({ type: e.currentTarget.value || undefined })}>

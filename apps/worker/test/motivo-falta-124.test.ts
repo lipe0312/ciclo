@@ -47,6 +47,19 @@ test("check-in: Não + texto → salvo; Não sem texto → salvo sem motivo; Sim
   assert.equal((await a.checkout(SEG)).motivoFalta, "afazeres (fictício)");
   await a.ok("POST", `/api/week/day/${SEG}`, { action: "falta", resposta: "fui", today: SEX });
   assert.equal((await a.checkout(SEG)).motivoFalta, null);
+  // recap/resumo dos dias diz que treinou → o motivo some; o relato do Chat só completa (não troca o "não" da pessoa)
+  await a.ok("PUT", `/api/checkout/${QUA}`, { trained: false, motivoFalta: "cansaço (fictício)" });
+  await a.tool("ciclo_registrar_resumo_dias", { dias: [{ date: QUA, trained: true }] });
+  assert.equal((await a.checkout(QUA)).motivoFalta, "cansaço (fictício)", "Chat não sobrescreve");
+  await a.ok("POST", "/api/diario/resumo", { dias: [{ date: QUA, trained: true }] });
+  assert.equal((await a.checkout(QUA)).trained, true);
+  assert.equal((await a.checkout(QUA)).motivoFalta, null, "resumo: treinou apaga o motivo");
+  await a.ok("PUT", `/api/checkout/${QUI}`, { trained: false, motivoFalta: "chuva (fictício)" });
+  await a.ok("POST", "/api/diario/recap", { from: QUI, to: QUI, dias: [{ date: QUI, trained: true }] });
+  assert.equal((await a.checkout(QUI)).motivoFalta, null, "recap: treinou apaga o motivo");
+  await a.ok("PUT", `/api/checkout/${QUI}`, { trained: false, motivoFalta: "chuva (fictício)" });
+  await a.ok("POST", "/api/diario/recap", { from: QUI, to: QUI, dias: [{ date: QUI, alcohol: null }] });
+  assert.equal((await a.checkout(QUI)).motivoFalta, "chuva (fictício)", "recap sem resposta de treino mantém");
 });
 
 test("MCP registra falta com motivo; ciclo_estado e ciclo_contexto revisao listam as faltas da semana com o motivo (dado)", async (t) => {

@@ -86,8 +86,9 @@ export async function saveDaysSummary(env: Env, uid: string, input: unknown, sou
     // Formulário do próprio dono ('resumo'): o que ele marcou vale. Relato via Claude: SÓ completa o que falta
     // (COALESCE(coluna, novo)) e nunca troca nota, álcool nem a origem de um registro que já existe.
     const upd = source === "claude"
-      ? "trained = COALESCE(trained, ?3), alcohol_units = COALESCE(alcohol_units, ?4), sleep_ok = COALESCE(sleep_ok, ?5), note = COALESCE(note, ?6)"
-      : "trained = COALESCE(?3, trained), alcohol_units = COALESCE(?4, alcohol_units), sleep_ok = COALESCE(?5, sleep_ok), note = COALESCE(?6, note)";
+      ? "trained = COALESCE(trained, ?3), motivo_falta = CASE WHEN COALESCE(trained, ?3) = 1 THEN NULL ELSE motivo_falta END, alcohol_units = COALESCE(alcohol_units, ?4), sleep_ok = COALESCE(sleep_ok, ?5), note = COALESCE(note, ?6)"
+      : "trained = COALESCE(?3, trained), motivo_falta = CASE WHEN COALESCE(?3, trained) = 1 THEN NULL ELSE motivo_falta END, alcohol_units = COALESCE(?4, alcohol_units), sleep_ok = COALESCE(?5, sleep_ok), note = COALESCE(?6, note)";
+    // #124 treinou (no fim) → o motivo da falta do dia some, como no "Treinei" da Semana
     const q = [env.DB.prepare(`INSERT INTO checkout (user_id, date, trained, alcohol_units, sleep_ok, note, source, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
       ON CONFLICT(user_id, date) DO UPDATE SET ${upd}, updated_at = ?8`) // upd é constante do código, não do usuário
       .bind(uid, d, trained, int(o.alcohol, `dias[${i}].alcohol`, 0, 30, false), bool(o.sleptWell, `dias[${i}].sleptWell`), str(o.note, `dias[${i}].note`, 500, false), source, now)];
@@ -141,7 +142,7 @@ export async function saveRecap(env: Env, uid: string, b: Record<string, unknown
     const cardio = o.cardio == null ? null : parseCardio(o.cardio);
     const entry = checkoutCardioEntry(d, cardio as never);
     st.push(env.DB.prepare(`INSERT INTO checkout (user_id, date, trained, cardio_json, alcohol_units, smoke, smoke_qty, sleep_ok, source, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'resumo', ?9)
-      ON CONFLICT(user_id, date) DO UPDATE SET trained = COALESCE(?3, trained), cardio_json = COALESCE(?4, cardio_json), alcohol_units = COALESCE(?5, alcohol_units),
+      ON CONFLICT(user_id, date) DO UPDATE SET trained = COALESCE(?3, trained), motivo_falta = CASE WHEN COALESCE(?3, trained) = 1 THEN NULL ELSE motivo_falta END, cardio_json = COALESCE(?4, cardio_json), alcohol_units = COALESCE(?5, alcohol_units),
         smoke = COALESCE(?6, smoke), smoke_qty = CASE WHEN ?6 IS NULL THEN smoke_qty ELSE ?7 END, sleep_ok = COALESCE(?8, sleep_ok), updated_at = ?9`)
       .bind(uid, d, trained, cardio ? JSON.stringify(cardio) : null, doses ? totalDoses(doses) : null, smoke,
         smoke ? int(o.smokeQty, `dias[${i}].smokeQty`, 1, 100, false) : null, bool(o.sleptWell, `dias[${i}].sleptWell`), now));
