@@ -20,7 +20,11 @@ export function MiniPrompt({ ia, texto }: { ia: CH.IaDoCaminho | null; texto: st
   return <div class="ch-mini">
     <p class="tiny sub">Abra o {mp.nome} e cole este pedido:</p>
     <code class="ch-prompt">{mp.prompt}</code>
-    <button type="button" class="btn sm" onClick={copiar}><Icon id="check" />Copiar</button>
+    <div class="row wrapx" style="gap:8px">
+      <button type="button" class="btn sm" onClick={copiar}><Icon id="check" />Copiar</button>
+      {/* #140 a IA que não aceita o pedido na URL: abre o app dela limpo, e o pedido vai por Copiar e colar */}
+      {mp.app && <a class="btn sm ghost" href={mp.app} target="_blank" rel="noopener noreferrer"><Icon id="chat" />Abrir no app</a>}
+    </div>
   </div>;
 }
 

@@ -108,14 +108,17 @@ test("estado só conector com IA que aceita texto na URL: vira pedido, faixa '1 
   assert.equal(a.getAttribute("rel"), "noopener noreferrer");
 });
 
-test("estado só conector com IA sem texto na URL: bloco com o prompt + Copiar, sem link externo", async () => {
+test("estado só conector com IA sem texto na URL: bloco com o prompt + Copiar e 'Abrir no app' limpo (#140), sem o pedido em link", async () => {
   await abrir("?demo&ia=conector&rotina=chatgpt");
   await enviar("quero treinar ombro hoje");
   assert.equal(M.S.inbox.length, 1);
   assert.ok(botao("Copiar"));
   assert.match(tela(), /Abra o ChatGPT e cole/);
   assert.ok(texto(raiz.porClasse("ch-prompt")[0]).startsWith(M.C.MINI_PROMPT));
-  assert.ok(!els("a").some((x) => /^https?:/.test(x.getAttribute("href") ?? "")), "link externo para IA sem prompt na URL");
+  // #140 "Abrir no app": a IA abre limpa, sem nada do pedido na URL; o pedido vai por Copiar e colar
+  const externos = els("a").map((x) => x.getAttribute("href") ?? "").filter((h) => /^https?:/.test(h));
+  assert.deepEqual(externos, ["https://chatgpt.com/"]);
+  assert.equal(botao("Abrir no app").getAttribute("rel"), "noopener noreferrer");
 });
 
 test("mini prompt: texto livre (saúde, acento) não vai na URL; sugestão fixa vai", async () => {
