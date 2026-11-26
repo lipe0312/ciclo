@@ -10,9 +10,10 @@ import type { FunctionComponent } from "preact";
 
 // #134 O aviso de IA do cartão baixa depois da 1ª pintura (fora do JS inicial). Até lá não mostra nada (é dispensável).
 // #138 + o aviso de consumo da chave (≥ 80% do teto), do mesmo módulo.
+// #140 Sobe para o topo do Hoje (junto dos outros avisos), onde a ação "Escolha sua IA" é vista; não fica mais no fim do cartão do Chat.
 let Aviso: FunctionComponent | null = null;
 let Consumo: FunctionComponent | null = null;
-function AvisoIa() {
+export function AvisoIa() {
   const [, set] = useState(0);
   useEffect(() => { if (!Aviso) import("../../lib/sua-ia/aviso.tsx").then((m) => { Aviso = m.AvisoIa; Consumo = m.AvisoConsumo; set(1); }).catch(() => {}); }, []);
   return Aviso ? <>{Consumo && <Consumo />}<Aviso /></> : null;
@@ -46,6 +47,5 @@ export function ClaudeCard() {
     {pend ? <><p class="small" style="margin-top:6px">Você pediu: “{curto(pend.text, 110)}”</p><p class="small sub">O Chat responde quando você abrir o chat dele e processar a caixa.</p></>
       : resp ? <><p class="small sub" style="margin-top:6px">Última resposta</p><p class="small">{curto(resp.response ?? "")}</p></>
         : <p class="small sub" style="margin-top:6px">Peça ajustes de treino, comida ou dor. Os pedidos ficam guardados até a sua IA responder.</p>}
-    <div style="margin-top:10px"><AvisoIa /></div>
     <div class="hm-ctas"><a class="btn sm pri" href={C.HREF_FALE_HOJE}><Icon id="chat" />Fale com a IA</a></div></Card>;
 }

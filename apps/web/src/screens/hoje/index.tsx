@@ -15,7 +15,7 @@ import { AvisoFalta } from "../semana/aviso.tsx";
 import { AvisoSemAcademia } from "../semana/aviso-sem-academia.tsx";
 import { garantirSemana, getSemana, getVazio } from "../semana/estado.ts";
 import { SemanaCarrossel } from "./carrossel-semana.tsx";
-import { ClaudeCard, ComidaPainel } from "./comida-claude.tsx";
+import { AvisoIa, ClaudeCard, ComidaPainel } from "./comida-claude.tsx";
 import { H, adiarPerfil, boasVindasVisivel, carregarHome, perfilAdiadoEm } from "./estado.ts";
 import { Atalhos, BoasVindas, Caminho, Descanso, Medias } from "./inicio.tsx";
 import { Lacunas } from "./lacunas.tsx";
@@ -79,7 +79,7 @@ export default function Hoje() {
   // quem pulou o checkup vê o "Complete o perfil" (adiável) no lugar da faixa, enquanto faltar algo
   const falta = checkup === "pulado" ? C.faltaParaGerar(S.profile) : [];
   const perfil = v && C.cartaoCompletePerfil({ falta: falta.length, adiadoEm: perfilAdiadoEm(v), hoje: today }) === "mostrar";
-  const topo = <>{!falta.length && <FaixaCheckup />}<AvisoFalta />{getSemana() && <AvisoSemAcademia />}</>;
+  const topo = <>{!falta.length && <FaixaCheckup />}<AvisoFalta />{getSemana() && <AvisoSemAcademia />}<AvisoIa /></>; // #140 o aviso de IA no topo, não no fim da página
   // #63 sem treino (o servidor não gerou a semana; demonstração `?demo&vazio`): só o começo guiado, sem treino aleatório
   if (hojeVazio()) return <>{cab}<AvisoFalta /><ComecoVazio falta={C.faltaParaGerar(S.profile)} /></>;
   if (!v) return <>{cab}{topo}{H.erro

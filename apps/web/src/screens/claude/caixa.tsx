@@ -10,7 +10,6 @@ import { loadClaude } from "./memoria.tsx";
 /** Categorias de pedido (modelo por tipo, em Perfil → Como o Chat trabalha com você). */
 export const CATS = ["Hoje", "Treino", "Corpo", "Comida", "Plano"];
 export const hhmm = (ms: number) => new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-type Tier = keyof typeof C.TIER_INFO;
 
 function demoAnswer(m: any): { response: string; change?: any } {
   const t = m.text.toLowerCase();
@@ -75,7 +74,7 @@ export async function sendInbox(text: string, promptId?: string): Promise<any | 
     const r = await send<{ id: string; status?: string; response?: string; change?: unknown; cerebro?: string }>("POST", "/api/inbox", { text, promptId, tier: m.tier, date: today }).catch(() => null);
     if (r) m.id = r.id;
     if (r?.status === "respondido") { Object.assign(m, { status: "respondido", response: r.response, change: r.change ?? null, cerebro: r.cerebro }); commit(); toast("Respondido"); }
-    else toast(`Na fila · ${C.TIER_INFO[m.tier as Tier].nm}`);
+    else toast("Na fila");
     loadClaude(); return m;
   }
   setTimeout(() => { if (m.status !== "pendente") return; const a = demoAnswer(m); m.response = a.response; m.change = a.change ? { ...a.change, diff: previewDiff(a.change) } : null; m.status = a.change ? "respondido" : "aplicado"; commit(); }, 900);
