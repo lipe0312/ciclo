@@ -1,4 +1,4 @@
-# 12 · MCP do Ciclo: contrato (v1.5.0)
+# 12 · MCP do Ciclo: contrato (v1.6.0)
 
 O Ciclo é um servidor MCP remoto (Streamable HTTP, respostas JSON, sem estado) em `/mcp`. Qualquer cliente MCP com OAuth conecta: claude.ai, Claude Desktop/Code, ChatGPT (conectores), Gemini CLI, Cursor/VS Code. A rotina automática da caixa só existe no Claude (Claude Code agendado); as outras IAs funcionam no modo conversa.
 
@@ -125,6 +125,7 @@ No app, toda entrada vinda da IA mostra o selo **"via Chat, HH:MM · ≈ estimat
 10. "Fiz 3×10 com 20 kg no supino" → séries registradas; "como evoluí no supino?" → `ciclo_historico`.
 
 ## CHANGELOG
+- **1.6.0 (#115):** a prévia de `ciclo_comida_registrar` (um dia) traz `faltando` (refeição completável sem registro no dia, com a média dela) e `naoComeuOuEsqueceu`; a entrada aceita `naoComi` (refeições que a pessoa não comeu: contam 0 e não são completadas). Sem resposta, a refeição faltando entra nas médias com a média dela (regras em Comida > Configurações de métricas).
 - **1.5.0 (#124):** `ciclo_marcar_presenca` aceita `motivo` (≤ 280) em `nao_fui`: é a justificativa opcional do dia (a mesma do "Treinou? → Não" no check-in do app) e também responde o "Treinou?" do dia. `ciclo_estado` e `ciclo_contexto` (`revisao`) trazem `faltas` da semana com o motivo marcado `{tipo:"dado_do_usuario"}`, para a IA apontar padrões; `ciclo_diario` devolve `motivoFalta` também como dado.
 - **1.4.0 (#123):** `ciclo_treino_corrigir` (destrutiva, prévia → confirmar): apagar/corrigir séries, remover exercício e descartar/mesclar sessão duplicada de um dia, mesmo já feito, com o volume da semana antes → depois. `ciclo_treino_registrar` num dia já feito soma na sessão do dia (não abre outra). Começar não marca o dia como feito: só Terminar (ou o registro pelo MCP).
 - **1.3.0 (#125):** `ciclo_treino_trocar` devolve só o top 3 `{id, nome, motivo}` (antes `mesmaParte`/`outraParte`), a mesma lista do app; `ciclo_planejar_dia` traz `alts` dessa lista e `par`; itens compactos aceitam `par` ("A1"/"A2": supersérie) e o servidor recusa par de músculos que competem.
