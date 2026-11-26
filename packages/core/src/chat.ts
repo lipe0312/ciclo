@@ -3,7 +3,7 @@
 // histórico de conversas. Fica fora do índice (subcaminho "@ciclo/core/chat"): só a tela Chat baixa. Tudo genérico: a IA de cada caminho vem do perfil (#133), nunca fixa no código.
 import { NOME_PROVEDOR } from "./chaves.ts";
 import type { ProvedorIa } from "./chaves.ts";
-import { PROVEDORES_IA_APP, caminhos, linkAbrirIa } from "./ia.ts";
+import { PROVEDORES_IA_APP, caminhos, linkAbrirApp, linkAbrirIa } from "./ia.ts";
 import type { ChaveResumo, EstadoIa, IaId, PerfilIa } from "./ia.ts";
 
 export const CHAT = {
@@ -83,7 +83,8 @@ const TEXTO_FIXO: ReadonlySet<string> = new Set<string>(SUGESTOES_CHAT);
 /** O texto pode ir na URL? Só se for exatamente uma das sugestões fixas do app. */
 export const textoFixo = (t: string) => TEXTO_FIXO.has(t.replace(/\s+/g, " ").trim());
 
-export interface MiniPrompt { prompt: string; url: string | null; copiar: boolean; nome: string }
+/** `url`: abre a IA já com o pedido (só as que aceitam). `app` (#140): as que não aceitam, abrem o app/site dela sem nada do usuário na URL. */
+export interface MiniPrompt { prompt: string; url: string | null; app: string | null; copiar: boolean; nome: string }
 /**
  * "Abrir no <IA>": o prompt é curto e fixo (MINI_PROMPT). Só uma sugestão fixa do app pode ir junto; texto livre da pessoa
  * nunca entra na URL nem no bloco (o pedido já está na caixa). IA que não aceita texto na URL: bloco com Copiar.
@@ -92,9 +93,9 @@ export function miniPrompt(ia: IaDoCaminho | null, texto = ""): MiniPrompt {
   const t = texto.replace(/\s+/g, " ").trim();
   const nome = ia?.nome ?? NOME_GENERICO;
   const prompt = t && textoFixo(t) ? `${MINI_PROMPT} Pedido: "${t}"` : MINI_PROMPT;
-  const aceita = !!ia?.id && !!PROVEDORES_IA_APP[ia.id === "alternativa" ? "claude" : ia.id].abrir?.promptNaUrl;
-  const url = aceita && ia?.id ? linkAbrirIa(ia.id, prompt) : null;
-  return { prompt, url, copiar: !url, nome };
+  const abrir = ia?.id ? PROVEDORES_IA_APP[ia.id === "alternativa" ? "claude" : ia.id].abrir : undefined;
+  const url = ia?.id && abrir?.promptNaUrl ? linkAbrirIa(ia.id, prompt) : null;
+  return { prompt, url, app: ia?.id && !url ? linkAbrirApp(ia.id) : null, copiar: !url, nome };
 }
 
 // ---------- faixa dos pedidos da rotina ----------

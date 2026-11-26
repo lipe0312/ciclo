@@ -53,7 +53,8 @@ export const PROVEDORES_IA_APP: Record<IaId, InfoIa> = {
     },
   },
   chatgpt: {
-    nome: "ChatGPT", guia: "detalhado", naoSei: "gratis",
+    // #140 o ChatGPT não aceita o pedido na URL: o app abre limpo (a página inicial), o pedido vai pelo Copiar
+    nome: "ChatGPT", guia: "detalhado", abrir: { url: "https://chatgpt.com/", promptNaUrl: false }, naoSei: "gratis",
     celulas: {
       assinatura: { caminho: "conector", beta: true, guia: "chatgpt_conector", resumo: "conector no ChatGPT (modo desenvolvedor, beta)", minutos: 2 },
       gratis: { caminho: "sugerir_alternativa", guia: "alternativa", resumo: "o ChatGPT grátis não aceita conector: teste com o Claude grátis", minutos: 1 },
@@ -259,4 +260,9 @@ export function mostrarAvisoIa(aviso: AvisoIa | null, dispensa: { id: string; ch
 export function linkAbrirIa(ia: IaId | "alternativa", pedido: string): string | null {
   const a = PROVEDORES_IA_APP[ia === "alternativa" ? "claude" : ia].abrir;
   return a?.promptNaUrl ? a.url + encodeURIComponent(pedido.slice(0, 1500)) : null;
+}
+/** #140 "Abrir no app": a IA que NÃO aceita o pedido na URL abre limpa (página inicial dela): nada do usuário vai na URL. */
+export function linkAbrirApp(ia: IaId | "alternativa"): string | null {
+  const a = PROVEDORES_IA_APP[ia === "alternativa" ? "claude" : ia].abrir;
+  return a && !a.promptNaUrl ? a.url : null;
 }
