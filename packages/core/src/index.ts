@@ -18,6 +18,7 @@ export * from "./comida.ts";
 export * from "./alimentos.ts";
 export * from "./diario.ts";
 export * from "./diario-recap.ts";
+export * from "./motivo-falta.ts";
 export * from "./lugares.ts";
 export * from "./midia.ts";
 export * from "./mp4.ts";

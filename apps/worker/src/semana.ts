@@ -333,12 +333,13 @@ export async function dayAction(env: Env, uid: string, d: string, b: Record<stri
     if (!c.dates.includes(day) || day > c.today) throw new HttpError(400, "falta só para dias desta semana até hoje");
     const resp = oneOf(b.resposta, "resposta", ["fui", "nao_fui", "folga"] as const), now = Date.now();
     // #123 "Treinei"/"Não treinei" atualiza o check-in do dia (foi treinar?); trocar Treinei → Não volta o dia a pendente
+    // #124 "Treinei" apaga o motivo da falta do dia; "Não treinei" mantém o que a pessoa escreveu no check-in
     const r = resp === "folga" ? { presenca: "folga" as const, checkin: null } : respostaTreinei(c.attendance[day], resp === "fui");
     await env.DB.batch([
       r.presenca ? env.DB.prepare("INSERT INTO attendance (user_id, date, status, source, updated_at) VALUES (?1, ?2, ?3, 'app', ?4) ON CONFLICT(user_id, date) DO UPDATE SET status = ?3, source = 'app', updated_at = ?4")
         .bind(uid, day, r.presenca, now) : env.DB.prepare("DELETE FROM attendance WHERE user_id = ?1 AND date = ?2").bind(uid, day),
       ...(r.checkin == null ? [] : [env.DB.prepare(`INSERT INTO checkout (user_id, date, trained, source, updated_at) VALUES (?1, ?2, ?3, 'app', ?4)
-        ON CONFLICT(user_id, date) DO UPDATE SET trained = ?3, updated_at = ?4`).bind(uid, day, r.checkin ? 1 : 0, now)]),
+        ON CONFLICT(user_id, date) DO UPDATE SET trained = ?3, motivo_falta = CASE WHEN ?3 = 1 THEN NULL ELSE motivo_falta END, updated_at = ?4`).bind(uid, day, r.checkin ? 1 : 0, now)]),
     ]);
     const att = { ...c.attendance };
     if (r.presenca) att[day] = r.presenca; else delete att[day];

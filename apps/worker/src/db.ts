@@ -380,7 +380,7 @@ export async function exportAccount(env: Env, uid: string) {
     q("SELECT id, date, type, minutes, intensity, distance_km, created_at FROM cardio_log WHERE user_id = ?1 ORDER BY date, created_at"),
     q("SELECT id, name, meal, text, kcal, protein, created_at FROM meal_template WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT id, date, kcal_before, kcal_after, adjust, tdee, trend_kg_week, code, reason, created_at FROM diet_target_history WHERE user_id = ?1 ORDER BY date, created_at"),
-    q("SELECT date, trained, cardio_json, water_ml, alcohol_units, smoke, smoke_qty, caffeine_late, mood, sleep_ok, note, source, updated_at FROM checkout WHERE user_id = ?1 ORDER BY date"),
+    q("SELECT date, trained, cardio_json, water_ml, alcohol_units, smoke, smoke_qty, caffeine_late, mood, sleep_ok, note, motivo_falta, source, updated_at FROM checkout WHERE user_id = ?1 ORDER BY date"),
     q("SELECT id, label, created_at, raw_text, expires_at, analyzed_at, summary_json, status FROM health_exam WHERE user_id = ?1 ORDER BY created_at"),
     q("SELECT last_open, snoozed_on, absence_days, absence_from, absence_to, updated_at FROM reminder_state WHERE user_id = ?1"),
     q("SELECT key, name, kcal, protein, carb, fat, units, source, uses, last_used_at, updated_at FROM food_item WHERE user_id = ?1 ORDER BY key"),

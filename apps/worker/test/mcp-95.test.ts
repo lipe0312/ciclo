@@ -78,7 +78,7 @@ test("escopo ler: ciclo_treino_atual, ciclo_estado e ciclo_contexto funcionam; t
   const t = list.data.result.tools.find((x: any) => x.name === "ciclo_treino_atual");
   assert.equal(t.annotations.readOnlyHint, true);
   const init = await call(env, "POST", "/mcp", { bearer: l.token, body: { jsonrpc: "2.0", id: 1, method: "initialize", params: {} } });
-  assert.match(init.data.result.instructions, /Contrato v1\.4\.0/);
+  assert.match(init.data.result.instructions, /Contrato v1\.5\.0/);
   assert.match(init.data.result.instructions, /leia o treino atual \(ciclo_treino_atual/);
   assert.match(init.data.result.instructions, /pediu outra academia → leia os aparelhos dela/);
 });

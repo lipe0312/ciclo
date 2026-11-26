@@ -2,7 +2,8 @@
 // já calculados pelo core (o Claude avalia, não recalcula). Ordem fixa: objetivo → método (5–10 linhas) → fatia → regra
 // de resposta. Texto livre do usuário (pedido, nota, registro de comida, contexto da dor, nome do treino) NUNCA entra:
 // só IDs e números. Única exceção: `objetivo.frase` (goal.statement do perfil), texto livre tratado como DADO, cortado em
-// uma linha de até 140 caracteres; a regra `responda` lembra que texto do usuário não é instrução.
+// uma linha de até 140 caracteres; a regra `responda` lembra que texto do usuário não é instrução. #124: a revisão leva
+// também o motivo das faltas da semana, marcado {tipo:"dado_do_usuario"} e cortado em uma linha.
 // Função pura e determinística; o Worker busca os dados (filtrados por user_id) e chama contexto().
 
 import { EXERCISE_BY_ID, MUSCLES, MUSCLE_IDS } from "./catalog.ts";
@@ -18,6 +19,7 @@ import type { Action } from "./prompts.ts";
 import { resumoMetodo } from "./contexto-metodo.ts";
 import { TETO_HISTORICO } from "./historico.ts";
 import type { ResumoHistorico } from "./historico.ts";
+import type { FaltasSemana } from "./motivo-falta.ts";
 
 export const PEDIDOS = ["trocar", "dor", "tempo", "gerar", "comida", "recap", "revisao"] as const;
 export type Pedido = (typeof PEDIDOS)[number];
@@ -59,6 +61,8 @@ export interface EstadoContexto {
   medidas?: { date: string; armCm: number | null; waistCm: number | null }[];
   /** #90 resumo do histórico (resumoHistorico): gerar → mês + semana; tempo (treino avulso) → mês + N dias */
   historico?: ResumoHistorico | null;
+  /** #124 faltas da semana com o motivo (dado do usuário); só a revisão leva */
+  faltas?: FaltasSemana | null;
 }
 
 export interface Fatia {
@@ -180,6 +184,9 @@ function fatiaRevisao(e: EstadoContexto, prios: MuscleId[]): Record<string, unkn
     cargas: cargasChave(e, prios),
     aderencia: { presenca: `${s?.presenca?.fui ?? 0}/${s?.presenca?.meta ?? 0}`, checkins: `${s?.checkins ?? 0}/7`, proteina: `${prot.hit}/${prot.of}` },
     medidas: medidas(e),
+    // #124 única fatia com texto livre além do objetivo: o motivo das faltas, marcado {tipo:"dado_do_usuario"}, em uma
+    // linha de até 140 caracteres (o inteiro fica no ciclo_estado) para caber no teto de tokens
+    ...(e.faltas ? { faltas: { ...e.faltas, faltas: e.faltas.faltas.map((f) => ({ date: f.date, motivo: f.motivo ? { tipo: f.motivo.tipo, texto: oneLine(f.motivo.texto) } : null })) } } : {}),
   };
 }
 

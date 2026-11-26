@@ -23,7 +23,7 @@ test("checkout em dia sem treino: grava, cardio do checkout soma no resumo da se
   await ok(c("PUT", `/api/checkout/${TUE}`, body)); // regravar não duplica o cardio
   const d = (await ok(c("GET", `/api/diario?from=${MON}&to=${WED}`))).data;
   assert.equal(d.checkouts.length, 1);
-  assert.deepEqual({ ...d.checkouts[0], updatedAt: 0 }, { date: TUE, trained: false, cardio: { type: "Trail_Running_Walking", minutes: 40, steps: 9000 }, waterMl: 2000, alcohol: 2, smoke: true, smokeQty: 3, caffeineLate: false, mood: 4, sleptWell: null, note: "dia de descanso fictício", source: "app", updatedAt: 0 });
+  assert.deepEqual({ ...d.checkouts[0], updatedAt: 0 }, { date: TUE, trained: false, cardio: { type: "Trail_Running_Walking", minutes: 40, steps: 9000 }, waterMl: 2000, alcohol: 2, smoke: true, smokeQty: 3, caffeineLate: false, mood: 4, sleptWell: null, note: "dia de descanso fictício", motivoFalta: null, source: "app", updatedAt: 0 });
   const week = (await ok(c("GET", `/api/state?date=${TUE}`))).data.week.cardio;
   assert.equal(week.length, 2, "checkout entra no cardio da semana");
   assert.equal(cardioWeekSummary(week, MON, "2026-11-15", 70).minutes, 65);
