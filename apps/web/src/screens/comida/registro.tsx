@@ -253,6 +253,6 @@ export function DiaCard({ dia, setDia }: { dia: string; setDia: (d: string) => v
           : <button type="button" class="iconbtn" aria-label={`Apagar: ${f.text}`} onClick={() => { setApagar(f.id); setTimeout(() => setApagar((x) => (x === f.id ? null : x)), 3000); }}><Icon id="x" /></button>}
       </span>
     </div>)}
-    <p class="tiny sub" style="margin-top:8px">Estimativa rápida no aparelho; o Chat (Haiku) confere com a TACO quando processa.</p>
+    <p class="tiny sub" style="margin-top:8px">Estimativa rápida no aparelho; o Chat confere com a TACO quando processa.</p>
   </Card>;
 }

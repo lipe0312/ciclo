@@ -45,6 +45,27 @@ test("nenhuma marca de IA solta na UI fora da allowlist (seletor, guia, cadastro
   assert.deepEqual(achados, [], `use "Sua IA", "Chat" ou o nome vindo do core (PROVEDORES_IA_APP):\n${achados.join("\n")}`);
 });
 
+// #140 Nome de modelo (Haiku/Sonnet/Opus) e selo de tier não ficam soltos na tela Chat, na caixa, no Hoje nem na comida: só no
+// seletor de modelo por pedido (Perfil → Como o Chat trabalha com você), no guia e nas chaves (os IDs vêm do servidor/core).
+const MODELO = /\b(Haiku|Sonnet|Opus)\b/;
+const MODELO_PERMITIDO = new Map([["src/screens/perfil/index.tsx", "seletor de modelo por tipo de pedido (Como o Chat trabalha com você)"]]);
+test("modelo: o detector pega o nome, mas não o id de dado nem o codec (haiku, audio/webm;codecs=opus)", () => {
+  for (const t of ["Na fila · Haiku", "o Chat (Haiku) confere", "Sonnet", "usa o Opus"]) assert.match(t, MODELO, t);
+  for (const t of ["tier: \"haiku\"", "audio/webm;codecs=opus", "AvisoPush()"]) assert.doesNotMatch(t, MODELO, t);
+});
+test("nenhum nome de modelo nem selo de tier solto na UI (Chat, caixa, Hoje, comida) fora do seletor", () => {
+  const achados: string[] = [];
+  for (const f of arquivos(join(WEB, "src"))) {
+    const rel = relative(WEB, f).split("\\").join("/");
+    if (MODELO_PERMITIDO.has(rel)) continue;
+    semComentarios(readFileSync(f, "utf8")).split("\n").forEach((l, i) => {
+      if (MODELO.test(l) || /TIER_INFO/.test(l) || /class[=:]\s*[{"'`][^}"'`]*\btier\b/.test(l)) achados.push(`${rel}:${i + 1}: ${l.trim().slice(0, 120)}`);
+    });
+  }
+  assert.deepEqual(achados, [], `fale "Chat" ou "sua IA"; o modelo só no seletor:\n${achados.join("\n")}`);
+  for (const f of MODELO_PERMITIDO.keys()) assert.ok(statSync(join(WEB, f)).isFile(), f);
+});
+
 test("a allowlist só tem arquivos que existem (não vira passe livre esquecido)", () => {
   for (const f of PERMITIDOS.keys()) assert.ok(statSync(join(WEB, f)).isFile(), f);
 });

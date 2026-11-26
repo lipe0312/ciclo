@@ -562,7 +562,7 @@ async function chat(c) {
       ok(await c.esperar("/\\d+ pedidos? na rotina/.test(document.querySelector('.ch-faixa')?.innerText ?? '') && (document.querySelector('.ch-thread')?.innerText ?? '').includes('Virou um pedido')", 4000), "sem a faixa de pedidos");
       const externos = await c.ev("[...document.querySelectorAll('.ch-thread a[href^=\"http\"]')].map((a) => a.textContent.trim())");
       if (link) igual(externos, [`Abrir no ${nome}`], "link do mini prompt");
-      else { igual(externos, [], "IA sem prompt na URL não ganha link"); ok((await c.texto()).includes("Copiar"), "sem o Copiar"); }
+      else { igual(externos, ["Abrir no app"], "IA sem prompt na URL só abre o app limpo (#140), sem o pedido"); ok((await c.texto()).includes("Copiar"), "sem o Copiar"); }
     }, c);
   }
   for (const [ia, nome] of [["gemini", "Gemini"], ["deepseek", "DeepSeek"]]) {
@@ -570,14 +570,14 @@ async function chat(c) {
       await abrirChat(`ia=chave&chave=${ia}`);
       ok((await c.texto()).includes(`${nome} · modelo padrão`), "sem a IA no topo");
       await enviarTexto("como foi minha semana?");
-      ok(await c.esperar("(document.querySelector('.ch-thread')?.innerText ?? '').includes('chave do " + nome + "')", 4000), "não foi pela chave");
+      ok(await c.esperar("(document.querySelector('.ch-thread')?.innerText ?? '').includes('Proposta · Treino de')", 4000), "não foi pela chave (#89: o demo responde com uma proposta)");
       ok(!(await c.texto()).includes("Virou um pedido"), "virou pedido");
     }, c);
   }
   await passo("estado ambos (rotina do Claude + chave do Gemini): o padrão é a chave, o toggle manda para a rotina", async () => {
     await abrirChat("ia=ambos&rotina=claude&chave=gemini");
     await enviarTexto("primeira");
-    ok((await c.texto()).includes("Guardei na conversa"), "o padrão não foi a chave");
+    ok(await c.esperar("(document.querySelector('.ch-thread')?.innerText ?? '').includes('Proposta · Treino de')", 4000), "o padrão não foi a chave (#89: o demo responde com uma proposta)");
     await c.ev("document.querySelector('.ch-rotina input').click()");
     await enviarTexto("segunda");
     ok(await c.esperar("(document.querySelector('.ch-thread')?.innerText ?? '').includes('Virou um pedido na rotina do Claude')", 4000), "o toggle não mandou para a rotina");

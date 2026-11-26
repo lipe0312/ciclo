@@ -1,6 +1,7 @@
 // #133 Perfil → Sua IA (#perfil/ia): uma tela só, no lugar de "Conectar Chat" e "Chaves de IA". As mesmas 2 escolhas dos
 // Primeiros passos (editáveis), o status (estadoIA do core), o guia de cada caminho, as conexões do conector e as chaves
 // de API (cofre da #88). Mudar a IA não apaga conexão nem chave: ficam como "não é a principal", com Revogar.
+// #140 Avançado (recolhido): modelo e esforço por tipo de pedido (avancado.tsx, em chunk à parte).
 import type { ComponentType } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import * as C from "@ciclo/core";
@@ -25,6 +26,9 @@ export default function SuaIa() {
   const [Chaves, setChaves] = useState<ComponentType<{ demo?: boolean; inicial?: C.ProvedorIa }> | null>(null);
   const [inicial, setInicial] = useState<C.ProvedorIa | undefined>(undefined);
   const chavesRef = useRef<HTMLDivElement>(null);
+  // #140 o Avançado (modelo e esforço por tipo de pedido) baixa só quando a pessoa abre
+  const [Avancado, setAvancado] = useState<ComponentType | null>(null);
+  const abrirAvancado = (aberto: boolean) => { if (aberto && !Avancado) import("./avancado.tsx").then((m) => setAvancado(() => m.default)).catch(() => {}); };
   // as chaves em chunk à parte (orçamento de JS por tela)
   useEffect(() => { import("../conta/chaves.tsx").then((m) => setChaves(() => m.Chaves)).catch(() => {}); }, []);
   const irParaChave = (p: C.ProvedorIa) => { setInicial(p); (chavesRef.current as (HTMLElement & { scrollIntoView?: (o: object) => void }) | null)?.scrollIntoView?.({ block: "start" }); };
@@ -57,8 +61,8 @@ export default function SuaIa() {
       {Chaves ? <Chaves demo={!SERVER} inicial={inicial} /> : <p class="small sub" aria-busy="true">Carregando…</p>}
     </div>
 
-    <details class="cx-mais"><summary>Avançado</summary>
-      <p class="small sub">Modelo e esforço de cada chave ficam na própria chave, acima (a lista mostra só os modelos que a chave acessa). O modelo por tipo de pedido (gerar semana, revisar treino, comida, pedidos da rotina) fica em <a class="link44" href="#perfil/claude">Como o Chat trabalha com você</a>.</p>
+    <details class="cx-mais" onToggle={(e) => abrirAvancado((e.currentTarget as HTMLDetailsElement).open)}><summary>Avançado</summary>
+      {Avancado ? <Avancado /> : <p class="small sub" aria-busy="true">Carregando…</p>}
     </details>
     <p class="tiny sub sia-rodape"><Icon id="info" style="width:12px;height:12px" /> Dá para trocar a qualquer hora. Trocar a IA não apaga conexões nem chaves.</p>
   </div>;

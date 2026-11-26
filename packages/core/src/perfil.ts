@@ -13,6 +13,8 @@ import { validarTreinoAtual } from "./treino-atual.ts";
 import type { TreinoAtual } from "./treino-atual.ts";
 import { validarPerfilIa } from "./ia.ts";
 import type { PerfilIa } from "./ia.ts";
+import { TIPOS_PEDIDO_IA, validarPrefPedidoIa } from "./ia-pedidos.ts";
+import type { PrefsPedidoIa } from "./ia-pedidos.ts";
 import { assinaturaValida } from "./divisao.ts";
 import type { DivisaoEscolha } from "./divisao.ts";
 import { AVISOS_SAUDE } from "./saude-avisos.ts";
@@ -51,6 +53,7 @@ export const DEFAULT_PROFILE = {
 };
 /** `treinoAtual` (#74) é opcional e não tem padrão: sem cadastro, o gerador funciona igual. */
 export type ProfileData = typeof DEFAULT_PROFILE & { treinoAtual?: TreinoAtual; divisaoEscolha?: DivisaoEscolha; /** #133 Sua IA */ ia?: PerfilIa;
+  /** #140 Sua IA → Avançado: modelo e esforço por tipo de pedido (opcional; vazio = o padrão de cada chave) */ iaPedidos?: PrefsPedidoIa;
   /** #139 o que a pessoa tem sem academia (IDs do catálogo); [] = só peso corporal. Só vale com 0 academias. */ equipamentos?: string[];
   /** #105 sinais de saúde (opcional): só avisos que encaminham a um profissional; dado de saúde, nunca em log */ saude?: AvisoSaude[] };
 
@@ -188,6 +191,8 @@ const SCHEMA: Record<string, Rule> = {
   // #74 "Meu treino atual" (opcional; nunca entra no faltaParaGerar): divisões por grupo grande, IDs só do catálogo
   // #133 Sua IA (opcional; nunca entra no faltaParaGerar): qual IA, como usa e a principal. Substitui inteiro no merge.
   ia: (v, p, err) => { const r = validarPerfilIa(v); if (!r.ok) { r.erros.forEach(err); return undefined; } return r.valor; },
+  // #140 Avançado da Sua IA: tipo de pedido → { provedor, modelo, esforco }; `null` volta ao padrão da chave (mapa: mescla por tipo)
+  iaPedidos: record(oneOf(TIPOS_PEDIDO_IA), (v, p, err) => { const r = validarPrefPedidoIa(v); if (!r.ok) { r.erros.forEach((m) => err(`${p}: ${m}`)); return undefined; } return r.valor; }, TIPOS_PEDIDO_IA.length),
   // #105 saúde (opcional; nunca entra no faltaParaGerar nem muda o treino): só os avisos que encaminham a um profissional
   saude: list(oneOf(AVISOS_SAUDE), AVISOS_SAUDE.length),
   // #139 o que a pessoa tem sem academia (opcional; nunca entra no faltaParaGerar); lista vazia = só peso corporal
@@ -231,7 +236,7 @@ export const PERFIL_ROTULO: Record<string, string> = {
   pinned: "exercícios fixos", avoid: "exercícios que você evita", dynamics: "formato do treino", crowdedStrategy: "academia cheia",
   mobility: "mobilidade", dayGym: "lugar de cada dia", diet: "comida", autonomy: "o que o Chat muda sozinho", tone: "tom do Chat",
   reviewTime: "horário da revisão", tiers: "modelos do Chat", places: "academia, casa ou os dois", meta: "dados do perfil",
-  treinoAtual: "meu treino atual", divisaoEscolha: "manter ou ajustar a divisão", ia: "sua IA", saude: "saúde",
+  treinoAtual: "meu treino atual", divisaoEscolha: "manter ou ajustar a divisão", ia: "sua IA", iaPedidos: "modelo e esforço por pedido", saude: "saúde",
   equipamentos: "equipamentos",
 };
 const juntar = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}`);
@@ -242,7 +247,7 @@ export function mensagemPerfil(campos: readonly string[]): string {
   return nomes.length ? `Não deu para salvar: confira ${juntar(nomes)}.` : "Não deu para salvar agora. Tente de novo.";
 }
 
-const MAPS = ["prefs", "pinned", "dayGym", "tiers"] as const;
+const MAPS = ["prefs", "pinned", "dayGym", "tiers", "iaPedidos"] as const;
 const NESTED = ["goal", "mobility", "diet", "meta"] as const;
 /** Aplica um patch já validado sobre a base (objetos mesclam, mapas mesclam e `null` apaga, listas substituem). */
 function merge(base: Record<string, any>, patch: Record<string, any>): Record<string, any> {

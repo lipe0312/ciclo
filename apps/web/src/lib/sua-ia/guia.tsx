@@ -27,6 +27,7 @@ export function Guia({ passo, onChave, conectado }: { passo: C.PassoIa; onChave?
     <button type="button" class="btn ghost full" onClick={() => setAlt(false)}>Voltar ao guia anterior</button></>;
   const g = GUIAS_IA[passo.guia];
   const abrir = g.teste ? C.linkAbrirIa(passo.ia, PEDIDO_TESTE) : null;
+  const app = g.teste && !abrir ? C.linkAbrirApp(passo.ia) : null; // #140 sem pedido na URL: abre o app limpo
   const aviso = passo.gratis && passo.provedorChave ? C.avisoChaveGratis(passo.provedorChave) : null;
   return <div class="sia-guia">
     <h3>{g.titulo}</h3>
@@ -35,6 +36,7 @@ export function Guia({ passo, onChave, conectado }: { passo: C.PassoIa; onChave?
       {!SERVER && <p class="tiny sub">Na demonstração a URL é de exemplo e não conecta.</p>}</div>}
     {g.teste && <div class="sia-bloco"><span class="tiny sub">Pedido de teste</span><Copiavel valor={PEDIDO_TESTE} rotulo="Copiar o pedido" ok="Pedido copiado" />
       {abrir && <a class="btn sm full" href={abrir} target="_blank" rel="noopener noreferrer"><Icon id="chat" />Abrir no {passo.nomeIa} com o pedido</a>}
+      {app && <a class="btn sm full" href={app} target="_blank" rel="noopener noreferrer"><Icon id="chat" />Abrir no app do {passo.nomeIa}</a>}
       {conectado != null && <p class={`small ${conectado ? "cn-ok" : "sub"}`} role="status">{conectado ? <><Icon id="check" />Conectado: a sua IA já chamou o Ciclo.</> : "Assim que a sua IA chamar o Ciclo, aparece conectado aqui."}</p>}</div>}
     {aviso && <p class="note warn small"><Icon id="warn" /><span>{aviso}</span></p>}
     {g.cofre && onChave && <button type="button" class="btn pri full" onClick={() => onChave(g.cofre!)}><Icon id="key" />Cadastrar a chave</button>}

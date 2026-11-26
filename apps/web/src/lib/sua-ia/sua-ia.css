@@ -23,3 +23,17 @@
 .sia-chaves{display:grid;gap:var(--sp-3);scroll-margin-top:var(--sp-4)}
 .sia-chaves h2{margin:0}
 .sia-rodape{text-align:center}
+/* #140 rótulos dos campos com área de toque ≥ 44 px (Apelido, Chave de API, Teto por dia/mês, Modelo…) */
+.sia label.f{display:flex;align-items:center;min-height:var(--alvo);margin-bottom:0}
+.sia .conta-duas{align-items:end}
+/* Avançado: um bloco por tipo de pedido */
+.sia-av{display:grid;gap:var(--sp-4);min-width:0}
+.sia-av-tipo{display:grid;gap:var(--sp-1);min-width:0;padding-top:var(--sp-3);border-top:1px solid var(--borda)}
+.sia-av-tipo h3{margin:0}
+.sia-av-tipo select.input{min-height:var(--alvo)}
+.sia-av-tipo .f{margin:var(--sp-2) 0 0}
+.sia-av-tipo .seg{justify-self:start;max-width:100%}
+/* #140 cartões de "Como você usa?" / "Quero testar grátis": título e descrição de 2 linhas com respiro em 390 */
+.sia-como .opt.big,.sia-sem .opt.big{padding:var(--sp-3) var(--sp-3);display:flex;flex-direction:column;gap:var(--sp-1);letter-spacing:0}
+.sia-como .opt b,.sia-sem .opt b{line-height:1.3;letter-spacing:0}
+.sia-como .opt span,.sia-sem .opt span{line-height:1.4;margin-top:0;letter-spacing:0}
