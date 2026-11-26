@@ -1,8 +1,8 @@
 // Diário (#27): checkout da noite, resumo dos dias sem abrir, lembrete e exames. SQL só com bind e SEMPRE por user_id.
 // Regras no core (@ciclo/core: diario.ts); aqui só formato (http.ts) e banco. Dado de saúde nunca vai para log.
 import {
-  BEBIDAS, CARDIO_BY_ID, EXAM_MAX_TEXT, MEALS, RECAP_MES_DIAS, alcoolKcal, bebidaTexto, checkExamSummary, checkoutCardioEntry, estimateFood, estimativaRefeicao,
-  examExpiresAt, healthMaintenance, healthText, healthWeek, mergeRecap, mondayOf, recapDias, reviewWindow, totalDoses, weekDates,
+  BEBIDAS, CARDIO_BY_ID, EXAM_MAX_TEXT, MEALS, MOTIVO_FALTA_MAX, RECAP_MES_DIAS, alcoolKcal, bebidaTexto, checkExamSummary, checkoutCardioEntry, estimateFood, estimativaRefeicao,
+  examExpiresAt, faltasComMotivo, healthMaintenance, healthText, healthWeek, mergeRecap, limparMotivoFalta, mondayOf, motivoAoSalvar, recapDias, reviewWindow, totalDoses, weekDates,
 } from "@ciclo/core";
 import type { CheckoutLite, Doses, Meal } from "@ciclo/core";
 import type { Env } from "./env.ts";
@@ -23,17 +23,17 @@ const days = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)
 const addDays = (iso: string, n: number) => new Date(Date.parse(iso + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 
 // ---------- checkout ----------
-interface CheckoutRow { date: string; trained: number | null; cardio_json: string | null; water_ml: number | null; alcohol_units: number | null; smoke: number | null; smoke_qty: number | null; caffeine_late: number | null; mood: number | null; sleep_ok: number | null; note: string | null; source: string; updated_at: number }
+interface CheckoutRow { date: string; trained: number | null; cardio_json: string | null; water_ml: number | null; alcohol_units: number | null; smoke: number | null; smoke_qty: number | null; caffeine_late: number | null; mood: number | null; sleep_ok: number | null; note: string | null; motivo_falta: string | null; source: string; updated_at: number }
 const b01 = (v: number | null) => (v == null ? null : v === 1);
 export const checkoutOut = (r: CheckoutRow) => ({
   date: r.date, trained: b01(r.trained), cardio: parse<Record<string, unknown> | null>(r.cardio_json, null), waterMl: r.water_ml, alcohol: r.alcohol_units,
-  smoke: b01(r.smoke), smokeQty: r.smoke_qty, caffeineLate: b01(r.caffeine_late), mood: r.mood, sleptWell: b01(r.sleep_ok), note: r.note, source: r.source, updatedAt: r.updated_at,
+  smoke: b01(r.smoke), smokeQty: r.smoke_qty, caffeineLate: b01(r.caffeine_late), mood: r.mood, sleptWell: b01(r.sleep_ok), note: r.note, motivoFalta: r.motivo_falta, source: r.source, updatedAt: r.updated_at,
 });
 const lite = (r: CheckoutRow): CheckoutLite => {
   const c = parse<{ minutes?: number; steps?: number } | null>(r.cardio_json, null);
   return { date: r.date, alcohol: r.alcohol_units, smoke: b01(r.smoke), smokeQty: r.smoke_qty, caffeineLate: b01(r.caffeine_late), waterMl: r.water_ml, cardioMin: c?.minutes ?? null, steps: c?.steps ?? null, mood: r.mood };
 };
-const CO_COLS = "date, trained, cardio_json, water_ml, alcohol_units, smoke, smoke_qty, caffeine_late, mood, sleep_ok, note, source, updated_at";
+const CO_COLS = "date, trained, cardio_json, water_ml, alcohol_units, smoke, smoke_qty, caffeine_late, mood, sleep_ok, note, motivo_falta, source, updated_at";
 
 function parseCardio(v: unknown) {
   if (v == null) return null;
@@ -48,20 +48,23 @@ function parseCardio(v: unknown) {
   return { ...(type ? { type, minutes, ...(intensity ? { intensity } : {}) } : {}), ...(steps != null ? { steps } : {}) };
 }
 
-/** Grava o checkout do dia (substitui) e sincroniza o cardio "ck-<date>" do resumo da semana. */
+/** Grava o checkout do dia (substitui) e sincroniza o cardio "ck-<date>" do resumo da semana.
+ *  #124 "Treinou? → Não" leva a justificativa opcional (até 280); treinou ou sem resposta apaga o motivo (core). */
 export async function putCheckout(env: Env, uid: string, d: string, b: Record<string, unknown>, source: CheckoutSource = "app") {
   const smoke = bool(b.smoke, "smoke");
   const cardio = parseCardio(b.cardio);
+  const trained = bool(b.trained, "trained");
+  const motivo = motivoAoSalvar(trained == null ? null : trained === 1, str(b.motivoFalta, "motivoFalta", MOTIVO_FALTA_MAX, false));
   const vals = [
-    bool(b.trained, "trained"), cardio ? JSON.stringify(cardio) : null, int(b.waterMl, "waterMl", 0, 10000, false), int(b.alcohol, "alcohol", 0, 30, false),
+    trained, cardio ? JSON.stringify(cardio) : null, int(b.waterMl, "waterMl", 0, 10000, false), int(b.alcohol, "alcohol", 0, 30, false),
     smoke, smoke ? int(b.smokeQty, "smokeQty", 1, 100, false) : null, bool(b.caffeineLate, "caffeineLate"), int(b.mood, "mood", 1, 5, false),
-    bool(b.sleptWell, "sleptWell"), str(b.note, "note", 1000, false),
+    bool(b.sleptWell, "sleptWell"), str(b.note, "note", 1000, false), motivo,
   ];
   const now = Date.now(), entry = checkoutCardioEntry(d, cardio as never);
   await env.DB.batch([
-    env.DB.prepare(`INSERT INTO checkout (user_id, date, trained, cardio_json, water_ml, alcohol_units, smoke, smoke_qty, caffeine_late, mood, sleep_ok, note, source, updated_at)
-      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
-      ON CONFLICT(user_id, date) DO UPDATE SET trained=?3, cardio_json=?4, water_ml=?5, alcohol_units=?6, smoke=?7, smoke_qty=?8, caffeine_late=?9, mood=?10, sleep_ok=?11, note=?12, source=?13, updated_at=?14`)
+    env.DB.prepare(`INSERT INTO checkout (user_id, date, trained, cardio_json, water_ml, alcohol_units, smoke, smoke_qty, caffeine_late, mood, sleep_ok, note, motivo_falta, source, updated_at)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+      ON CONFLICT(user_id, date) DO UPDATE SET trained=?3, cardio_json=?4, water_ml=?5, alcohol_units=?6, smoke=?7, smoke_qty=?8, caffeine_late=?9, mood=?10, sleep_ok=?11, note=?12, motivo_falta=?13, source=?14, updated_at=?15`)
       .bind(uid, d, ...vals, source, now),
     entry
       ? env.DB.prepare(`INSERT INTO cardio_log (user_id, id, date, type, minutes, intensity, distance_km, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7)
@@ -253,6 +256,26 @@ export async function healthOfWeek(env: Env, uid: string, anyDate: string) {
   const hw = healthWeek(dates, (ci.results as { date: string; sleep_h: number }[]).map((c) => ({ date: c.date, sleepH: c.sleep_h })), (co.results as CheckoutRow[]).map(lite), (ca.results[0] as { m: number }).m);
   const m = healthMaintenance(hw);
   return { semana: dates[0], medias: hw, manutencao: m, texto: healthText(hw, m) };
+}
+
+/** #124 Faltas da semana com o motivo (core: faltasComMotivo), para ciclo_estado e ciclo_contexto revisao. Só da conta. */
+export async function faltasDaSemana(env: Env, uid: string, anyDate: string, hoje: string) {
+  const dates = weekDates(mondayOf(anyDate));
+  const [att, co] = await env.DB.batch([
+    env.DB.prepare("SELECT date, status FROM attendance WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3").bind(uid, dates[0], dates[6]),
+    env.DB.prepare("SELECT date, trained, motivo_falta FROM checkout WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3").bind(uid, dates[0], dates[6]),
+  ]);
+  return faltasComMotivo(dates, hoje, Object.fromEntries((att.results as { date: string; status: string }[]).map((a) => [a.date, a.status])),
+    (co.results as { date: string; trained: number | null; motivo_falta: string | null }[]).map((c) => ({ date: c.date, trained: b01(c.trained), motivoFalta: c.motivo_falta })));
+}
+
+/** #124 Presença dada pela IA (ciclo_marcar_presenca) também responde o "Treinou?" do dia: "não fui" grava o check-in não
+ *  com o motivo (sem motivo, fica o que a pessoa já escreveu); "fui" só corrige um check-in que já existe e apaga o motivo. */
+export function sincronizarCheckinDaPresenca(env: Env, uid: string, d: string, status: "fui" | "nao_fui" | "folga", motivo: string | null, now: number) {
+  if (status === "nao_fui") return env.DB.prepare(`INSERT INTO checkout (user_id, date, trained, motivo_falta, source, updated_at) VALUES (?1, ?2, 0, ?3, 'claude', ?4)
+    ON CONFLICT(user_id, date) DO UPDATE SET trained = 0, motivo_falta = COALESCE(?3, motivo_falta), updated_at = ?4`).bind(uid, d, limparMotivoFalta(motivo), now);
+  if (status === "fui") return env.DB.prepare("UPDATE checkout SET trained = 1, motivo_falta = NULL, updated_at = ?3 WHERE user_id = ?1 AND date = ?2").bind(uid, d, now);
+  return null;
 }
 
 export async function checkoutsBetween(env: Env, uid: string, from: string, to: string) {
