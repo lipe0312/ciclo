@@ -83,18 +83,26 @@ export function proteinAdherence(protByDay: readonly number[], target: number, t
   return { hit, of: protByDay.length, rate: protByDay.length ? Math.round((hit / protByDay.length) * 100) : 0 };
 }
 
+/** O dia como entra na média: `conta` = entra; `estimadas` = refeições completadas pela média (#115, comida-medias.ts). */
+export interface DiaConta extends DayTotals { conta: boolean; estimadas: { meal: Meal; kcal: number; prot: number }[] }
 export interface FoodAverages {
-  from: string; to: string; days: DayTotals[]; daysLogged: number;
+  from: string; to: string; days: DiaConta[];
+  /** dias que entram na média */ daysLogged: number;
+  /** #115 dias da média com alguma refeição completada pela média */ diasEstimados: number;
   avgKcal: number | null; avgProt: number | null; kcalPct: number | null; protPct: number | null;
   adherence: { hit: number; of: number; rate: number };
   byMeal: { meal: Meal | "sem"; kcal: number; share: number }[];
 }
 
-/** Média dos últimos `days` dias até `end` (inclusive). Só dias com registro entram na média: faltar um dia não derruba a conta. */
-export function foodAverages(entries: readonly FoodEntry[], end: string, targets: { kcal: number; protein: number }, days = 7): FoodAverages {
+/**
+ * Média dos últimos `days` dias até `end` (inclusive). Padrão: só os dias com registro entram, com o que foi registrado.
+ * `dia` (#115, mediasSemana em comida-medias.ts) aplica as regras da pessoa: dia vazio fora ou 0, refeição completada pela média.
+ */
+export function foodAverages(entries: readonly FoodEntry[], end: string, targets: { kcal: number; protein: number }, days = 7,
+  dia: (date: string) => DiaConta = (d) => { const t = dayTotals(entries, d); return { ...t, conta: t.logged, estimadas: [] }; }): FoodAverages {
   const dates = Array.from({ length: days }, (_, i) => addDays(end, i - (days - 1)));
-  const list = dates.map((d) => dayTotals(entries, d));
-  const logged = list.filter((d) => d.logged);
+  const list = dates.map(dia);
+  const logged = list.filter((d) => d.conta);
   const avg = (f: (d: DayTotals) => number) => (logged.length ? Math.round(logged.reduce((s, d) => s + f(d), 0) / logged.length) : null);
   const avgKcal = avg((d) => d.kcal), avgProt = avg((d) => d.prot);
   const inWin = new Set(dates);
@@ -104,7 +112,7 @@ export function foodAverages(entries: readonly FoodEntry[], end: string, targets
   const byMeal = ([...MEALS, "sem"] as const).filter((m) => kcalBy.has(m))
     .map((m) => ({ meal: m, kcal: Math.round(kcalBy.get(m)!), share: total ? Math.round((kcalBy.get(m)! / total) * 100) : 0 }));
   return {
-    from: dates[0], to: end, days: list, daysLogged: logged.length, avgKcal, avgProt,
+    from: dates[0], to: end, days: list, daysLogged: logged.length, diasEstimados: logged.filter((d) => d.estimadas.length).length, avgKcal, avgProt,
     kcalPct: avgKcal == null || !targets.kcal ? null : Math.round((avgKcal / targets.kcal) * 100),
     protPct: avgProt == null || !targets.protein ? null : Math.round((avgProt / targets.protein) * 100),
     adherence: proteinAdherence(logged.map((d) => d.prot), targets.protein), byMeal,
