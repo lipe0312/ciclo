@@ -8,6 +8,7 @@ import { Painel } from "./painel.tsx";
 import { Metas } from "./metas.tsx";
 import { BaseAlimentos } from "./base.tsx";
 import { Ajustes } from "./ajustes.tsx";
+import { Metricas } from "./metricas.tsx";
 import { SeletorDia } from "./dia.tsx";
 
 export default function Comida() {
@@ -16,6 +17,6 @@ export default function Comida() {
   return <><p class="kicker">Dieta flexível · modo {S.profile.diet.mode}</p><h1 style="margin-bottom:14px">Comida</h1>
     <div class="grid g2" style="align-items:start">
       <div class="grid"><SeletorDia dia={dia} setDia={setDia} /><Registro dia={dia} /><DiaCard dia={dia} setDia={setDia} /><BaseAlimentos /></div>
-      <div class="grid"><Painel /><Metas /><Ajustes /></div>
+      <div class="grid"><Painel /><Metas /><Metricas /><Ajustes /></div>
     </div></>;
 }
