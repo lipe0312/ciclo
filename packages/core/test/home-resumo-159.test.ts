@@ -128,3 +128,29 @@ test("homeView entrega o resumo de treino", () => {
   assert.equal(v.treino.semana.atual.series, 4);
   assert.equal(v.treino.semana.atual.duracaoMin, 60);
 });
+
+// ---------- semanas antes do 1º registro não são "0": ficam fora da janela e das médias ----------
+import { homeSeries, inicioDaJanela } from "../src/index.ts";
+const SEM: HomeRaw = { sets: [], e1rm: [], sessoes: [], presenca: [], cardio: [], pesos: [], medidas: [], comida: [], checkins: [], checkouts: [] };
+const O = { hoje: "2026-11-12", prioridades: ["ombro"], diasMeta: 4 };
+
+test("1º registro: a série diz em que semana a conta começou (12 semanas, a atual é a última)", () => {
+  // 09/11 é a semana atual (índice 11); 19/10 é o índice 8
+  assert.equal(homeSeries({ ...SEM, sessoes: ["2026-10-19", "2026-11-10"] }, O).inicio, 8);
+  assert.equal(homeSeries({ ...SEM, sets: [{ date: "2026-11-10", muscle: "ombro", n: 3 }] }, O).inicio, 11);
+  assert.equal(homeSeries({ ...SEM, cardio: [{ date: "2026-10-27", minutes: 20 }] }, O).inicio, 9);
+  assert.equal(homeSeries({ ...SEM, presenca: ["2026-11-03"] }, O).inicio, 10);
+  // o 1º treino de qualquer época (vindo do Worker) vale: conta antiga com semanas paradas continua com zeros reais
+  assert.equal(homeSeries({ ...SEM, primeiroTreinoEm: "2025-01-10", sessoes: ["2026-11-10"] }, O).inicio, 0);
+  assert.equal(homeSeries({ ...SEM, primeiroTreinoEm: "2026-10-05", sessoes: ["2026-11-10"] }, O).inicio, 6);
+  // sem registro nenhum: nenhuma semana tem dado
+  assert.equal(homeSeries(SEM, O).inicio, 12);
+});
+
+test("inicioDaJanela: a janela de n semanas nunca começa antes do 1º registro", () => {
+  assert.equal(inicioDaJanela(12, 12, 8), 8); // 3 meses, conta de 4 semanas: só 4 semanas
+  assert.equal(inicioDaJanela(12, 4, 8), 8);  // 4 semanas, conta de 4 semanas
+  assert.equal(inicioDaJanela(12, 4, 3), 8);  // conta antiga: as 4 últimas
+  assert.equal(inicioDaJanela(12, 12, 0), 0);
+  assert.equal(inicioDaJanela(12, 4, 12), 12); // sem registro: janela vazia
+});

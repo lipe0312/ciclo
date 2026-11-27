@@ -111,6 +111,8 @@ export interface HomeRaw {
 export interface ExercicioChave { exerciseId: string; muscle: MuscleId; serie: (number | null)[]; atual: number; delta: number }
 export interface HomeSeries {
   semanas: string[];
+  /** índice da 1ª semana com algum registro de treino (`semanas.length` = nenhum); as anteriores são "sem dados", nunca 0 */
+  inicio: number;
   volume: Partial<Record<MuscleId, number[]>>;
   e1rm: ExercicioChave[];
   peso: { serie: (number | null)[]; trend: Tendencia; ultimo: number | null; primeiro: number | null };
@@ -125,6 +127,9 @@ export interface HomeOpts { hoje: string; prioridades: readonly string[]; diasMe
 /** Semanas calculadas (as metas usam 12; os painéis mostram as últimas 8). */
 export const HOME_SEMANAS = 12;
 export const PAINEL_SEMANAS = 8;
+
+/** Onde começa a janela de `n` semanas (de `total`): as `n` últimas, sem recuar para antes do 1º registro. */
+export const inicioDaJanela = (total: number, n: number, inicio: number): number => Math.min(total, Math.max(total - n, inicio, 0));
 
 export function homeSeries(raw: HomeRaw, o: HomeOpts): HomeSeries {
   const n = o.semanas ?? HOME_SEMANAS, semanas = semanasAte(o.hoje, n);
@@ -177,8 +182,13 @@ export function homeSeries(raw: HomeRaw, o: HomeOpts): HomeSeries {
   const pts = (f: (m: HomeRaw["medidas"][number]) => number | null): Ponto[] =>
     raw.medidas.map((m) => ({ date: m.date, value: f(m) })).filter((p): p is Ponto => finite(p.value)).sort((a, b) => (a.date < b.date ? -1 : 1));
 
+  // 1ª semana com registro de treino (série, sessão, "fui" ou cardio; o 1º treino de qualquer época, se o Worker mandou)
+  const datas = [raw.primeiroTreinoEm, ...raw.sets.map((x) => x.date), ...raw.sessoes, ...raw.presenca, ...raw.cardio.map((x) => x.date)].filter((d): d is string => !!d && d <= o.hoje);
+  const primeiro = datas.reduce<string | null>((a, d) => (a == null || d < a ? d : a), null);
+  const inicio = primeiro == null ? n : primeiro < semanas[0] ? 0 : Math.max(0, semanaIdx(semanas, primeiro));
+
   return {
-    semanas, volume, e1rm: chaves.slice(0, o.chave ?? 3), freq2,
+    semanas, inicio, volume, e1rm: chaves.slice(0, o.chave ?? 3), freq2,
     peso: {
       serie: pesoSem.map((x) => (x.c ? r2(x.s / x.c) : null)),
       trend: trend(pesosOrd.map((p) => ({ date: p.date, value: p.kg }))),

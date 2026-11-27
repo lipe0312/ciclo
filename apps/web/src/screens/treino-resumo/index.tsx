@@ -39,25 +39,29 @@ export default function TreinoResumo({ route }: { route: Route }) {
     : <Esqueleto />}</>;
   if (v.vazio) return <>{cab}<Estado tipo="vazio" titulo="Precisa de mais registros" acao={{ label: "Ver o Treino de hoje", href: "#treino" }}>Os gráficos aparecem depois dos primeiros treinos.</Estado></>;
 
-  const s = v.series, semanas = s.semanas.slice(-n);
-  const fatia = <T,>(a: T[]) => a.slice(-n);
-  return <>{cab}<div class="stack">
-    <VolumeBloco view={v} n={n} semanas={semanas} />
-    <ForcaBloco view={v} n={n} semanas={semanas} />
+  // semanas antes do 1º registro da conta ficam de fora (não são "0 treinos"): nem barra, nem média
+  const s = v.series, ini = C.inicioDaJanela(s.semanas.length, n, s.inicio ?? 0), semanas = s.semanas.slice(ini);
+  if (!semanas.length) return <>{cab}<Estado tipo="vazio" titulo="Precisa de mais registros" acao={{ label: "Ver o Treino de hoje", href: "#treino" }}>Os gráficos aparecem depois dos primeiros treinos.</Estado></>;
+  const fatia = <T,>(a: T[]) => a.slice(ini);
+  return <>{cab}
+    {semanas.length < n && <p class="small sub" role="status" style="margin-bottom:10px">Seus registros começam há {semanas.length} {semanas.length === 1 ? "semana" : "semanas"}: só elas aparecem, sem contar zero antes disso.</p>}
+    <div class="stack">
+    <VolumeBloco view={v} ini={ini} semanas={semanas} />
+    <ForcaBloco view={v} ini={ini} semanas={semanas} />
     <PresencaBloco sem={fatia(s.presenca.semana)} meta={s.presenca.meta} semanas={semanas} />
     <CardioBloco cardio={fatia(s.cardio)} semanas={semanas} />
   </div></>;
 }
 
-function VolumeBloco({ view, n, semanas }: { view: C.HomeView; n: number; semanas: string[] }) {
+function VolumeBloco({ view, ini, semanas }: { view: C.HomeView; ini: number; semanas: string[] }) {
   const t = C.weeklyTargets(calc().level, S.profile.priorities);
   const pri = S.profile.priorities as string[];
   // prioritários primeiro, na ordem em que a pessoa os escolheu
   const ms = C.MUSCLE_IDS.filter((m) => view.series.volume[m]).sort((a, b) => (pri.indexOf(a) + 1 || 99) - (pri.indexOf(b) + 1 || 99));
-  const tem = ms.some((m) => view.series.volume[m]!.slice(-n).some((x) => x > 0));
+  const tem = ms.some((m) => view.series.volume[m]!.slice(ini).some((x) => x > 0));
   return <Bloco titulo="Volume por músculo" resumo={<span class="small sub">séries por semana</span>} ctas={[["Mudar prioridades", "#perfil/prioridades"], ["Ver a semana", "#semana"]]}>
     {!tem ? semDados : ms.map((m) => {
-      const vs = view.series.volume[m]!.slice(-n), atual = vs[vs.length - 1], meta = t[m] ?? 0;
+      const vs = view.series.volume[m]!.slice(ini), atual = vs[vs.length - 1], meta = t[m] ?? 0;
       return <div class="rtd-item" key={m}>
         <div class="row between wrapx" style="gap:6px"><span class="small"><b>{mName(m)}</b></span>
           <span class="small num">esta semana <b>{atual}</b> de {meta} séries <span class="sub">· média {fmt(media(vs), 1)}</span></span></div>
@@ -67,14 +71,14 @@ function VolumeBloco({ view, n, semanas }: { view: C.HomeView; n: number; semana
   </Bloco>;
 }
 
-function ForcaBloco({ view, n, semanas }: { view: C.HomeView; n: number; semanas: string[] }) {
+function ForcaBloco({ view, ini, semanas }: { view: C.HomeView; ini: number; semanas: string[] }) {
   const ex = view.series.e1rm;
   return <Bloco titulo="Força (e1RM)" resumo={<span class="small sub">exercícios-chave</span>} ctas={[["Ver histórico", "#treino/historico"], ["Mudar cargas lembradas", "#perfil/experiencia"]]}>
     {!ex.length ? <p class="small sub" role="status" style="margin-top:8px">Precisa de mais registros: um exercício feito em 2 semanas diferentes mostra a evolução.</p> : ex.map((e) => {
-      const vs = e.serie.slice(-n), nn = vs.filter((x): x is number => x != null), nm = EXB[e.exerciseId]?.nm ?? e.exerciseId;
+      const vs = e.serie.slice(ini), nn = vs.filter((x): x is number => x != null), nm = EXB[e.exerciseId]?.nm ?? e.exerciseId;
       return <div class="rtd-item" key={e.exerciseId}>
         <div class="row between wrapx" style="gap:6px"><span class="small"><b>{nm}</b></span>
-          <span class="small num">{nn.length ? <><b>{fmt(nn[nn.length - 1], 1)} kg</b> <span class="sub">· {nn.length > 1 ? `${sinal(nn[nn.length - 1] - nn[0])} kg em ${n === 4 ? "4 semanas" : "3 meses"}` : "uma semana medida só"}</span></> : <span class="sub">sem registro nesta janela</span>}</span></div>
+          <span class="small num">{nn.length ? <><b>{fmt(nn[nn.length - 1], 1)} kg</b> <span class="sub">· {nn.length > 1 ? `${sinal(nn[nn.length - 1] - nn[0])} kg em ${semanas.length} ${semanas.length === 1 ? "semana" : "semanas"}` : "uma semana medida só"}</span></> : <span class="sub">sem registro nesta janela</span>}</span></div>
         {nn.length ? <LinhaValor values={vs} semanas={semanas} label={`${nm}, e1RM`} unit=" kg" /> : semDados}
       </div>;
     })}
