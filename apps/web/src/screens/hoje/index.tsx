@@ -2,7 +2,7 @@
 // #73 Ordem: avisos → treino de hoje (carrossel, sempre no topo) → resumo de treino (#159) → boas-vindas → caminho de evolução → médias de 7 dias → atalhos →
 // objetivo → o que falta registrar → comida → peso e medidas (#159, só com dado) → Chat. Nada de formulário aberto aqui:
 // cada card tem um CTA para alterar e outro para ver o detalhe. O lembrete do Diário (check-in/checkout) é a faixa fina do shell.
-import type { ComponentChildren } from "preact";
+import type { ComponentChildren, FunctionComponent } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { C, S, today } from "../../lib/store/index.ts";
 import { mName } from "../../lib/store/regras.ts";
@@ -62,6 +62,13 @@ export const hojeVazio = () => getVazio() != null || (!!H.view?.vazio && (SERVER
 /** Telas em que a casca não mostra a faixa do Diário (check-in/checkout): Perfil de treino e o Hoje vazio. */
 export const esconderLembrete = (screen: string) => screen === "primeiros-passos" || (screen === "hoje" && hojeVazio());
 
+/** #147 Conquista nova da Evolução: o cartão e a conta baixam à parte (o JS inicial está no teto). */
+function ConquistaNova() {
+  const [D, set] = useState<FunctionComponent | null>(null);
+  useEffect(() => { import("../evolucao/destaque.tsx").then((m) => set(() => m.default), () => {}); }, []);
+  return D ? <D /> : null;
+}
+
 const Esqueleto = () => <div class="stack" aria-busy="true" aria-label="Carregando a Home"><div class="hm-esq" style="height:210px" /><div class="hm-esq" style="height:150px" /><div class="hm-esq" style="height:130px" /></div>;
 
 /** Em tela larga, duas colunas independentes (sem buracos de linha); no celular, uma só, na ordem de importância. */
@@ -90,11 +97,11 @@ export default function Hoje() {
   const boas = checkup === "feito" && boasVindasVisivel(v) ? <BoasVindas /> : perfil ? <CompletePerfil falta={falta} /> : null;
   const cam = v.marcos?.length ? <Caminho marcos={v.marcos} /> : null, med = v.medias?.length ? <Medias medias={v.medias} /> : null, ata = <Atalhos view={v} />;
   const resumo = v.vazio ? null : <ResumoTreino view={v} />, medidas = v.vazio ? null : <MedidasResumo view={v} />;
-  const comp = <Compensa />;
+  const comp = <Compensa />, conq = v.vazio ? null : <ConquistaNova />;
   const col = (xs: ComponentChildren[]) => <div class="stack hm-col">{xs.map((x, i) => <div key={i}>{x}</div>)}</div>;
   // #77 médias na coluna larga: na estreita os 3 cartões ficavam apertados, com o texto em 5 linhas
-  const A = [comp, sem, resumo, boas, cam, med, ...(v.vazio ? [] : [obj])], B = [ata, lac, com, medidas, cla];
+  const A = [comp, sem, conq, resumo, boas, cam, med, ...(v.vazio ? [] : [obj])], B = [ata, lac, com, medidas, cla];
   return <>{cab}{topo}
     {larga ? <div class="grid dash">{col(A)}{col(B)}</div>
-      : col([comp, sem, resumo, boas, cam, med, ata, ...(v.vazio ? [] : [obj]), lac, com, medidas, cla])}</>;
+      : col([comp, sem, conq, resumo, boas, cam, med, ata, ...(v.vazio ? [] : [obj]), lac, com, medidas, cla])}</>;
 }

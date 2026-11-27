@@ -30,7 +30,8 @@ export function Historico() {
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   return <>
     <h1 style="margin:4px 0 12px">Histórico</h1>
-    <a class="btn full" style="margin-bottom:12px" href="#treino/resumo">Ver evolução do treino<Icon id="arrow" /></a>
+    <a class="btn full" style="margin-bottom:8px" href="#treino/resumo">Ver evolução do treino<Icon id="arrow" /></a>
+    <a class="btn full ghost" style="margin-bottom:12px" href="#evolucao/treino?p=6m">Evolução por período: 6 meses, 1 ano, Tudo<Icon id="arrow" /></a>{/* #147 */}
     {!SERVER && <p class="small sub" style="margin-bottom:10px">Demonstração: volume e recordes aparecem com o servidor.</p>}
     <Card>{rows.length ? rows.map((r) => r.ses ? <div key={r.k} style="padding:10px 0;border-top:1px solid var(--borda)">
         <div class="row between start"><div><b>{r.ses.name ?? "Treino"}</b><p class="small sub num">{longDate(r.date)}{r.ses.finishedAt && r.ses.startedAt ? ` · ${C.fmtClock(r.ses.finishedAt - r.ses.startedAt)}` : ""}{r.ses.closedBy === "auto" ? " · fechou sozinho" : ""}</p></div>

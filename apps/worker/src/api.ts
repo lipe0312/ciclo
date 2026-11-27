@@ -16,6 +16,7 @@ import { validarPatchGerador } from "./gerador.ts";
 import { registerComida } from "./comida.ts";
 import { lerPersonalizado, listarPersonalizados, registerPersonalizados } from "./exercicio-personalizado.ts";
 import { registerHome } from "./home.ts";
+import { registerEvolucao } from "./evolucao.ts";
 import { registerClaude } from "./mcp-chat.ts";
 import { subirVersaoDepois, versaoDaConta } from "./versao.ts";
 import { exigirFaceId, perfilConta, registerConta } from "./auth-conta.ts";
@@ -591,6 +592,8 @@ registerComida(on);
 registerPersonalizados(on);
 // Home de evolução (#29): ver home.ts
 registerHome(on);
+// #147 Evolução por período (até 12 meses por consulta): ver evolucao.ts
+registerEvolucao(on);
 // Claude no app (#30): status da fila e memória do Claude: ver mcp-chat.ts
 registerClaude(on);
 // Conta própria (#54): aparelhos, sair de todos, passkeys, códigos de recuperação, pessoas e convites: ver auth-conta.ts

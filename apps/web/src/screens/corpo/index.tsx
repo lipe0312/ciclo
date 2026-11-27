@@ -57,7 +57,8 @@ function saveMeasure() {
 export default function Corpo() {
   const ms = S.measures, last = ms[ms.length - 1];
   const ws = Object.entries(S.week.checkins).filter(([, c]: any) => c.weightKg).map(([d, c]: any) => [d, c.weightKg] as [string, number]);
-  return <><p class="kicker">Corpo</p><h1 style="margin-bottom:14px">Mapa de dor e medidas</h1>
+  return <><div class="row between wrapx start" style="margin-bottom:14px;gap:12px"><div><p class="kicker">Corpo</p><h1>Mapa de dor e medidas</h1></div>
+      <a class="btn sm" href="#evolucao/corpo"><Icon id="spark" />Evolução</a></div>{/* #147 atalho para a aba Corpo da Evolução */}
     <div class="grid dash"><div class="stack"><Card><div class="row between wrapx"><h2>Onde dói?</h2>
       <Seg opts={[["frente", "Frente"], ["costas", "Costas"]]} value={S.ui.bodyView} onPick={(v) => { S.ui.bodyView = v; commit(); }} label="Vista" /></div>
       <p class="small sub" style="margin:4px 0 12px">Toque na região. Ex.: escápula esquerda, ombro direito, lombar. A dor muda o treino na hora: tira o que força a região e coloca fortalecimento no aquecimento.</p>

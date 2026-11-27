@@ -10,11 +10,13 @@ import { BaseAlimentos } from "./base.tsx";
 import { Ajustes } from "./ajustes.tsx";
 import { Metricas } from "./metricas.tsx";
 import { SeletorDia } from "./dia.tsx";
+import { Icon } from "../../lib/ui/index.tsx";
 
 export default function Comida() {
   const [dia, setDia] = useState(today);
   useEffect(() => { loadFood().then(loadDiet); }, []);
-  return <><p class="kicker">Dieta flexível · modo {S.profile.diet.mode}</p><h1 style="margin-bottom:14px">Comida</h1>
+  return <><div class="row between wrapx" style="margin-bottom:14px;gap:12px"><div><p class="kicker">Dieta flexível · modo {S.profile.diet.mode}</p><h1>Comida</h1></div>
+      <a class="btn sm" href="#evolucao/comida"><Icon id="spark" />Evolução</a></div>{/* #147 atalho para a aba Comida da Evolução */}
     <div class="grid g2" style="align-items:start">
       <div class="grid"><SeletorDia dia={dia} setDia={setDia} /><Registro dia={dia} /><DiaCard dia={dia} setDia={setDia} /><BaseAlimentos /></div>
       <div class="grid"><Painel /><Metas /><Metricas /><Ajustes /></div>
