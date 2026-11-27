@@ -62,7 +62,7 @@ async function escrever(c, seletor, valor) {
 }
 const abrirNoCenario = async (c, tela) => { // #77 até 3 tentativas: a primeira navegação do Chrome recém-aberto às vezes perde o redirecionamento
   for (let t = 0; t < 5; t++) {
-    // o `vite build --watch` do cenário esvazia o dist ao reconstruir: "/" dá 404 (chrome-error) por alguns segundos
+    // o `vite build --watch` do cenário (sem emptyOutDir) reconstrói o dist no lugar; "/" pode dar 404 (chrome-error) por alguns segundos
     for (let i = 0; i < 100 && (await fetch(`${BASE}/`).then((r) => r.status, () => 0)) !== 200; i++) await sleep(200);
     const nav = await c.send("Page.navigate", { url: urlAbertura(CENARIO, tela, new URL(BASE).port) }); await sleep(300);
     if (await c.esperar(`location.hash === '#${tela}' && document.querySelector('.pp, .view.on')`)) return;
