@@ -30,7 +30,8 @@ export default function Diario({ route }: { route: Route }) {
   if (sub === "treinar") return <Treinar />;
   return <>
     <div class="row between" style="margin-bottom:14px;gap:12px"><div><p class="kicker">{longDate(today)}{SERVER ? "" : " · demonstração"}</p><h1>Diário</h1></div>
-      <a class="btn sm" href="#diario/exames"><Icon id="info" />Exames</a></div>
+      <div class="row wrapx" style="gap:6px;justify-content:flex-end"><a class="btn sm" href="#evolucao/saude"><Icon id="spark" />Evolução</a>{/* #147 */}
+        <a class="btn sm" href="#diario/exames"><Icon id="info" />Exames</a></div></div>
     {D.failed && <p class="small sub" role="status" style="margin-bottom:10px">Sem conexão: mostrando o que está no aparelho.</p>}
     <div class="grid dash"><div class="stack"><Checkin /><CheckoutCard key={D.sel} /></div>
       <div class="stack"><Saude /><Calendario /></div></div>

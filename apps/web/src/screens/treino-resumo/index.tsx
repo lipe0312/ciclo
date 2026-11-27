@@ -1,5 +1,6 @@
 // #159 Detalhe do treino (#treino/resumo): os gráficos que saíram da Home, com valor escrito em cada barra, meta tracejada com
-// legenda e janela curta (4 semanas; 3 meses = 12 semanas é o teto; filtros maiores são da #147). Baixa sob demanda.
+// legenda e janela curta (4 semanas; 3 meses = 12 semanas é o teto; 6 meses, 1 ano e Tudo abrem a aba Treino da Evolução, #147,
+// com estes mesmos gráficos). Baixa sob demanda.
 // Dado: o mesmo HomeView da Home (servidor: GET /api/home; demonstração: o core sobre dados fictícios).
 import { useEffect } from "preact/hooks";
 import type { ComponentChildren } from "preact";
@@ -15,6 +16,8 @@ import { ColunasValor, LinhaValor } from "./graficos.tsx";
 import "./treino-resumo.css";
 
 const JANELAS: [number, string][] = [[C.DETALHE_SEMANAS.curta, "4 semanas"], [C.DETALHE_SEMANAS.longa, "3 meses"]];
+/** #147 a aba Treino da Evolução estende esta tela (mesmos gráficos) */
+const MAIS_TEMPO: [string, string][] = [["6m", "6 meses"], ["1a", "1 ano"], ["tudo", "Tudo"]];
 const sinal = (n: number, d = 1) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmt(Math.abs(n), d)}`;
 const media = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 const semDados = <p class="small sub" role="status" style="margin-top:8px">Precisa de mais registros para mostrar este gráfico.</p>;
@@ -33,7 +36,9 @@ export default function TreinoResumo({ route }: { route: Route }) {
   const v = H.view;
   const cab = <div style="margin:4px 0 12px"><p class="kicker">Treino</p><h1>Detalhes do treino</h1>
     <p class="small sub" style="margin-top:4px">Semana a semana, de segunda a domingo. A semana atual ainda está em andamento.</p>
-    <div style="margin-top:10px"><Seg<number> label="Janela do gráfico" value={n} opts={JANELAS} onPick={(j) => replace(href("treino", ["resumo"], j === C.DETALHE_SEMANAS.curta ? {} : { j: String(j) }))} /></div></div>;
+    <div class="row wrapx" style="margin-top:10px;gap:4px 12px"><Seg<number> label="Janela do gráfico" value={n} opts={JANELAS} onPick={(j) => replace(href("treino", ["resumo"], j === C.DETALHE_SEMANAS.curta ? {} : { j: String(j) }))} />
+      <span class="small sub">Mais tempo na Evolução:</span>
+      {MAIS_TEMPO.map(([p, t]) => <a key={p} class="link44 small" href={`#evolucao/treino?p=${p}`}>{t}</a>)}</div></div>;
   if (!v) return <>{cab}{H.erro
     ? <Estado tipo="erro" acao={{ label: "Tentar de novo", onClick: () => void carregarHome(true) }}>Sem conexão ou o servidor não respondeu. Seus registros estão salvos.</Estado>
     : <Esqueleto />}</>;

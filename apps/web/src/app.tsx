@@ -34,11 +34,12 @@ const Academias = telaLenta<P>(() => import("./screens/academias/index.tsx"));
 const Perfil = telaLenta<P>(() => import("./screens/perfil/index.tsx"));
 const Vida = telaLenta<P>(() => import("./screens/vida/index.tsx"));
 const PrimeirosPassos = telaLenta<P>(() => import("./screens/primeiros-passos/index.tsx"));
-const LENTAS = [ResumoLento, Semana, Diario, Comida, Chat, Perfil, Corpo, Academias, PrimeirosPassos, Vida];
+const Evolucao = telaLenta<P>(() => import("./screens/evolucao/index.tsx")); // #147
+const LENTAS = [ResumoLento, Semana, Diario, Comida, Chat, Perfil, Corpo, Academias, PrimeirosPassos, Vida, Evolucao];
 
 const SCREENS: Record<string, FunctionComponent<{ route: Route }>> = {
   hoje: Hoje, treino: Treino, diario: Diario, comida: Comida, chat: Chat, corpo: Corpo, academias: Academias,
-  perfil: Perfil, conta: Conta, vida: Vida, semana: Semana, "primeiros-passos": PrimeirosPassos, mais: Mais,
+  perfil: Perfil, conta: Conta, vida: Vida, semana: Semana, "primeiros-passos": PrimeirosPassos, mais: Mais, evolucao: Evolucao,
 };
 /** Telas da barra inferior: na raiz, a saída é a própria barra (sem "voltar" no topo para não poluir). */
 const RAIZ = new Set(PRINCIPAL.map((d) => d.id));
