@@ -40,10 +40,14 @@ export async function getEvolucao(env: Env, uid: string, deMes: string, ateMes: 
       q("SELECT date, SUM(kcal) AS kcal FROM food_log WHERE user_id = ?1 AND id LIKE 'bebida-%' AND date BETWEEN ?2 AND ?3 GROUP BY date LIMIT 400", de, ate),
       q("SELECT date, meal FROM food_nao_comi WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 LIMIT 2000", comidaDe, ate),
       q(`SELECT l.exercise_id AS exerciseId, ${E1RM} AS e1rm ${SESSAO} WHERE l.user_id = ?1 AND s.date < ?2 AND l.kg > 0 AND l.reps > 0 GROUP BY l.exercise_id LIMIT 500`, de),
-      q(`SELECT MIN(d) AS d FROM (SELECT MIN(date) AS d FROM session WHERE user_id = ?1 UNION ALL SELECT MIN(date) FROM attendance WHERE user_id = ?1
-        UNION ALL SELECT MIN(date) FROM cardio_log WHERE user_id = ?1 UNION ALL SELECT MIN(date) FROM food_log WHERE user_id = ?1
-        UNION ALL SELECT MIN(date) FROM checkin WHERE user_id = ?1 UNION ALL SELECT MIN(date) FROM checkout WHERE user_id = ?1
-        UNION ALL SELECT MIN(date) FROM measurement WHERE user_id = ?1)`),
+      // Sem UNION: o D1 limita os termos de um SELECT composto (7 tabelas davam 500 no wrangler dev).
+      q(`SELECT NULLIF(MIN(COALESCE((SELECT MIN(date) FROM session WHERE user_id = ?1), '9999'),
+        COALESCE((SELECT MIN(date) FROM attendance WHERE user_id = ?1), '9999'),
+        COALESCE((SELECT MIN(date) FROM cardio_log WHERE user_id = ?1), '9999'),
+        COALESCE((SELECT MIN(date) FROM food_log WHERE user_id = ?1), '9999'),
+        COALESCE((SELECT MIN(date) FROM checkin WHERE user_id = ?1), '9999'),
+        COALESCE((SELECT MIN(date) FROM checkout WHERE user_id = ?1), '9999'),
+        COALESCE((SELECT MIN(date) FROM measurement WHERE user_id = ?1), '9999')), '9999') AS d`),
       q("SELECT date, weight_kg AS v FROM checkin WHERE user_id = ?1 AND weight_kg IS NOT NULL ORDER BY date LIMIT 1"),
       ...Object.values(COLUNAS_CORPO).map((c) => q(`SELECT date, ${c} AS v FROM measurement WHERE user_id = ?1 AND ${c} IS NOT NULL ORDER BY date LIMIT 1`)),
     ]),
