@@ -1,0 +1,23 @@
+/* #159 Detalhe do treino. Só tokens do app.css; 390 px primeiro; um gráfico por bloco de músculo, nunca lado a lado. */
+.rtd-item{margin-top:14px}
+.rtd-item:first-of-type{margin-top:10px}
+.gv{margin:8px 0 0}
+.gv-area{position:relative}
+.gv-cols{position:absolute;inset:0;display:flex;align-items:flex-end;gap:3px;border-bottom:1px solid var(--borda-ctrl)}
+.gv-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end}
+.gv-v{font-size:12px;font-weight:700;line-height:16px;color:var(--txt)}
+.gv-b{display:block;width:70%;max-width:44px;border-radius:3px 3px 0 0;background:var(--txt);opacity:.85}
+.gv-b.atual{background:repeating-linear-gradient(45deg,var(--acc) 0 4px,var(--hatch) 4px 8px);opacity:1;box-shadow:inset 0 0 0 1.5px var(--acc)}
+.gv-meta{position:absolute;left:0;right:0;height:0;border-top:2px dashed var(--sub);pointer-events:none;z-index:1}
+.gv-eixo{display:flex;gap:3px;margin-top:4px}
+.gv-eixo span{flex:1 1 0;min-width:0;text-align:center;font-size:11px;white-space:nowrap}
+.gv-leg{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px}
+.gv-leg span{display:inline-flex;align-items:center;gap:6px}
+.gv-sw{display:inline-block;width:18px;height:0;flex:none}
+.gv-sw.meta{border-top:2px dashed var(--sub)}
+.gv-sw.atual{height:10px;border-radius:2px;background:repeating-linear-gradient(45deg,var(--acc) 0 3px,var(--hatch) 3px 6px);box-shadow:inset 0 0 0 1px var(--acc)}
+.gv-linha{display:block;width:100%;height:auto;margin-top:6px;color:var(--txt);overflow:visible}
+.gv-t{font-size:12px;font-weight:700;fill:var(--txt);font-variant-numeric:tabular-nums}
+.gv-t.fim{font-size:13px}
+.gv-ax{font-size:11px;fill:var(--sub);font-variant-numeric:tabular-nums}
+@media (min-width:700px){.gv-area{max-width:560px}.gv-eixo,.gv-leg{max-width:560px}.gv-linha{max-width:560px}}

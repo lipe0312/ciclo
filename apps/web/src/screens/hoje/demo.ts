@@ -8,7 +8,7 @@ const vazio = /[?&]vazio\b/.test(location.search);
 const LATERAL = "Cable_Seated_Lateral_Raise", ROSCA = "Incline_Dumbbell_Curl", TRICEPS = "Cable_Rope_Overhead_Triceps_Extension", SUPINO = "Incline_Dumbbell_Press";
 
 export function demoRaw(hoje: string): HomeRaw {
-  const nada: HomeRaw = { sets: [], e1rm: [], sessoes: [], presenca: [], cardio: [], pesos: [], medidas: [], comida: [], checkins: [], checkouts: [] };
+  const nada: HomeRaw = { sets: [], e1rm: [], sessoes: [], presenca: [], cardio: [], pesos: [], medidas: [], comida: [], checkins: [], checkouts: [], duracoes: [] };
   if (vazio) return nada;
   const seg = C.mondayOf(hoje), ini = addDays(seg, -35); // 6 semanas, a atual inclusa
   const raw: HomeRaw = { ...nada };
@@ -19,6 +19,9 @@ export function demoRaw(hoje: string): HomeRaw {
       const d = addDays(m, off);
       if (d > hoje || (w === 3 && off === 4)) continue;
       raw.sessoes.push(d);
+      // #159 início às 18h e 45 a 70 min de treino; o de hoje ainda está aberto (fica fora da média)
+      const ini = Date.parse(`${d}T21:00:00Z`);
+      raw.duracoes!.push({ date: d, startedAt: ini, finishedAt: d === hoje ? null : ini + (45 + ((w * 7 + off * 5) % 26)) * 60_000 });
       const grupos = tipo === "sup" ? [["ombro", 3 + (w > 2 ? 1 : 0)], ["biceps", 3], ["triceps", 3], ["peito", 3]] : [["quad", 4], ["isquio", 3], ["gluteo", 2], ["pant", 2]];
       for (const [mu, n] of grupos) raw.sets.push({ date: d, muscle: mu as string, n: n as number });
       if (tipo === "sup") {

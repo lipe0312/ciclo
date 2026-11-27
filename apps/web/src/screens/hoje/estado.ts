@@ -4,7 +4,6 @@ import * as C from "@ciclo/core";
 import { S, commit, today } from "../../lib/store/index.ts";
 import { SERVER, api } from "../../lib/api/index.ts";
 import { lsGet, lsSet } from "../../lib/util.ts";
-import { demoRaw } from "./demo.ts";
 
 const CACHE = `ciclo:v1:${SERVER ? "srv" : "demo"}:home:${today}`;
 export interface Carga { view: C.HomeView | null; carregando: boolean; erro: boolean }
@@ -12,7 +11,8 @@ export const H: Carga = { view: lsGet<C.HomeView | null>(CACHE, null), carregand
 let pedido: Promise<void> | null = null;
 
 /** Demonstração: o servidor conta no D1; aqui o mesmo core conta sobre os dados fictícios + o que a pessoa registrar. */
-function demoView(): C.HomeView {
+async function demoView(): Promise<C.HomeView> {
+  const { demoRaw } = await import("./demo.ts"); // #159 os dados fictícios só baixam na demonstração (o JS inicial está no teto)
   const ctx = C.ctxDoPerfil(S.profile);
   const raw = demoRaw(today);
   // a comida de hoje (e dos dias que a pessoa registrar na demo) vem do estado local, por cima da fictícia
@@ -31,7 +31,7 @@ export function carregarHome(force = false): Promise<void> {
   pedido = (async () => {
     await Promise.resolve(); // o efeito da tela roda antes de a casca assinar o commit
     try {
-      H.view = SERVER ? (await api<{ home: C.HomeView }>("GET", `/api/home?date=${today}`)).home : demoView();
+      H.view = SERVER ? (await api<{ home: C.HomeView }>("GET", `/api/home?date=${today}`)).home : await demoView();
       reaplicarCache(H.view);
       lsSet(CACHE, H.view);
     } catch (e) {

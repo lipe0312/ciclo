@@ -100,3 +100,12 @@ a.hm-marco:focus-visible{outline:3px solid var(--foco);outline-offset:2px}
   .hm-sai,.hm-atalho{transition:none}
   .hm-b{transform:none;transition:none}
 }
+
+/* #159 resumo de treino (Semana | Mês) e peso/medidas resumidos */
+.rt-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 12px;margin-top:12px}
+.rt-stat{min-width:0}
+.rt-v{font-size:20px;font-weight:800;line-height:1.2;margin:2px 0;overflow-wrap:anywhere}
+.rt-stat .tiny{overflow-wrap:anywhere}
+@media (max-width:340px){.rt-stats{grid-template-columns:minmax(0,1fr)}}
+.rt-medida{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10px;padding:10px 0;border-top:1px solid var(--borda);margin-top:6px}
+.rt-medida:first-of-type{border-top:0}

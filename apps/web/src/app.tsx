@@ -17,7 +17,7 @@ import { BotaoCenario } from "./lib/cenario/index.tsx";
 import { Voltar, useGestosVoltar } from "./lib/voltar/index.tsx";
 import { preloadNoOcio, telaLenta } from "./lib/tela-lenta/index.tsx";
 import Hoje, { esconderLembrete } from "./screens/hoje/index.tsx";
-import Treino from "./screens/treino/index.tsx";
+import Treino, { ResumoLento } from "./screens/treino/index.tsx";
 import Conta from "./screens/conta/index.tsx";
 import Mais from "./screens/mais/index.tsx";
 import Entrar from "./screens/entrar/index.tsx";
@@ -34,7 +34,7 @@ const Academias = telaLenta<P>(() => import("./screens/academias/index.tsx"));
 const Perfil = telaLenta<P>(() => import("./screens/perfil/index.tsx"));
 const Vida = telaLenta<P>(() => import("./screens/vida/index.tsx"));
 const PrimeirosPassos = telaLenta<P>(() => import("./screens/primeiros-passos/index.tsx"));
-const LENTAS = [Semana, Diario, Comida, Chat, Perfil, Corpo, Academias, PrimeirosPassos, Vida];
+const LENTAS = [ResumoLento, Semana, Diario, Comida, Chat, Perfil, Corpo, Academias, PrimeirosPassos, Vida];
 
 const SCREENS: Record<string, FunctionComponent<{ route: Route }>> = {
   hoje: Hoje, treino: Treino, diario: Diario, comida: Comida, chat: Chat, corpo: Corpo, academias: Academias,
