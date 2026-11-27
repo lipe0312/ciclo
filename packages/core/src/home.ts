@@ -9,6 +9,8 @@ import { DEFAULT_PROFILE } from "./perfil.ts";
 import type { FoodAverages } from "./comida.ts";
 import { cartaoBoasVindas, marcosEvolucao, mediasSemana } from "./home-inicio.ts";
 import type { MarcosRaw, Marco, MediaCard, Visibilidade } from "./home-inicio.ts";
+import { resumoTreino } from "./home-resumo.ts";
+import type { DuracaoRaw, ResumoTreino } from "./home-resumo.ts";
 
 const DAY = 864e5;
 const addDays = (iso: string, n: number) => new Date(Date.parse(iso + "T12:00:00Z") + n * DAY).toISOString().slice(0, 10);
@@ -102,6 +104,8 @@ export interface HomeRaw {
   boasVindasDispensadoEm?: string | null; perfilAdiadoEm?: string | null;
   contaEm?: string | null; perfilEm?: string | null; semanaEm?: string | null; primeiroTreinoEm?: string | null; primeiraMedidaEm?: string | null;
   diasComida?: string[]; diasTreino?: string[];
+  /** #159 início e fim de cada sessão das últimas semanas (a duração média do resumo de treino) */
+  duracoes?: DuracaoRaw[];
 }
 
 export interface ExercicioChave { exerciseId: string; muscle: MuscleId; serie: (number | null)[]; atual: number; delta: number }
@@ -262,6 +266,8 @@ export interface HomeView {
   /** #73 cartão "Sua semana está pronta", caminho de evolução, médias de 7 dias e o que os atalhos mostram */
   boasVindas: Visibilidade; perfilAdiadoEm: string | null; marcos: Marco[]; medias: MediaCard[];
   ultimaMedida: string | null; checkinHoje: boolean;
+  /** #159 resumo de treino da semana e do mês (números escritos; os gráficos ficam em #treino/resumo) */
+  treino: ResumoTreino;
 }
 
 const semanaDa = (inicio: string | null, hoje: string) => (inicio ? Math.max(1, Math.floor(diffDays(inicio, hoje) / 7) + 1) : 1);
@@ -307,6 +313,7 @@ export function homeView(raw: HomeRaw, c: HomeCtx): HomeView {
     marcos: marcosEvolucao(marcosDe(raw), c.hoje),
     medias: mediasSemana({ comida: raw.comida, agua: raw.agua ?? [], sono: raw.sono ?? [] }, c.hoje, c.dieta.protein),
     ultimaMedida: reg.ultimaMedida, checkinHoje: raw.checkins.includes(c.hoje),
+    treino: resumoTreino(raw, { hoje: c.hoje, diasMeta: c.diasMeta }),
   };
 }
 

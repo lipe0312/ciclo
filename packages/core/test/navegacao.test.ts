@@ -4,7 +4,7 @@ import { TELAS, TELAS_ABA, TELAS_MAIS, caminhoAteHoje, nomeDaTela, voltarDe } fr
 
 // Uma amostra de cada forma de rota que o app abre (#tela/parte/parte). Dados fictícios.
 const ROTAS: [string, string[]][] = [
-  ["hoje", []], ["treino", []], ["treino", ["exercicios"]], ["treino", ["exercicio", "Face_Pull"]], ["treino", ["historico"]],
+  ["hoje", []], ["treino", []], ["treino", ["exercicios"]], ["treino", ["exercicio", "Face_Pull"]], ["treino", ["historico"]], ["treino", ["resumo"]],
   ["treino", ["cardio"]], ["treino", ["ativo", "2"]], ["semana", []], ["semana", ["dia", "2026-11-12"]],
   ["diario", []], ["diario", ["exames"]], ["diario", ["resumo"]], ["diario", ["treinar"]], ["diario", ["checkout", "2026-11-13"]],
   ["comida", []], ["chat", []], ["claude", []], ["corpo", []], ["academias", []], ["academias", ["novo"]],
