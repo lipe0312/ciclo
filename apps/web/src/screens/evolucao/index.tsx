@@ -90,19 +90,25 @@ function Personalizado({ de, ate, onPick, erro }: { de: string; ate: string; onP
   </div>;
 }
 
+const CONQ_VISIVEIS = 4;
 function Conquistas({ v, aba, rota }: { v: EvolucaoView; aba: Aba; rota: (a: Aba) => string }) {
+  const [todas, setTodas] = useState(false);
   if (!v.conquistas.length) return null;
-  return <Card cls="hl evo-conq" aria-label="Conquistas do período"><p class="kicker">Conquistas do período</p>
-    <ul class="evo-conq-l">{v.conquistas.map((c) => <li key={c.id}><Icon id="check" style="color:var(--acc);flex:none;margin-top:2px" />
+  const resto = v.conquistas.length - CONQ_VISIVEIS;
+  return <Card cls="hl evo-conq" aria-label="Conquistas do período"><p class="kicker">Conquistas do período · {v.conquistas.length}</p>
+    <ul class="evo-conq-l" id="evoConq">{(todas ? v.conquistas : v.conquistas.slice(0, CONQ_VISIVEIS)).map((c) => <li key={c.id}><Icon id="check" style="color:var(--acc);flex:none;margin-top:2px" />
       <span class="small" style="flex:1">{c.texto}</span>
-      {c.aba !== aba && <a class="link44 small evo-ir" href={rota(c.aba)} aria-label={`Ver ${ABA_NM[c.aba]}`}>{ABA_NM[c.aba]}<Icon id="arrow" /></a>}</li>)}</ul></Card>;
+      {c.aba !== aba && <a class="link44 small evo-ir" href={rota(c.aba)} aria-label={`Ver ${ABA_NM[c.aba]}`}>{ABA_NM[c.aba]}<Icon id="arrow" /></a>}</li>)}</ul>
+    {resto > 0 && <button type="button" class="link44 small evo-mais" aria-expanded={todas} aria-controls="evoConq" onClick={() => setTodas((x) => !x)}>
+      {todas ? "Ver menos" : `Ver mais ${resto} ${pl(resto, "conquista", "conquistas")}`}</button>}</Card>;
 }
 
 // ---------- um número com comparação, cobertura e (se couber) gráfico ----------
 interface MetricaP {
   v: EvolucaoView; titulo: string; sub?: string; valor: string; s: SerieEvo; un: readonly [string, string]; casas?: number; unit: string;
   grafico?: "colunas" | "linha" | null; meta?: number; metaTxt?: string; max?: number;
-  /** como ler a cobertura de cada barra */ cob: (c: Cob) => string; cobLeg?: string; resumo: string;
+  /** como ler a cobertura de cada barra (tabela e, com `cobNaBarra`, a linha embaixo das barras) */ cob: (c: Cob) => string; cobLeg?: string; resumo: string;
+  /** false = a cobertura fica só na tabela (ex.: cada semana vale 1, a linha embaixo não diz nada) */ cobNaBarra?: boolean;
   extra?: ComponentChildren;
 }
 function Comparacao({ s, un, casas = 0, unit, j }: { s: SerieEvo; un: readonly [string, string]; casas?: number; unit: string; j: JanelaEvo }) {
@@ -113,8 +119,12 @@ function Comparacao({ s, un, casas = 0, unit, j }: { s: SerieEvo; un: readonly [
   </ul>;
 }
 function Metrica(m: MetricaP) {
-  const { v, s, casas = 0 } = m, j = v.janela, n = v.baldes.length, rot = v.baldes.map((b) => b.rotulo);
-  const larg = Math.max(1, ...s.baldes.map((x) => (x == null ? 1 : fmt(x, casas).length))) * 7 + 6;
+  const { v, s, casas = 0 } = m, j = v.janela, n = v.baldes.length, rot = v.baldes.map((b) => b.rotulo), naBarra = m.cobNaBarra !== false;
+  // largura de uma coluna: o maior texto que vai em cima (valor) ou embaixo (cobertura) dela; não cabe → tabela "Ver os números"
+  const cobs = naBarra ? s.cobertura.map(m.cob) : [];
+  // (valor: 12 px negrito ≈ 7 px por caractere; cobertura: 11 px ≈ 6 px; 3 px entre colunas; ~320 px úteis no celular)
+  const larg = Math.max(7, ...s.baldes.map((x) => (x == null ? 1 : fmt(x, casas).length) * 7), ...cobs.map((c) => c.length * 6)) + 2;
+  const compacto = larg > (320 - (n - 1) * 3) / Math.max(1, n);
   return <Card cls="evo-bloco">
     <div class="row between start wrapx" style="gap:8px"><h2>{m.titulo}</h2>{m.sub && <span class="small sub">{m.sub}</span>}</div>
     <p class="num evo-v">{m.valor}</p>
@@ -123,7 +133,7 @@ function Metrica(m: MetricaP) {
     {m.grafico && n >= 2 && (m.grafico === "linha"
       ? <LinhaValor values={s.baldes} rotulos={rot} label={m.titulo} unit={m.unit} />
       : <ColunasValor values={s.baldes} rotulos={rot} label={m.titulo} unit={m.unit} casas={casas} meta={m.meta} metaTxt={m.metaTxt} max={m.max}
-        atual={!!v.baldes[n - 1]?.andamento} atualTxt={ANDAMENTO[j.grupo]} compacto={n * larg > 300} cobertura={s.cobertura.map(m.cob)} cobTxt={m.cobLeg} />)}
+        atual={!!v.baldes[n - 1]?.andamento} atualTxt={ANDAMENTO[j.grupo]} compacto={compacto} cobertura={naBarra ? cobs : undefined} cobTxt={m.cobLeg} />)}
     <p class="tiny sub evo-cob">{m.resumo}</p>
     {n > 0 && <details class="evo-num"><summary class="small">Ver os números {GRUPO_NM[j.grupo]}</summary>
       <table class="small num"><thead><tr><th scope="col">{j.grupo === "dia" ? "Dia" : j.grupo === "semana" ? "Semana" : "Mês"}</th><th scope="col">Valor</th><th scope="col">Registro</th></tr></thead>
@@ -148,11 +158,11 @@ function AbaTreino({ v }: { v: EvolucaoView }) {
       un={["série", "séries"]} unit=" séries" grafico="colunas" meta={semanal ? alvo[muscle] : undefined} metaTxt={`meta de ${alvo[muscle] ?? 0} séries por semana`}
       cob={diasDe} cobLeg="dias com registro / dias" resumo={resumoT} />)}
     <Metrica v={v} titulo="Músculos com 2× na semana" sub="% dos músculos" valor={val(t.freq2.valor, 0, "%")} s={t.freq2} un={["ponto", "pontos"]} unit="%"
-      grafico={porDia ? null : "colunas"} max={100} cob={(c) => `${c.registrados} sem.`} cobLeg="semanas que entraram na média"
+      grafico={porDia ? null : "colunas"} max={100} cob={(c) => `${c.registrados} ${pl(c.registrados, "semana", "semanas")}`} cobNaBarra={false}
       resumo={`Média de ${t.freq2.registrados} ${pl(t.freq2.registrados, "semana", "semanas")} (a semana em andamento só conta quando é a única).`} />
-    {t.e1rm.length ? t.e1rm.map((e) => <Metrica key={e.exerciseId} v={v} titulo={`Força: ${nomeExercicio(e.exerciseId)}`} sub="e1RM, carga máxima estimada" valor={val(e.s.valor, 1, " kg")}
+    {t.e1rm.length ? t.e1rm.map((e) => <Metrica key={e.exerciseId} v={v} titulo={`Força: ${nomeExercicio(e.exerciseId)}`} sub="e1RM · melhor do período" valor={val(e.s.valor, 1, " kg")}
       s={e.s} un={["kg", "kg"]} casas={1} unit=" kg" grafico="linha" cob={(c) => `${c.registrados} ${pl(c.registrados, "treino", "treinos")}`}
-      resumo={`Medido em ${e.s.registrados} ${pl(e.s.registrados, "treino", "treinos")} no período. e1RM = carga máxima estimada para 1 repetição (Epley).`}
+      resumo={`O número grande é o melhor do período; cada ponto da linha, o melhor ${j.grupo === "mes" ? "do mês" : j.grupo === "semana" ? "da semana" : "do dia"}. Medido em ${e.s.registrados} ${pl(e.s.registrados, "treino", "treinos")}. e1RM = carga máxima estimada para 1 repetição (Epley).`}
       extra={e.recorde ? <p style="margin-top:6px"><span class="badge ok"><Icon id="check" />recorde de todos os tempos</span></p> : null} />)
       : <Card><h2>Força (e1RM)</h2><p class="small sub" role="status" style="margin-top:6px">Precisa de mais registros: um exercício feito em 2 {porDia ? "dias" : GRUPO_NM[j.grupo].replace("por ", "") + "s"} diferentes mostra a evolução.</p></Card>}
     <Metrica v={v} titulo="Cardio" sub="minutos" valor={`${fmt(t.cardio.valor ?? 0)} min`} s={t.cardio} un={["min", "min"]} unit=" min" grafico="colunas"
@@ -194,12 +204,13 @@ function AbaSaude({ v }: { v: EvolucaoView }) {
 }
 
 function AbaCorpo({ v }: { v: EvolucaoView }) {
-  const c = v.corpo, med = (x: Cob) => `${x.registrados} ${pl(x.registrados, "medida", "medidas")}`;
-  const itens: [string, SerieEvo, string, string][] = [["Peso", c.peso, " kg", "pesagem"], ["Braço", c.braco, " cm", "medida"], ["Cintura", c.cintura, " cm", "medida"], ["Ombro", c.ombro, " cm", "medida"]];
+  const c = v.corpo;
+  const itens: [string, SerieEvo, string, string, string][] = [["Peso", c.peso, " kg", "pesagem", "pesagens"], ["Braço", c.braco, " cm", "medida", "medidas"],
+    ["Cintura", c.cintura, " cm", "medida", "medidas"], ["Ombro", c.ombro, " cm", "medida", "medidas"]];
   const com = itens.filter(([, s]) => s.cobertura.some((x) => x.registrados > 0));
   return <>
-    {com.map(([nm, s, u, oque]) => <Metrica key={nm} v={v} titulo={nm} sub="último valor do período" valor={val(s.valor, 1, u)} s={s} un={[u.trim(), u.trim()]} casas={1} unit={u} grafico="linha"
-      cob={med} resumo={`${s.registrados} ${pl(s.registrados, oque, oque + "s")} no período. O começo é a sua 1ª ${oque}.`} />)}
+    {com.map(([nm, s, u, oque, oques]) => <Metrica key={nm} v={v} titulo={nm} sub="último valor do período" valor={val(s.valor, 1, u)} s={s} un={[u.trim(), u.trim()]} casas={1} unit={u} grafico="linha"
+      cob={(x) => `${x.registrados} ${pl(x.registrados, oque, oques)}`} resumo={`${s.registrados} ${pl(s.registrados, oque, oques)} no período. O começo é a sua 1ª ${oque}.`} />)}
     {com.length < itens.length && <Card><p class="small sub">Sem registro no período: {itens.filter((x) => !com.includes(x)).map(([nm]) => nm.toLowerCase()).join(", ")}.</p>
       <a class="btn sm ghost" style="margin-top:10px" href="#corpo">Registrar medidas<Icon id="arrow" /></a></Card>}
   </>;

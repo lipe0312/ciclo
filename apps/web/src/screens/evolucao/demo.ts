@@ -38,7 +38,7 @@ export function demoEvolucao(de: string, ate: string, hoje: string): EvolucaoRaw
         if (dentro) { r.sessoes.push(d); for (const [muscle, n] of grupos) r.sets.push({ date: d, muscle, n }); }
       }
     }
-    if (dentro && (dow === 2 || dow === 5) && x("cardio") < 0.8) r.cardio.push({ date: d, minutes: 20 + Math.round(t * 10 + x("min") * 10) });
+    if (dentro && (dow === 2 || dow === 5) && x("cardio") < 0.8) r.cardio.push({ date: d, minutes: 15 + Math.round(t * 25 + x("min") * 8) });
     // comida: registrada em 60% dos dias no começo e 85% no fim; a proteína sobe com o tempo
     if (d >= comidaDe && x("comida") < 0.6 + t * 0.25) {
       const k = (s: string) => Math.round((x(s) - 0.5) * 120);
