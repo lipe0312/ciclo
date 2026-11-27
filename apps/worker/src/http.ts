@@ -75,4 +75,9 @@ export function date(v: unknown, field = "date"): string {
   if (!isDate(v)) throw new HttpError(400, `${field} deve ser YYYY-MM-DD`);
   return v;
 }
+/** #147 Mês no formato AAAA-MM (01 a 12). */
+export function mes(v: unknown, field: string): string {
+  if (typeof v !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) throw new HttpError(400, `${field} deve ser AAAA-MM`);
+  return v;
+}
 export const id = () => crypto.randomUUID();
