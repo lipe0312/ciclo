@@ -32,5 +32,6 @@ export function ResumoTreino({ view }: { view: C.HomeView }) {
       <p class="tiny sub" style="margin-top:10px">Comparado com {faixa(r.antInicio, r.antFim)} ({per === "semana" ? "semana passada" : "mês passado"}, os mesmos {r.decorridos} {r.decorridos === 1 ? "dia" : "dias"}).</p></>
       : <p class="small sub" role="status" style="margin-top:10px">Precisa de mais registros: os números aparecem depois dos primeiros treinos.</p>}
     <a class="btn pri full" style="margin-top:12px" href="#treino/resumo">Ver detalhes do treino<Icon id="arrow" /></a>
+    <a class="btn full ghost" style="margin-top:8px" href="#evolucao/treino"><Icon id="spark" />Ver evolução</a>
   </Card>;
 }
