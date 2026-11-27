@@ -208,6 +208,6 @@ test("menu ⋯ com o checkup pendente: abre o Mais e mostra só o que abre (volt
   assert.deepEqual(links, ["#primeiros-passos", "#conta"]);
   links.forEach((h) => assert.equal(M.C.telaComCheckupPendente(h!.slice(1), true), h === "#conta" ? "conta" : "primeiros-passos"));
   M.S.onboarding = "concluido"; M.render(M.h(M.Mais, {}), r);
-  assert.equal(r.todos().filter((e) => e.localName === "a").length, 5);
+  assert.equal(r.todos().filter((e) => e.localName === "a").length, 6);
   void HOJE_FICTICIO;
 });

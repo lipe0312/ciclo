@@ -5,6 +5,6 @@ export const PRINCIPAL: Dest[] = [
   { id: "comida", nm: "Comida", icon: "food" }, { id: "chat", nm: "Chat", icon: "chat" },
 ];
 export const MAIS: Dest[] = [
-  { id: "corpo", nm: "Corpo", icon: "body" }, { id: "academias", nm: "Academias", icon: "gym" }, { id: "perfil", nm: "Perfil", icon: "user" },
+  { id: "evolucao", nm: "Evolução", icon: "spark" }, { id: "corpo", nm: "Corpo", icon: "body" }, { id: "academias", nm: "Academias", icon: "gym" }, { id: "perfil", nm: "Perfil", icon: "user" },
   { id: "conta", nm: "Conta", icon: "key" }, { id: "vida", nm: "Vida", icon: "grid" },
 ];
