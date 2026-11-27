@@ -1,5 +1,5 @@
 // Espaço Treino. Abas: Hoje · Semana (tela própria) · Exercícios · Histórico · Cardio; e o modo treino em tela cheia.
-// Rotas: #treino · #treino/ativo[/<i>] · #treino/exercicios?q=&m=&eq=&t= · #treino/exercicio/<id> · #treino/historico · #treino/cardio
+// Rotas: #treino · #treino/ativo[/<i>] · #treino/exercicios?q=&m=&eq=&t= · #treino/exercicio/<id> · #treino/historico · #treino/resumo[?j=12] · #treino/cardio
 import { useEffect, useState } from "preact/hooks";
 import { C, S, commit, today } from "../../lib/store/index.ts";
 import { EXB, activePlan, gymById, mName, suggestFor } from "../../lib/store/regras.ts";
@@ -22,8 +22,12 @@ import { diaDe, garantirSemana } from "../semana/estado.ts";
 import { AvisoSemAcademia } from "../semana/aviso-sem-academia.tsx";
 import { Relogio, useTick } from "./relogio.tsx";
 import { AbasTreino } from "../../lib/abas-treino/index.tsx";
+import { telaLenta } from "../../lib/tela-lenta/index.tsx";
 
 export { MediaBox } from "./midia.tsx";
+
+// #159 Detalhe do treino (#treino/resumo): os gráficos baixam só ao abrir (ou no ócio, via app.tsx) para o JS inicial não crescer
+export const ResumoLento = telaLenta<{ route: Route }>(() => import("../treino-resumo/index.tsx"));
 
 // #122 o modo treino (timeline) baixa à parte, já no boot e em segundo plano: fica no cache para abrir sem sinal na academia
 type TL = typeof import("./timeline.tsx");
@@ -153,10 +157,10 @@ function CardDia({ it, idx, run }: { it: C.PlanItem; idx: number; run: boolean }
 
 export default function Treino({ route }: { route: Route }) {
   const sub = route.parts[0];
-  const tab = sub === "exercicios" || sub === "exercicio" ? "ex" : sub === "historico" ? "hist" : sub === "cardio" ? "cardio" : "hoje";
+  const tab = sub === "exercicios" || sub === "exercicio" ? "ex" : sub === "historico" || sub === "resumo" ? "hist" : sub === "cardio" ? "cardio" : "hoje";
   if (sub === "ativo") return <ModoTreino idx={route.parts[1] != null && /^\d+$/.test(route.parts[1]) ? Number(route.parts[1]) : null} />;
   return <>
     {sub !== "exercicio" && <AbasTreino atual={tab} />}
-    {sub === "exercicio" ? <Detalhe id={route.parts[1] ?? ""} /> : tab === "ex" ? <Biblioteca query={route.query} /> : tab === "hist" ? <Historico /> : tab === "cardio" ? <Cardio /> : <Hoje />}
+    {sub === "exercicio" ? <Detalhe id={route.parts[1] ?? ""} /> : tab === "ex" ? <Biblioteca query={route.query} /> : sub === "resumo" ? <ResumoLento route={route} /> : tab === "hist" ? <Historico /> : tab === "cardio" ? <Cardio /> : <Hoje />}
   </>;
 }
