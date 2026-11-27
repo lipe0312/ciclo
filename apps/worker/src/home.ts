@@ -1,5 +1,6 @@
 // Home de evolução (#29): GET /api/home agrega as séries semanais e as lacunas de registro numa chamada só (um batch no D1).
 // Todo SQL com bind e filtrado por user_id; só números e datas saem daqui (nenhum texto livre do dono). A conta fica no core (homeView).
+// #159: + início/fim das sessões (resumo de treino da semana e do mês).
 // #73: + água/sono (28 dias), os marcos do caminho de evolução e o estado do cartão de boas-vindas (prazo pela data do servidor).
 import { COMIDA_APROVACAO, HOME_SEMANAS, aparelhosSemMidia, ctxDoPerfil, dataSP, estadoCheckup, faltaParaGerar, homeView, semanasAte } from "@ciclo/core";
 import type { HomeRaw } from "@ciclo/core";
@@ -45,6 +46,8 @@ export async function getHome(env: Env, u: Pick<AuthUser, "id" | "createdAt" | "
       env.DB.prepare("SELECT DISTINCT date FROM food_log WHERE user_id = ?1 ORDER BY date LIMIT 7").bind(uid),
       env.DB.prepare("SELECT MIN(created_at) AS t FROM week_plan WHERE user_id = ?1").bind(uid),
       env.DB.prepare("SELECT boas_vindas_dispensado_em AS bv, perfil_adiado_em AS pa FROM ui_pref WHERE user_id = ?1").bind(uid),
+      // #159 início e fim de cada sessão (a duração média do resumo de treino); só números, nenhum texto do dono
+      env.DB.prepare("SELECT date, started_at AS startedAt, finished_at AS finishedAt, closed_by AS closedBy FROM session WHERE user_id = ?1 AND date BETWEEN ?2 AND ?3 ORDER BY date LIMIT 400").bind(uid, from, hoje),
     ]),
   ]);
   const rows = <T>(i: number) => r[i].results as T[];
@@ -77,6 +80,7 @@ export async function getHome(env: Env, u: Pick<AuthUser, "id" | "createdAt" | "
     contaEm: dataSP(createdAt),
     perfilEm: feitoEm && profile && (checkupFeito || !faltaParaGerar(profile).length) ? feitoEm : null,
     boasVindasDispensadoEm: pref?.bv ?? null, perfilAdiadoEm: pref?.pa ?? null,
+    duracoes: rows<{ date: string; startedAt: number; finishedAt: number | null; closedBy: string | null }>(21).map((x) => ({ date: x.date, startedAt: x.startedAt, finishedAt: x.finishedAt, auto: x.closedBy === "auto" })),
   } satisfies Partial<HomeRaw>);
   const ctx = ctxDoPerfil(profile);
   const criada = new Date(createdAt).toISOString().slice(0, 10);

@@ -129,3 +129,35 @@ test("home #73: conta que pulou o checkup não tem cartão de boas-vindas", asyn
   assert.equal(h.boasVindas, "oculto");
   assert.equal(h.marcos.find((m: any) => m.id === "perfil").feito, false);
 });
+
+// ---------- #159 resumo de treino: início e fim das sessões, só da conta que pergunta ----------
+test("home #159: resumo de treino conta dias, séries e duração da própria conta; sessão aberta fica fora da média", async () => {
+  const env = makeEnv(), a = await contaPronta(env, "gui"), b = await contaPronta(env, "helo");
+  const hoje = hojeSrv();
+  const EX = "Cable_Seated_Lateral_Raise";
+  // Gui: treino de 50 min, terminado; depois outro começado e ainda aberto
+  await ok(a("POST", "/api/sessions", { id: SID(60), date: hoje, plan: { name: "t", items: [] }, startedAt: Date.now() - 50 * 60_000 }), 201);
+  for (let i = 1; i <= 3; i++) await ok(a("POST", `/api/sessions/${SID(60)}/sets`, { exerciseId: EX, setNo: i, kg: 6, reps: 12 }), 201);
+  await ok(a("POST", `/api/sessions/${SID(60)}/finish`, { feedback: {} }));
+  await ok(a("POST", "/api/sessions", { id: SID(61), date: hoje, plan: { name: "t2", items: [] } }), 201);
+  // Helo: treino bem mais longo e mais séries; nada disso pode aparecer para o Gui
+  await ok(b("POST", "/api/sessions", { id: SID(62), date: hoje, plan: { name: "t", items: [] }, startedAt: Date.now() - 110 * 60_000 }), 201);
+  for (let i = 1; i <= 9; i++) await ok(b("POST", `/api/sessions/${SID(62)}/sets`, { exerciseId: EX, setNo: i, kg: 99, reps: 9 }), 201);
+  await ok(b("POST", `/api/sessions/${SID(62)}/finish`, { feedback: {} }));
+
+  const t = (await ok(a("GET", `/api/home?date=${hoje}`))).data.home.treino;
+  assert.equal(t.semana.atual.dias, 1);
+  assert.equal(t.semana.atual.series, 3);
+  assert.equal(t.semana.atual.sessoesComTempo, 1, "a sessão aberta não entra na média");
+  assert.ok(t.semana.atual.duracaoMin >= 50 && t.semana.atual.duracaoMin <= 51, `duração ${t.semana.atual.duracaoMin}`);
+  assert.equal(t.mes.atual.series, 3);
+  const tb = (await ok(b("GET", `/api/home?date=${hoje}`))).data.home.treino;
+  assert.equal(tb.semana.atual.series, 9);
+  assert.ok(tb.semana.atual.duracaoMin >= 110 && tb.semana.atual.duracaoMin <= 111);
+});
+
+test("home #159: conta sem treino devolve o resumo zerado e sem tempo", async () => {
+  const env = makeEnv(), a = as(env, "ivo");
+  const t = (await ok(a("GET", `/api/home?date=${HOJE}`))).data.home.treino;
+  assert.equal(t.semana.temDados, false); assert.equal(t.semana.atual.duracaoMin, null); assert.equal(t.mes.atual.series, 0);
+});
