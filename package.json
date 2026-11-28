@@ -26,7 +26,7 @@
     "cf:setup": "bash scripts/setup-cloudflare.sh",
     "predeploy:check": "node scripts/predeploy.mjs",
     "deploy:dry": "npm run build && node scripts/predeploy.mjs --static && npm run deploy:dry -w @ciclo/worker",
-    "deploy": "npm run gate && node scripts/predeploy.mjs && npm run build && node scripts/predeploy.mjs --with-build && npm run db:migrate:remote -w @ciclo/worker && npm run deploy -w @ciclo/worker",
+    "deploy": "node scripts/predeploy.mjs --guarda-local && npm run gate && node scripts/predeploy.mjs && npm run build && node scripts/predeploy.mjs --with-build && npm run db:migrate:remote -w @ciclo/worker && npm run deploy -w @ciclo/worker",
     "staging": "node scripts/staging.mjs",
     "e2e:local": "node scripts/e2e-local.mjs",
     "e2e:pdf": "node scripts/e2e-pdf.mjs",

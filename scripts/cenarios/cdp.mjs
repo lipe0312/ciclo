@@ -1,12 +1,13 @@
 // #70 Chrome headless pelo protocolo CDP (WebSocket do Node 22, sem dependência). Usado pelos roteiros e2e de cenário.
-// Só abre localhost: a página recebe o usuário de dev pelo cabeçalho x-dev-user. CHROME=/caminho/do/chrome para outro Chromium.
+// Só abre localhost: a página recebe o usuário de dev pelo cabeçalho x-dev-user. CHROME (ou CHROME_PATH, #164 CI) = /caminho/do/chrome
+// para outro Chromium; no Linux (runner ubuntu-latest do GitHub) o padrão é o google-chrome do PATH.
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const CHROME = process.env.CHROME ?? (process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "google-chrome");
+const CHROME = process.env.CHROME || process.env.CHROME_PATH || (process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "google-chrome");
 
 /** Mata o Chrome e os filhos (renderer, GPU): sem isso sobravam dezenas de processos órfãos a cada roteiro. */
 const matarGrupo = (ch) => { try { process.kill(-ch.pid, "SIGKILL"); } catch { ch.kill("SIGKILL"); } };
@@ -16,7 +17,7 @@ export async function abrirChrome({ usuario, largura = 390, altura = 844 } = {})
   const chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${port}`, `--user-data-dir=${prof}`, "--no-first-run", "--disable-gpu", `--window-size=${largura},${altura}`, "about:blank"], { stdio: "ignore", detached: true });
   let aberto = true; chrome.on("error", () => { aberto = false; });
   let tabs; for (let i = 0; i < 60 && !tabs && aberto; i++) { try { tabs = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); } catch { await sleep(200); } }
-  if (!tabs) { matarGrupo(chrome); throw new Error("Chrome não abriu (defina CHROME=/caminho/do/chrome)"); }
+  if (!tabs) { matarGrupo(chrome); throw new Error("Chrome não abriu (defina CHROME ou CHROME_PATH=/caminho/do/chrome)"); }
   const ws = new WebSocket(tabs.find((t) => t.type === "page").webSocketDebuggerUrl);
   await new Promise((r) => ws.addEventListener("open", r));
   let n = 0; const pend = new Map(); const consola = [];

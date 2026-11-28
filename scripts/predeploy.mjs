@@ -2,13 +2,20 @@
 // URLs de preview abertas, migration com transação (o D1 remoto recusa) e o build do front ausente.
 // `npm run deploy` roda isto antes de tudo; `node scripts/predeploy.mjs` também funciona sozinho.
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const stripJsonc = (s) => s.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (m, str) => str ?? "").replace(/,(\s*[}\]])/g, "$1");
-export const readWrangler = (text = readFileSync(`${ROOT}apps/worker/wrangler.jsonc`, "utf8")) => JSON.parse(stripJsonc(text));
+export const WRANGLER_PADRAO = `${ROOT}apps/worker/wrangler.jsonc`;
+/** #164 Cópia que o CI grava com o database_id real (secret D1_DATABASE_ID do environment). Fica ao lado do wrangler.jsonc para os
+ *  caminhos relativos (main, assets, migrations) continuarem valendo; só existe no runner (o comando recusa fora do CI) e nunca vai para o git. */
+export const WRANGLER_DEPLOY = `${ROOT}apps/worker/wrangler.deploy.jsonc`;
+export const readWrangler = (text = readFileSync(WRANGLER_PADRAO, "utf8")) => JSON.parse(stripJsonc(text));
 const MIG_RE = /^(\d{4})_[a-z0-9_]+\.sql$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const PLACEHOLDER_RE = /^0{8}-/;
 
 /** Problemas que valem para qualquer checkout (testados no `npm test`). */
 export function staticProblems(cfg, migrations) {
@@ -54,7 +61,8 @@ export function stagingProblems(cfg) {
   else if (!/-staging$/.test(sr2.bucket_name ?? "") || sr2.bucket_name === prod.r2?.bucket_name) p.push("env.staging: R2 precisa ser próprio (*-staging), nunca o da produção");
   if (st.vars?.ENVIRONMENT !== "staging") p.push('env.staging: vars.ENVIRONMENT precisa ser "staging" (faixa AMBIENTE DE TESTES)');
   for (const k of ["DEV_NO_AUTH", "DEV_TUNNEL", "MCP_TOKEN", "VAPID_PRIVATE_KEY", "OWNER_EMAIL", "OWNER_SETUP_CODE", "AUTH_PEPPER", "TURNSTILE_SECRET", "PUBLIC_ORIGIN"]) if (k in (st.vars ?? {})) p.push(`env.staging: "${k}" não pode estar em vars`);
-  if (JSON.stringify(st.triggers?.crons ?? []).includes('"* * * * *"')) p.push("env.staging: cron a cada minuto não (use */15 ou desligue)");
+  // #164: staging e produção dividem a cota grátis; no staging, no máximo 1 disparo por hora (minuto fixo, ex.: "0 * * * *")
+  for (const c of st.triggers?.crons ?? []) if (!/^\d{1,2}$/.test(String(c).trim().split(/\s+/)[0] ?? "")) p.push(`env.staging: cron "${c}" dispara mais de 1 vez por hora (use "0 * * * *" ou desligue)`);
   if (st.preview_urls !== false) p.push("env.staging: preview_urls precisa ser false");
   return p;
 }
@@ -69,31 +77,93 @@ export function secretProblems(names, vars = {}) {
   return p;
 }
 
+/** #164 Config do deploy pelo CI: o wrangler.jsonc do git (placeholder) com o database_id real do ambiente (`staging` grava em
+ *  env.staging, `production` no topo). O outro ambiente continua com o placeholder. Recusa id inválido ou de exemplo. */
+export function configComDbId(cfg, id, alvo) {
+  if (!["staging", "production"].includes(alvo)) throw new Error("ambiente do deploy: staging | production");
+  const v = String(id ?? "").trim().toLowerCase();
+  if (!UUID_RE.test(v) || PLACEHOLDER_RE.test(v)) throw new Error("D1_DATABASE_ID ausente ou inválido (secret do environment no GitHub; veja a issue H-02)");
+  const novo = structuredClone(cfg);
+  const dono = alvo === "staging" ? novo.env?.staging : novo;
+  const db = (dono?.d1_databases ?? []).find((d) => d.binding === "DB");
+  if (!db) throw new Error(`binding DB ausente em ${alvo === "staging" ? "env.staging" : "topo"} do wrangler.jsonc`);
+  db.database_id = v;
+  return novo;
+}
+
+/** #164 URL pública do ambiente, sem variável nova: a produção é o PUBLIC_ORIGIN; o staging mora no mesmo subdomínio workers.dev
+ *  da conta, com o nome do Worker de staging (ciclo-staging.<conta>.workers.dev). */
+export function urlDoAmbiente(cfg, alvo) {
+  let o;
+  try { o = new URL(cfg.vars?.PUBLIC_ORIGIN ?? ""); } catch { throw new Error("vars.PUBLIC_ORIGIN ausente ou inválido"); }
+  if (alvo === "production") return o.origin;
+  if (alvo !== "staging") throw new Error("ambiente: staging | production");
+  const [primeiro, ...resto] = o.hostname.split(".");
+  const st = cfg.env?.staging?.name;
+  if (!st || primeiro !== cfg.name || resto.slice(-2).join(".") !== "workers.dev") throw new Error("não dá para deduzir a URL do staging do PUBLIC_ORIGIN (esperado https://<nome>.<conta>.workers.dev)");
+  return `https://${st}.${resto.join(".")}`;
+}
+
+/** #164 N8: produção só sai pelo GitHub Actions. `npm run deploy` local só com CICLO_DEPLOY_LOCAL=1 (emergência). null = pode. */
+export function guardaDeployLocal(env = process.env) {
+  if (env.CICLO_DEPLOY_LOCAL === "1") return null;
+  return "Deploy local desligado: a produção sai pelo GitHub Actions (Actions → deploy → Run workflow, com a sua aprovação no environment production). "
+    + "Passo a passo em docs/11-testar-antes-de-subir.md. Só em emergência: CICLO_DEPLOY_LOCAL=1 npm run deploy";
+}
+
+/** Valor de `--flag <valor>` nos argumentos (ou null). */
+const argDe = (argv, flag) => { const i = argv.indexOf(flag); if (i < 0) return null; const v = argv[i + 1]; if (!v || v.startsWith("--")) throw new Error(`${flag} pede um valor`); return v; };
+
 export const readMigrations = () => readdirSync(`${ROOT}apps/worker/migrations`).filter((f) => f.endsWith(".sql")).sort()
   .map((name) => ({ name, sql: readFileSync(`${ROOT}apps/worker/migrations/${name}`, "utf8") }));
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const cfg = readWrangler();
-  if (process.argv.includes("--staging")) { // #58: `npm run staging` — confere só o staging (o database_id de produção pode nem existir)
+  const argv = process.argv.slice(2);
+  const sair = (msg) => { console.error(`✖ ${msg}`); process.exit(1); };
+  if (argv.includes("--guarda-local")) { // #164: 1º passo do `npm run deploy` (antes do gate, que demora)
+    const m = guardaDeployLocal();
+    if (m) sair(m);
+    console.warn("⚠ CICLO_DEPLOY_LOCAL=1: deploy local de emergência. Depois, rode o deploy pelo Actions para a versão no ar voltar a ser um commit conferido.");
+    process.exit(0);
+  }
+  let alvoArg, cfgArg;
+  try { alvoArg = argDe(argv, "--gerar-config") ?? argDe(argv, "--url"); cfgArg = argDe(argv, "--config"); } catch (e) { sair(e.message); }
+  if (argv.includes("--url")) { // #164: URL pública do ambiente (o CI passa para o smoke)
+    try { console.log(urlDoAmbiente(readWrangler(), alvoArg)); } catch (e) { sair(e.message); }
+    process.exit(0);
+  }
+  if (argv.includes("--gerar-config")) { // #164: só no CI, com o secret D1_DATABASE_ID do environment; o id nunca é impresso
+    if (process.env.CI !== "true") sair("--gerar-config só roda no CI (GitHub Actions): o database_id real nunca fica num arquivo da sua máquina");
+    try { writeFileSync(WRANGLER_DEPLOY, JSON.stringify(configComDbId(readWrangler(), process.env.D1_DATABASE_ID, alvoArg), null, 2) + "\n", { mode: 0o600 }); }
+    catch (e) { sair(e.message); }
+    console.log(`✔ config do deploy (${alvoArg}) gravada em apps/worker/wrangler.deploy.jsonc (fora do git)`);
+    process.exit(0);
+  }
+  // #164: --config <arquivo> confere a config passada (a do CI, com o database_id injetado) em vez do wrangler.jsonc do git
+  const cfgPath = cfgArg ? resolve(cfgArg) : WRANGLER_PADRAO;
+  let cfg;
+  try { cfg = readWrangler(readFileSync(cfgPath, "utf8")); } catch { sair(`não consegui ler a config ${cfgArg ?? "apps/worker/wrangler.jsonc"}`); }
+  const idCurto = (id) => (process.env.CI ? "id injetado" : `${String(id ?? "?").slice(0, 8)}…`); // log do CI é público: nem o começo do id
+  if (argv.includes("--staging")) { // #58: `npm run staging` — confere só o staging (o database_id de produção pode nem existir)
     const q = [...staticProblems(cfg, readMigrations()), ...stagingProblems(cfg)];
     const sdb = (cfg.env?.staging?.d1_databases ?? []).find((d) => d.binding === "DB");
-    if (/^0{8}-/.test(sdb?.database_id ?? "0")) q.push("env.staging: database_id ainda é o de exemplo (o `npm run staging` grava depois de criar o D1)");
-    if (process.argv.includes("--with-build") && !existsSync(`${ROOT}apps/web/dist/index.html`)) q.push("apps/web/dist ausente: rode `npm run build`");
+    if (PLACEHOLDER_RE.test(sdb?.database_id ?? "0")) q.push("env.staging: database_id ainda é o de exemplo (no CI vem do secret D1_DATABASE_ID do environment staging; local, o `npm run staging` grava depois de criar o D1)");
+    if (argv.includes("--with-build") && !existsSync(`${ROOT}apps/web/dist/index.html`)) q.push("apps/web/dist ausente: rode `npm run build`");
     if (q.length) { console.error("✖ Antes do staging:\n  - " + q.join("\n  - ")); process.exit(1); }
-    console.log(`✔ pré-staging ok (D1 ${sdb.database_id.slice(0, 8)}…, ${readMigrations().length} migrations)`);
+    console.log(`✔ pré-staging ok (D1 ${idCurto(sdb.database_id)}, ${readMigrations().length} migrations)`);
     process.exit(0);
   }
   const p = [...staticProblems(cfg, readMigrations()), ...stagingProblems(cfg)];
   const db = (cfg.d1_databases ?? []).find((d) => d.binding === "DB");
-  const soEstatico = process.argv.includes("--static"); // deploy:dry: confere tudo menos o database_id (que só existe depois do cf:setup)
-  if (!soEstatico && (!db || /^0{8}-/.test(db.database_id ?? ""))) p.push("database_id ainda é o de exemplo: rode `npx wrangler login` e `npm run cf:setup`");
+  const soEstatico = argv.includes("--static"); // deploy:dry: confere tudo menos o database_id (que só existe depois do cf:setup)
+  if (!soEstatico && (!db || PLACEHOLDER_RE.test(db.database_id ?? ""))) p.push("database_id ainda é o de exemplo (no CI vem do secret D1_DATABASE_ID do environment production; local: `npx wrangler login` e `npm run cf:setup`)");
   if (!soEstatico) {
     let names = null;
-    try { names = JSON.parse(execFileSync("npx", ["wrangler", "secret", "list", "--format", "json"], { cwd: `${ROOT}apps/worker`, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })).map((s) => s.name); }
-    catch { console.warn("⚠ não deu para listar os secrets (wrangler login?): confira AUTH_PEPPER e as duas chaves do Turnstile à mão"); }
+    try { names = JSON.parse(execFileSync("npx", ["wrangler", "secret", "list", "--format", "json", "--config", cfgPath], { cwd: `${ROOT}apps/worker`, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })).map((s) => s.name); }
+    catch { console.warn("⚠ não deu para listar os secrets (wrangler login? token sem Workers Scripts?): confira AUTH_PEPPER e as duas chaves do Turnstile à mão"); }
     if (names) p.push(...secretProblems(names, cfg.vars ?? {}));
   }
-  if (process.argv.includes("--with-build") && !existsSync(`${ROOT}apps/web/dist/index.html`)) p.push("apps/web/dist ausente: rode `npm run build`");
+  if (argv.includes("--with-build") && !existsSync(`${ROOT}apps/web/dist/index.html`)) p.push("apps/web/dist ausente: rode `npm run build`");
   if (p.length) { console.error("✖ Antes do deploy:\n  - " + p.join("\n  - ")); process.exit(1); }
-  console.log(`✔ pré-deploy ok (D1 ${(db?.database_id ?? "?").slice(0, 8)}…, ${readMigrations().length} migrations). Secrets esperados: AUTH_PEPPER (obrigatório), OWNER_SETUP_CODE (1º acesso; apague depois), OWNER_EMAIL (e-mail do dono, exigido no 1º acesso; nunca no git) (e VAPID_* opcional) → \`npx wrangler secret list --cwd apps/worker\``);
+  console.log(`✔ pré-deploy ok (D1 ${idCurto(db?.database_id)}, ${readMigrations().length} migrations). Secrets esperados: AUTH_PEPPER (obrigatório), OWNER_SETUP_CODE (1º acesso; apague depois), OWNER_EMAIL (e-mail do dono, exigido no 1º acesso; nunca no git) (e VAPID_* opcional) → \`npx wrangler secret list --cwd apps/worker\``);
 }
