@@ -103,7 +103,7 @@ test("#133 refazer tabela: só INSERT INTO X_n (…) SELECT … FROM X com DROP 
 test("nada de dado real versionado: migrations não semeiam pessoas nem e-mails", () => {
   for (const { name, sql } of readMigrations()) {
     const ins = insertsDeSeed(sql);
-    for (const i of ins) assert.match(i.slice(0, 40), /geocode_gate|busca/i, `${name}: seed inesperado (${i.slice(0, 40)})`);
+    for (const i of ins) assert.match(i.slice(0, 40), /geocode_gate|busca|^INSERT INTO fase\b/i, `${name}: seed inesperado (${i.slice(0, 40)})`);
     assert.ok(!/@[a-z0-9-]+\.(com|br|net|org)/i.test(sql), `${name}: e-mail no SQL`);
   }
 });
