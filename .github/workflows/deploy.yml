@@ -4,7 +4,7 @@
 #                é o dono (configurado na #167). Anota o ponto de restauração do D1 antes de mexer em qualquer coisa.
 # Segredos SÓ do environment (staging ou production), nunca do repositório, e só via `env:` (mascarados) NO PASSO que usa o wrangler:
 # `npm ci` e o build nunca enxergam o token. Sem `set -x`.
-# O database_id real vem da variable D1_DATABASE_ID do environment: o predeploy grava apps/worker/wrangler.deploy.jsonc no runner
+# O database_id real vem do secret D1_DATABASE_ID do environment (secret, não variable: o GitHub imprime o env: do passo no log): o predeploy grava apps/worker/wrangler.deploy.jsonc no runner
 # (fora do git) e o wrangler roda com --config. O repositório público continua com o placeholder 00000000-….
 # APP_VERSION = commit (--var APP_VERSION:<sha>); o smoke confere que o /api/health devolve esse commit.
 name: deploy
@@ -44,14 +44,13 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
         run: |
           falta=""
           [ -n "$CLOUDFLARE_API_TOKEN" ] || falta="$falta CLOUDFLARE_API_TOKEN"
           [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || falta="$falta CLOUDFLARE_ACCOUNT_ID"
           [ -n "$D1_DATABASE_ID" ] || falta="$falta D1_DATABASE_ID"
           if [ -n "$falta" ]; then echo "::error::environment staging sem$falta: veja a issue H-02 (#167)"; exit 1; fi
-          echo "::add-mask::$D1_DATABASE_ID"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -62,7 +61,7 @@ jobs:
       - run: npm run build
       - name: Config do deploy (database_id do environment, fora do git)
         env:
-          D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
         run: node scripts/predeploy.mjs --gerar-config staging
       - run: node scripts/predeploy.mjs --staging --with-build --config "$CONFIG"
       - name: Migrations no D1 de staging
@@ -101,18 +100,25 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
         run: |
           falta=""
           [ -n "$CLOUDFLARE_API_TOKEN" ] || falta="$falta CLOUDFLARE_API_TOKEN"
           [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || falta="$falta CLOUDFLARE_ACCOUNT_ID"
           [ -n "$D1_DATABASE_ID" ] || falta="$falta D1_DATABASE_ID"
           if [ -n "$falta" ]; then echo "::error::environment production sem$falta: veja a issue H-02 (#167)"; exit 1; fi
-          echo "::add-mask::$D1_DATABASE_ID"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          fetch-depth: 0
           persist-credentials: false
+      - name: O ref já está na main (nada sobe sem ter passado pelo PR e pelo staging)
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::o ref pedido não está na main: produção só sobe commit que já passou pelo PR e pelo staging"
+            exit 1
+          fi
       - name: Commit que vai subir
         run: |
           SHA="$(git rev-parse HEAD)"
@@ -125,7 +131,7 @@ jobs:
       - run: npm run check
       - name: Config do deploy (database_id do environment, fora do git)
         env:
-          D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
         run: node scripts/predeploy.mjs --gerar-config production
       - name: Predeploy (config, migrations e secrets da produção)
         env:

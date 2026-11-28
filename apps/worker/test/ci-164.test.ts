@@ -1,4 +1,4 @@
-// #164 CI completo: smoke do app no ar (fetch falso), config do deploy com o database_id injetado (variable do environment),
+// #164 CI completo: smoke do app no ar (fetch falso), config do deploy com o database_id injetado (secret do environment),
 // URL de cada ambiente, `npm run deploy` local recusado sem CICLO_DEPLOY_LOCAL=1, APP_VERSION/cron e as regras dos workflows
 // (nunca pull_request_target, sem set -x, permissions por job, actions por SHA, segredo só em env:). Tudo fictício, sem rede.
 import { test } from "node:test";
@@ -226,6 +226,16 @@ test("workflows: sem pull_request_target nem set -x, permissions por job, action
   assert.equal((d.match(/cancel-in-progress: false/g) ?? []).length, 2, "deploy em andamento nunca é cancelado");
   assert.match(d, /time-travel info ciclo-db/); assert.match(d, /--var "APP_VERSION:\$SHA"/); assert.match(d, /--var "APP_VERSION:\$GITHUB_SHA"/);
   assert.equal((d.match(/scripts\/smoke\.mjs "\$URL" --sha/g) ?? []).length, 2, "smoke conferindo o commit nos dois");
+  // #164 revisão: o id do D1 é secret (variable sai no log público, no env: do passo); nunca vars.D1_DATABASE_ID
+  assert.ok(!/vars\.D1_DATABASE_ID/.test(d), "D1_DATABASE_ID precisa ser secret, não variable");
+  assert.equal((d.match(/\$\{\{ secrets\.D1_DATABASE_ID \}\}/g) ?? []).length, 4);
+  // produção: só commit que já está na main (checkout com histórico + merge-base antes de qualquer passo com token)
+  const prod = d.split(/^ {2}production:$/m)[1];
+  assert.match(prod, /ref: \$\{\{ inputs\.ref \}\}\n {10}fetch-depth: 0\n/);
+  const anc = prod.indexOf("git merge-base --is-ancestor HEAD origin/main");
+  assert.ok(anc > 0 && anc < prod.indexOf("--gerar-config") && anc < prod.indexOf("time-travel"), "confere o ref antes de tocar a Cloudflare");
+  assert.match(prod, /git fetch --no-tags origin main/);
+  assert.ok(readFileSync(new URL(".gitignore", ROOT), "utf8").split("\n").includes("apps/worker/wrangler.deploy.jsonc"), "cópia com o id real fora do git");
   // o token da Cloudflare nunca no nível do job (npm ci não o enxerga)
   assert.ok(!/^ {4}env:\n {6}CLOUDFLARE_API_TOKEN/m.test(d), "CLOUDFLARE_API_TOKEN só no passo do wrangler");
 });

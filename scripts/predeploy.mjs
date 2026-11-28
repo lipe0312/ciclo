@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const stripJsonc = (s) => s.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (m, str) => str ?? "").replace(/,(\s*[}\]])/g, "$1");
 export const WRANGLER_PADRAO = `${ROOT}apps/worker/wrangler.jsonc`;
-/** #164 Cópia que o CI grava com o database_id real (variable D1_DATABASE_ID do environment). Fica ao lado do wrangler.jsonc para os
+/** #164 Cópia que o CI grava com o database_id real (secret D1_DATABASE_ID do environment). Fica ao lado do wrangler.jsonc para os
  *  caminhos relativos (main, assets, migrations) continuarem valendo; só existe no runner (o comando recusa fora do CI) e nunca vai para o git. */
 export const WRANGLER_DEPLOY = `${ROOT}apps/worker/wrangler.deploy.jsonc`;
 export const readWrangler = (text = readFileSync(WRANGLER_PADRAO, "utf8")) => JSON.parse(stripJsonc(text));
@@ -82,7 +82,7 @@ export function secretProblems(names, vars = {}) {
 export function configComDbId(cfg, id, alvo) {
   if (!["staging", "production"].includes(alvo)) throw new Error("ambiente do deploy: staging | production");
   const v = String(id ?? "").trim().toLowerCase();
-  if (!UUID_RE.test(v) || PLACEHOLDER_RE.test(v)) throw new Error("D1_DATABASE_ID ausente ou inválido (variable do environment no GitHub; veja a issue H-02)");
+  if (!UUID_RE.test(v) || PLACEHOLDER_RE.test(v)) throw new Error("D1_DATABASE_ID ausente ou inválido (secret do environment no GitHub; veja a issue H-02)");
   const novo = structuredClone(cfg);
   const dono = alvo === "staging" ? novo.env?.staging : novo;
   const db = (dono?.d1_databases ?? []).find((d) => d.binding === "DB");
@@ -132,7 +132,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     try { console.log(urlDoAmbiente(readWrangler(), alvoArg)); } catch (e) { sair(e.message); }
     process.exit(0);
   }
-  if (argv.includes("--gerar-config")) { // #164: só no CI, com a variable D1_DATABASE_ID do environment; o id nunca é impresso
+  if (argv.includes("--gerar-config")) { // #164: só no CI, com o secret D1_DATABASE_ID do environment; o id nunca é impresso
     if (process.env.CI !== "true") sair("--gerar-config só roda no CI (GitHub Actions): o database_id real nunca fica num arquivo da sua máquina");
     try { writeFileSync(WRANGLER_DEPLOY, JSON.stringify(configComDbId(readWrangler(), process.env.D1_DATABASE_ID, alvoArg), null, 2) + "\n", { mode: 0o600 }); }
     catch (e) { sair(e.message); }
@@ -147,7 +147,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (argv.includes("--staging")) { // #58: `npm run staging` — confere só o staging (o database_id de produção pode nem existir)
     const q = [...staticProblems(cfg, readMigrations()), ...stagingProblems(cfg)];
     const sdb = (cfg.env?.staging?.d1_databases ?? []).find((d) => d.binding === "DB");
-    if (PLACEHOLDER_RE.test(sdb?.database_id ?? "0")) q.push("env.staging: database_id ainda é o de exemplo (no CI vem da variable D1_DATABASE_ID do environment staging; local, o `npm run staging` grava depois de criar o D1)");
+    if (PLACEHOLDER_RE.test(sdb?.database_id ?? "0")) q.push("env.staging: database_id ainda é o de exemplo (no CI vem do secret D1_DATABASE_ID do environment staging; local, o `npm run staging` grava depois de criar o D1)");
     if (argv.includes("--with-build") && !existsSync(`${ROOT}apps/web/dist/index.html`)) q.push("apps/web/dist ausente: rode `npm run build`");
     if (q.length) { console.error("✖ Antes do staging:\n  - " + q.join("\n  - ")); process.exit(1); }
     console.log(`✔ pré-staging ok (D1 ${idCurto(sdb.database_id)}, ${readMigrations().length} migrations)`);
@@ -156,7 +156,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const p = [...staticProblems(cfg, readMigrations()), ...stagingProblems(cfg)];
   const db = (cfg.d1_databases ?? []).find((d) => d.binding === "DB");
   const soEstatico = argv.includes("--static"); // deploy:dry: confere tudo menos o database_id (que só existe depois do cf:setup)
-  if (!soEstatico && (!db || PLACEHOLDER_RE.test(db.database_id ?? ""))) p.push("database_id ainda é o de exemplo (no CI vem da variable D1_DATABASE_ID do environment production; local: `npx wrangler login` e `npm run cf:setup`)");
+  if (!soEstatico && (!db || PLACEHOLDER_RE.test(db.database_id ?? ""))) p.push("database_id ainda é o de exemplo (no CI vem do secret D1_DATABASE_ID do environment production; local: `npx wrangler login` e `npm run cf:setup`)");
   if (!soEstatico) {
     let names = null;
     try { names = JSON.parse(execFileSync("npx", ["wrangler", "secret", "list", "--format", "json", "--config", cfgPath], { cwd: `${ROOT}apps/worker`, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })).map((s) => s.name); }

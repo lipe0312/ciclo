@@ -12,3 +12,4 @@ logs/*
 apps/worker/worker-configuration.d.ts
 .DS_Store
 dist/
+apps/worker/wrangler.deploy.jsonc

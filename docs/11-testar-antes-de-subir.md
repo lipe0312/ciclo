@@ -47,7 +47,7 @@ Falham no primeiro passo errado e dizem qual, e qualquer erro ou aviso no consol
 2. PR         CI (.github/workflows/ci.yml): check + e2e (Chrome headless) + deploy-dry + gitleaks. Qualquer um vermelho = PR vermelho
 3. MERGE      deploy.yml, job "staging" sozinho, depois do mesmo CI verde: migrations no staging → deploy com APP_VERSION=<commit> → smoke
 4. ENSAIO     você abre o staging (https://ciclo-staging.<conta>.workers.dev) e testa no iPhone
-5. PRODUÇÃO   Actions → deploy → Run workflow (ref, padrão main) → você aprova no environment production →
+5. PRODUÇÃO   Actions → deploy → Run workflow (ref já na main, padrão main) → você aprova no environment production →
               anota o ponto de restauração do D1 → migrations → deploy com APP_VERSION=<commit> → smoke → confere o commit no ar
 6. SE QUEBRAR rollback (abaixo)
 ```
@@ -61,13 +61,13 @@ Falham no primeiro passo errado e dizem qual, e qualquer erro ou aviso no consol
 |---|---|---|---|
 | `CLOUDFLARE_API_TOKEN` | secret | token só do staging | token só da produção |
 | `CLOUDFLARE_ACCOUNT_ID` | secret | id da conta | id da conta |
-| `D1_DATABASE_ID` | variable | id do `ciclo-db-staging` | id do `ciclo-db` |
+| `D1_DATABASE_ID` | secret | id do `ciclo-db-staging` | id do `ciclo-db` |
 | `CF_ACCESS_CLIENT_ID` / `_SECRET` | secret | service token do Access (quando o Access ligar) | não usa |
 | Proteção | | só a branch `main` | *required reviewer*: o dono; só a branch `main` |
 
 Sem esses valores o job falha logo no 1º passo dizendo o que falta ("environment staging sem CLOUDFLARE_API_TOKEN: veja a issue H-02"). Nunca coloque esses segredos no nível do repositório: o token de produção só existe no environment `production`, e só é entregue depois da sua aprovação.
 
-**`database_id` fora do git.** O repositório público fica com o placeholder `00000000-…`. No runner, `node scripts/predeploy.mjs --gerar-config <staging|production>` grava `apps/worker/wrangler.deploy.jsonc` (fora do git, só no CI) com o id da variable, e o wrangler roda com `--config` nessa cópia; o `predeploy --config <arquivo>` confere a cópia, e o log do CI nunca mostra o id. A sua mudança local do `wrangler.jsonc` com os ids reais pode ser descartada.
+**`database_id` fora do git.** O repositório público fica com o placeholder `00000000-…`. No runner, `node scripts/predeploy.mjs --gerar-config <staging|production>` grava `apps/worker/wrangler.deploy.jsonc` (fora do git, só no CI) com o id do secret (secret, não variable: variable aparece no log público), e o wrangler roda com `--config` nessa cópia; o `predeploy --config <arquivo>` confere a cópia, e o log do CI nunca mostra o id. A sua mudança local do `wrangler.jsonc` com os ids reais pode ser descartada.
 
 **Permissão mínima de cada token** (Cloudflare → My Profile → API Tokens → Create Custom Token, um por ambiente):
 - *Account* → **Workers Scripts: Edit** e **D1: Edit**, só na conta do Ciclo (*Account Resources*: Include → a sua conta).
