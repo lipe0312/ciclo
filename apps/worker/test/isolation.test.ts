@@ -134,6 +134,10 @@ async function matriz(env: any, ana: string, bia: string) {
     ["POST /api/account/invites", () => a("POST", "/api/account/invites", {}), 403],
     ["DELETE /api/account/invites/:id", () => a("DELETE", "/api/account/invites/x1"), 403],
     ["POST /api/account/people/:id/reset", () => a("POST", `/api/account/people/${B.uid}/reset`, {}), 403],
+    // #165 fases: só o dono (nenhuma das duas é dona) → 403 antes de ler ou mudar qualquer coisa
+    ["GET /api/account/fases", () => a("GET", "/api/account/fases"), 403],
+    ["POST /api/account/fases", () => a("POST", "/api/account/fases", { nome: "Invasão", teto: 500 }), 403],
+    ["PATCH /api/account/fases/:id", () => a("PATCH", "/api/account/fases/piloto-2027", { teto: 500, aberta: true }), 403],
     ["PUT /api/measurements/:date", () => a("PUT", `/api/measurements/${D}`, { armCm: 40 })],
     ["PUT /api/profile", () => a("PUT", "/api/profile", profile("A2"))],
     ["PATCH /api/profile", () => a("PATCH", "/api/profile", profile("A3"))], // #71 passo dos Primeiros passos

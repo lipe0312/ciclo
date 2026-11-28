@@ -1,5 +1,5 @@
 // #54/#62 Conta própria: bootstrap do dono (código + OWNER_EMAIL), convite amarrado ao e-mail (usado/expirado/forjado/outro e-mail),
-// teto de 10 contas, login por passkey (ES256/RS256, assinatura/origem/contador), cookie __Host- de 30 dias (teto de 180),
+// teto da fase (#165), login por passkey (ES256/RS256, assinatura/origem/contador), cookie __Host- de 30 dias (teto de 180),
 // "Sair de todos", recuperação, reset de acesso e limite em /auth/*.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -64,31 +64,23 @@ test("convite: forjado, usado, expirado e de outro e-mail são recusados; só o 
   assert.equal((await as(env, a.cookie, "POST", "/api/account/invites", { email: "z@exemplo.com", nome: "Z" })).status, 403, "user não convida");
 });
 
-test("teto: a 11ª conta é recusada pelo servidor (convite e criação), e MAX_USERS nunca passa de 10", async () => {
-  const env = envConta({ MAX_USERS: "50" });
+// #165: o teto vem da fase (vagas-165.test.ts cobre 50 + dono, pendentes, vencido, revogado, concorrência e fase fechada).
+test("teto da fase: opções pegas com vaga, mas o teto baixou antes de terminar → 409 e o convite não é gasto", async () => {
+  const env = envConta();
   const d = await dono(env);
-  for (let i = 2; i <= 9; i++) await contaPorConvite(env, d.cookie, `Pessoa ${i}`);
-  const p = await as(env, d.cookie, "GET", "/api/account/people");
-  assert.equal(p.data.vagas.texto, "9 de 10 vagas");
-  assert.equal((await call(env, "GET", "/auth/status")).data.vagas.texto, "9 de 10 vagas", "#entrar mostra as vagas");
-  const [x, y] = [(await convite(env, d.cookie)).data, (await convite(env, d.cookie)).data]; // dois convites com 1 vaga
-  assert.equal((await registrar(env, cadastro(x, "Décima"))).status, 201);
-  const onze = await registrar(env, cadastro(y, "Décima primeira"));
-  assert.equal(onze.status, 409); assert.equal(onze.data.code, "sem_vagas");
-  assert.equal((await convite(env, d.cookie)).status, 409, "com 10 contas nem o convite nasce");
-  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) n FROM user").get().n, 10);
-  // corrida no registro final: opções pegas com vaga, mas a vaga acabou antes de terminar
-  const env3 = envConta({ MAX_USERS: "2" });
-  const d3 = await dono(env3);
-  const [c1, c2] = [(await convite(env3, d3.cookie)).data, (await convite(env3, d3.cookie)).data];
-  const opt = await call(env3, "POST", "/auth/register/options", { body: cadastro(c2, "Atrasada"), headers: ip() });
+  assert.equal((await call(env, "GET", "/auth/status")).data.vagas.texto, "0 de 50 vagas", "#entrar mostra as vagas (o dono fica fora)");
+  const c1 = (await convite(env, d.cookie)).data;
+  assert.equal((await call(env, "GET", "/auth/status")).data.vagas.texto, "1 de 50 vagas", "convite pendente reserva");
+  const opt = await call(env, "POST", "/auth/register/options", { body: cadastro(c1, "Atrasada"), headers: ip() });
   assert.equal(opt.status, 200);
-  assert.equal((await registrar(env3, cadastro(c1, "Primeira"))).status, 201);
+  assert.equal((await as(env, d.cookie, "PATCH", "/api/account/fases/piloto-2027", { teto: 1 })).status, 200);
+  env.DB.raw.prepare("INSERT INTO user (id, email, created_at) VALUES ('u-ficticia-x', 'x@exemplo.com', 1)").run(); // a última vaga foi ocupada
   const { criar, novoAutenticador } = await import("../../../packages/core/test/fake-autenticador.ts");
   const cred = await criar(await novoAutenticador(), { ...ORIGEM, challenge: opt.data.options.challenge });
-  const r = await call(env3, "POST", "/auth/register", { body: { challengeId: opt.data.challengeId, credential: cred }, headers: ip() });
-  assert.equal(r.status, 409); assert.equal(env3.DB.raw.prepare("SELECT COUNT(*) n FROM user").get().n, 2);
-  assert.equal(env3.DB.raw.prepare("SELECT COUNT(*) n FROM invites WHERE used_at IS NULL").get().n, 1, "convite não foi gasto");
+  const r = await call(env, "POST", "/auth/register", { body: { challengeId: opt.data.challengeId, credential: cred }, headers: ip() });
+  assert.equal(r.status, 409); assert.equal(r.data.code, "sem_vagas");
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) n FROM user").get().n, 2);
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) n FROM invites WHERE used_at IS NULL").get().n, 1, "convite não foi gasto");
 });
 
 test("login por passkey (ES256 e RS256): cookie __Host- HttpOnly Secure de 30 dias; só o hash no banco", async () => {

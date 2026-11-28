@@ -106,11 +106,11 @@ test("semi: Perfil respondido, 1 academia, 2 semanas de treinos, check-ins, 1 do
   assert.equal(q("SELECT COUNT(*) n FROM user"), 1);
 });
 
-test("dono: o semi + papel de dono, 2 convites (1 pendente) e 3 de 10 vagas", async () => {
+test("dono: o semi + papel de dono, 2 convites (1 pendente) e 3 de 50 vagas (#165: 2 contas + 1 pendente; o dono fica fora)", async () => {
   const env = await subir("dono");
   const r = await call(env, "GET", "/api/account/people", { user: "cenario-dono" });
   assert.equal(r.status, 200, r.text);
-  assert.equal(r.data.vagas.usadas, 3); assert.equal(r.data.vagas.max, 10); assert.equal(r.data.people.find((p: any) => p.eu).role, "owner");
+  assert.equal(r.data.vagas.usadas, 3); assert.equal(r.data.vagas.teto, 50); assert.equal(r.data.people.find((p: any) => p.eu).role, "owner");
   assert.equal(r.data.invites.length, 1, "1 pendente"); assert.equal(n(env, "SELECT COUNT(*) n FROM invites"), 2); assert.equal(n(env, "SELECT COUNT(*) n FROM invites WHERE used_at IS NOT NULL"), 1);
   assert.equal(n(env, "SELECT COUNT(*) n FROM session WHERE finished_at IS NOT NULL") >= 6, true, "traz tudo do semi");
 });

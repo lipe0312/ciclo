@@ -5,7 +5,7 @@
 //   #66: a chave manual (#55) ou o token de acesso OAuth (1 h, expires_at; oauth.ts), no mesmo formato.
 // - Local: DEV_NO_AUTH=1 só em localhost/127.0.0.1; usuário de dev pelo cabeçalho x-dev-user ou cookie ciclo_dev_user.
 //   O MCP_TOKEN global vale só aí, como bootstrap do usuário de dev "dev".
-import { CONSENT_DOCS, CONSENT_VERSAO, escoposDe, maxUsers, tokenValido } from "@ciclo/core";
+import { CONSENT_DOCS, CONSENT_VERSAO, escoposDe, tetoVigente, tokenValido } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
 import { authenticateSession } from "./auth-conta.ts";
 
@@ -40,13 +40,15 @@ export type UserRow = { id: string; email: string; name: string | null; role: "o
 export const userRowToAuth = (u: UserRow): AuthUser => ({ id: u.id, email: u.email, name: u.name, role: u.role, createdAt: u.created_at, onboardingDoneAt: u.onboarding_done_at });
 
 /** Só dev local: acha ou cria a conta de dev do e-mail e atualiza last_seen_at (no máx. a cada 5 min).
- *  Criar respeita o teto de contas (#54) no mesmo INSERT: com o teto cheio, a conta nova não nasce (401). */
+ *  Criar respeita o teto de contas (#54; #165: o da fase) no mesmo INSERT: com o teto cheio, a conta nova não nasce (401). */
 export async function userForEmail(env: Env, email: string, now = Date.now()): Promise<AuthUser | null> {
   const sel = env.DB.prepare("SELECT id, email, name, role, created_at, last_seen_at, onboarding_done_at, deleted_at FROM user WHERE email = ?1").bind(email);
   let u = await sel.first<UserRow>();
   if (!u) {
-    await env.DB.prepare("INSERT INTO user (id, email, created_at, last_seen_at) SELECT ?1, ?2, ?3, ?3 WHERE (SELECT COUNT(*) FROM user) < ?4 ON CONFLICT(email) DO NOTHING")
-      .bind(crypto.randomUUID(), email, now, maxUsers(env.MAX_USERS)).run();
+    // #165: teto da fase vigente (contas não-dono; o dono fica fora), com a trava de segurança e a de emergência do core
+    const fase = await env.DB.prepare("SELECT teto FROM fase ORDER BY created_at DESC, rowid DESC LIMIT 1").first<{ teto: number }>();
+    await env.DB.prepare("INSERT INTO user (id, email, created_at, last_seen_at) SELECT ?1, ?2, ?3, ?3 WHERE (SELECT COUNT(*) FROM user WHERE role != 'owner' AND deleted_at IS NULL) < ?4 ON CONFLICT(email) DO NOTHING")
+      .bind(crypto.randomUUID(), email, now, tetoVigente(fase, env.MAX_USERS)).run();
     u = await sel.first<UserRow>();
   }
   if (!u || u.deleted_at != null) return null;

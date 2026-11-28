@@ -7,8 +7,9 @@
 import {
   AUTH_TENTATIVAS, CONSENT_DOCS, CONSENT_VERSAO, INVITE_LEN, INVITE_MS, INVITE_MSG, RECOVERY_COUNT, RECOVERY_LEN, SESSION_MAX_MS, aparelhoDe,
   b64urlDecode, b64urlEncode, backupEligible, cborDecode, checkClientData, codeFromBytes, consentPendente, coseToJwk, counterOk, derToRawEcdsa,
-  emailValido, faceIdRecente, formatCode, inviteState, maxUsers, mesmoEmail, nomeValido, normalizeCode, parseAuthData, precisaFaceId,
-  sessionAlive, sessionExpiry, sessionRenewal, vagas, validarCadastro, validarPerfilConta,
+  COTA_ESCRITAS_DIA, CONTA_R2_MAX_BYTES, TETO_SEGURANCA, emailValido, faceIdRecente, faseId as faseIdDe, formatCode, inviteState, mesmoEmail, motivoSemConvite,
+  nomeValido, normalizeCode, parseAuthData, precisaFaceId, sessionAlive, sessionExpiry, sessionRenewal, tetoVigente, vagasDe, validarCadastro,
+  validarFase, validarPerfilConta,
 } from "@ciclo/core";
 import type { Cadastro, Jwk } from "@ciclo/core";
 import type { AuthUser, Env } from "./env.ts";
@@ -40,8 +41,37 @@ export const sessionCookie = (token: string, maxAgeMs: number) =>
   `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${Math.floor(maxAgeMs / 1000)}`;
 export const CLEAR_SESSION = `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 
-const countUsers = async (env: Env) => (await env.DB.prepare("SELECT COUNT(*) AS n FROM user").first<{ n: number }>())?.n ?? 0;
-export const maxUsersOf = (env: Env) => maxUsers(env.MAX_USERS);
+// ---- #165 vagas por fase (regra em packages/core/src/vagas.ts; aqui o SQL que repete a contagem, sempre com bind) ----
+/** Contas que ocupam vaga (contaOcupaVaga): não-dono e ativas. Contas antigas, sem fase, também. */
+const CONTAS_VAGA = "(SELECT COUNT(*) FROM user WHERE role != 'owner' AND deleted_at IS NULL)";
+/** Convites que reservam vaga (conviteReservaVaga): de conta nova, não usados e não vencidos em `agora` (um placeholder ?n). */
+const PENDENTES_VAGA = (agora: string) => `(SELECT COUNT(*) FROM invites WHERE user_id IS NULL AND used_at IS NULL AND expires_at > ${agora})`;
+type FaseRow = { id: string; nome: string; teto: number; inicio: string; fim_testes: string | null; aberta: number; cota_escritas_dia: number; cota_r2_mb: number; created_at: number };
+const FASE_COLS = "id, nome, teto, inicio, fim_testes, aberta, cota_escritas_dia, cota_r2_mb, created_at";
+const FASE_ID_RE = /^[a-z0-9-]{1,40}$/;
+/** Lista de pessoas do dono: todas as contas possíveis (trava + o dono), nunca corta em 50. */
+const TETO_LISTA = TETO_SEGURANCA + 1;
+const faseDto = (f: FaseRow) => ({ id: f.id, nome: f.nome, teto: f.teto, inicio: f.inicio, fimTestes: f.fim_testes, aberta: !!f.aberta, cotaEscritasDia: f.cota_escritas_dia, cotaR2Mb: f.cota_r2_mb });
+/** Fase vigente = a criada por último (abrir a próxima fase = criar outra). Convite novo entra nela. */
+const faseVigente = (env: Env) => env.DB.prepare(`SELECT ${FASE_COLS} FROM fase ORDER BY created_at DESC, rowid DESC LIMIT 1`).first<FaseRow>();
+/** Fase de um convite (pela hash); convite de antes das fases (fase_id nulo) usa a vigente. */
+async function faseDoConvite(env: Env, ih: string): Promise<FaseRow | null> {
+  const f = await env.DB.prepare(`SELECT ${FASE_COLS.split(", ").map((c) => `f.${c}`).join(", ")} FROM invites i JOIN fase f ON f.id = i.fase_id WHERE i.code_hash = ?1`).bind(ih).first<FaseRow>();
+  return f ?? await faseVigente(env);
+}
+const contasNaoDono = async (env: Env) => (await env.DB.prepare(`SELECT ${CONTAS_VAGA} AS n`).first<{ n: number }>())?.n ?? 0;
+/** Vagas agora (fase vigente, contas não-dono + pendentes; o dono fica fora) e o motivo de não poder convidar. Só contagens. */
+async function vagasAgora(env: Env, now: number) {
+  const [f, c] = await env.DB.batch([
+    env.DB.prepare(`SELECT ${FASE_COLS} FROM fase ORDER BY created_at DESC, rowid DESC LIMIT 1`),
+    env.DB.prepare(`SELECT ${CONTAS_VAGA} AS contas, ${PENDENTES_VAGA("?1")} AS pendentes`).bind(now),
+  ]);
+  const fase = (f.results[0] as FaseRow | undefined) ?? null;
+  const cnt = c.results[0] as { contas: number; pendentes: number };
+  const vagas = vagasDe(cnt.contas, cnt.pendentes, tetoVigente(fase, env.MAX_USERS));
+  return { fase, vagas, motivo: motivoSemConvite(fase ? { nome: fase.nome, aberta: !!fase.aberta } : null, vagas) };
+}
+const semVagas = (fase: { nome: string } | null) => new HttpError(409, `sem vagas na fase ${fase?.nome ?? "atual"}`, "sem_vagas");
 
 // ---- sessão ----
 type Via = "passkey" | "recuperacao";
@@ -247,9 +277,11 @@ export async function handleAuth(req: Request, env: Env, quem: Quem, now = Date.
   const url = new URL(req.url), path = url.pathname;
   try {
     if (req.method === "GET" && path === "/auth/status") {
-      const c = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM user WHERE role = 'owner') AS o, (SELECT COUNT(*) FROM passkeys) AS p, (SELECT COUNT(*) FROM user) AS n").first<{ o: number; p: number; n: number }>();
-      // #62: a tela #entrar diz "Acesso só por convite · X de 10 vagas usadas" (só a contagem, nenhum dado de conta)
-      return json({ bootstrap: bootstrapOpen(env, c), turnstile: turnstileLigado(env) ? env.TURNSTILE_SITE_KEY : null, vagas: vagas(c?.n ?? 0, maxUsersOf(env)), versoes: CONSENT_VERSAO });
+      const c = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM user WHERE role = 'owner') AS o, (SELECT COUNT(*) FROM passkeys) AS p").first<{ o: number; p: number }>();
+      // #62: a tela #entrar diz "Acesso só por convite · X de 50 vagas usadas" (só a contagem, nenhum dado de conta). #165: vagas da fase
+      // (contas não-dono + convites pendentes); `max` fica como apelido de `teto` para a tela #entrar.
+      const { vagas: v } = await vagasAgora(env, now);
+      return json({ bootstrap: bootstrapOpen(env, c), turnstile: turnstileLigado(env) ? env.TURNSTILE_SITE_KEY : null, vagas: { usadas: v.usadas, teto: v.teto, max: v.teto, livres: v.livres, cheio: v.cheio, texto: v.texto }, versoes: CONSENT_VERSAO });
     }
     if (req.method === "GET" && path === "/auth/legal") {
       // #62 #privacidade: controlador = nome do dono (do banco) e o e-mail de contato CONTATO_EMAIL (var/secret; nunca no repositório).
@@ -402,8 +434,7 @@ async function registerOptions(req: Request, env: Env, b: Record<string, unknown
     const got = typeof b.setup === "string" ? b.setup.trim() : "";
     const codigoOk = timingSafeEqualHex(await sha256Hex(got), await sha256Hex(env.OWNER_SETUP_CODE!));
     if (!got || !codigoOk || !mesmoEmail(b.email, env.OWNER_EMAIL)) throw new HttpError(403, "código de configuração ou e-mail errado", "setup_errado");
-    const cad = cadastroDe(b, now);
-    if ((await countUsers(env)) >= maxUsersOf(env)) throw new HttpError(409, "sem vagas");
+    const cad = cadastroDe(b, now); // #165: o dono fica fora da conta de vagas
     targetUid = crypto.randomUUID(); userName = cad.nome;
     data = { mode: "bootstrap", uid: targetUid, nome: cad.nome, email: emailValido(env.OWNER_EMAIL), nova: true, cadastro: cad };
   } else if (b.convite != null) {
@@ -421,7 +452,9 @@ async function registerOptions(req: Request, env: Env, b: Record<string, unknown
       if (!inv!.email) throw new HttpError(410, "este convite é antigo (sem e-mail). Peça um novo.", "convite_usado");
       if (!mesmoEmail(b.email, inv!.email)) throw new HttpError(403, "este convite é de outro e-mail. Peça um convite para o seu.", "convite_email");
       const cad = cadastroDe(b, now);
-      if ((await countUsers(env)) >= maxUsersOf(env)) throw new HttpError(409, `sem vagas: o app aceita até ${maxUsersOf(env)} contas`, "sem_vagas");
+      // #165: este convite já reservou a vaga; aqui só confere se as contas não passaram do teto da fase dele (o teto pode ter baixado)
+      const fase = await faseDoConvite(env, await inviteHash(code!));
+      if ((await contasNaoDono(env)) >= tetoVigente(fase, env.MAX_USERS)) throw semVagas(fase);
       await exigirCotaGlobal(env, now); // #56: a 95% do grátis, conta nova por convite para (o dono ainda cria convite e reseta acesso)
       targetUid = crypto.randomUUID(); userName = cad.nome;
       data = { mode: "convite", uid: targetUid, invite: await inviteHash(code!), nome: cad.nome, email: inv!.email, nova: true, cadastro: cad };
@@ -456,7 +489,6 @@ async function register(req: Request, env: Env, b: Record<string, unknown>, quem
   const pk = await verifyRegistration(req, env, b.credential, c.challenge);
   const d = c.data, uid = d.uid!;
   if (await env.DB.prepare("SELECT 1 FROM passkeys WHERE id = ?1").bind(pk.id).first()) throw new HttpError(409, "esta passkey já está cadastrada");
-  const max = maxUsersOf(env);
   const pkInsert = (cond: string, args: unknown[]) => env.DB.prepare(
     `INSERT INTO passkeys (id, user_id, public_key, alg, counter, transports, synced, created_at) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 WHERE ${cond.replace(/\?(\d+)/g, (_m, n) => `?${Number(n) + 8}`)}`)
     .bind(pk.id, uid, JSON.stringify(pk.jwk), pk.jwk.alg, pk.counter, JSON.stringify(pk.transports), pk.synced ? 1 : 0, now, ...args);
@@ -471,11 +503,15 @@ async function register(req: Request, env: Env, b: Record<string, unknown>, quem
     s = await sessionStmt(env, uid, req, "passkey", now, { cond: used, condArgs: usedArgs, reauth: true });
     const cad = d.cadastro;
     if (d.mode === "convite" && !cad) throw new HttpError(400, "desafio inválido");
+    // #165: teto da fase do convite; o convite usado já reservou a vaga, então só as contas não-dono entram na conta (não conta duas vezes)
+    const fase = d.mode === "convite" ? await faseDoConvite(env, ih) : null;
+    const teto = tetoVigente(fase, env.MAX_USERS);
     const stmts = d.mode === "convite"
       ? [
-        env.DB.prepare(`INSERT INTO user (id, email, name, sobrenome, sexo, nascimento, role, created_at, last_seen_at) SELECT ?1, ?2, ?3, ?7, ?8, ?9, 'user', ?4, ?4
-          WHERE (SELECT COUNT(*) FROM user) < ?5 AND EXISTS (SELECT 1 FROM invites WHERE code_hash = ?6 AND used_at IS NULL AND user_id IS NULL AND expires_at > ?4)`)
-          .bind(uid, d.email ?? syntheticEmail(uid), d.nome!, now, max, ih, cad!.sobrenome, cad!.sexo, cad!.nascimento),
+        env.DB.prepare(`INSERT INTO user (id, email, name, sobrenome, sexo, nascimento, role, created_at, last_seen_at, fase_id)
+          SELECT ?1, ?2, ?3, ?7, ?8, ?9, 'user', ?4, ?4, (SELECT fase_id FROM invites WHERE code_hash = ?6)
+          WHERE ${CONTAS_VAGA} < ?5 AND EXISTS (SELECT 1 FROM invites WHERE code_hash = ?6 AND used_at IS NULL AND user_id IS NULL AND expires_at > ?4)`)
+          .bind(uid, d.email ?? syntheticEmail(uid), d.nome!, now, teto, ih, cad!.sobrenome, cad!.sexo, cad!.nascimento),
         env.DB.prepare("UPDATE invites SET used_by = ?2, used_at = ?3 WHERE code_hash = ?1 AND used_at IS NULL AND user_id IS NULL AND expires_at > ?3 AND EXISTS (SELECT 1 FROM user WHERE id = ?2)")
           .bind(ih, uid, now),
         ...await consentStmts(env, req, uid, now, used, usedArgs),
@@ -493,8 +529,7 @@ async function register(req: Request, env: Env, b: Record<string, unknown>, quem
     }
     const ok = await env.DB.prepare("SELECT 1 FROM invites WHERE code_hash = ?1 AND used_by = ?2 AND used_at = ?3").bind(ih, uid, now).first();
     if (!ok) {
-      const left = await countUsers(env);
-      if (d.mode === "convite" && left >= max) throw new HttpError(409, `sem vagas: o app aceita até ${max} contas`, "sem_vagas");
+      if (d.mode === "convite" && (await contasNaoDono(env)) >= teto) throw semVagas(fase);
       throw new HttpError(410, "este convite não vale mais. Peça um novo.", "convite_usado");
     }
     codes = rc.codes;
@@ -505,9 +540,10 @@ async function register(req: Request, env: Env, b: Record<string, unknown>, quem
     const rc = await recoveryStmts(env, uid, now, cond, [uid]);
     s = await sessionStmt(env, uid, req, "passkey", now, { cond, condArgs: [uid], reauth: true });
     // #62: o dono nasce vazio, com o e-mail do OWNER_EMAIL (sem promover conta antiga: o caminho do Access saiu)
-    const first = env.DB.prepare(`INSERT INTO user (id, email, name, sobrenome, sexo, nascimento, role, created_at, last_seen_at) SELECT ?1, ?2, ?3, ?6, ?7, ?8, 'owner', ?4, ?4
-        WHERE (SELECT COUNT(*) FROM user) < ?5 AND NOT EXISTS (SELECT 1 FROM user WHERE role = 'owner') AND NOT EXISTS (SELECT 1 FROM passkeys)`)
-      .bind(uid, d.email, d.nome!, now, max, cad.sobrenome, cad.sexo, cad.nascimento);
+    // #165: o dono fica fora do teto de vagas (D3: "50 + dono")
+    const first = env.DB.prepare(`INSERT INTO user (id, email, name, sobrenome, sexo, nascimento, role, created_at, last_seen_at) SELECT ?1, ?2, ?3, ?5, ?6, ?7, 'owner', ?4, ?4
+        WHERE NOT EXISTS (SELECT 1 FROM user WHERE role = 'owner') AND NOT EXISTS (SELECT 1 FROM passkeys)`)
+      .bind(uid, d.email, d.nome!, now, cad.sobrenome, cad.sexo, cad.nascimento);
     try {
       await env.DB.batch([first, pkInsert(cond, [uid]), ...rc.stmts, ...await consentStmts(env, req, uid, now, cond, [uid]), s.stmt]);
     } catch (e) {
@@ -590,13 +626,15 @@ export function registerConta(on: (method: string, path: string, h: Handler) => 
     owner(u);
     const now = Date.now();
     const [pp, inv] = await env.DB.batch([
-      env.DB.prepare("SELECT id, name, role, created_at, last_seen_at FROM user ORDER BY created_at LIMIT 50"),
+      env.DB.prepare("SELECT id, name, role, created_at, last_seen_at FROM user ORDER BY created_at LIMIT ?1").bind(TETO_LISTA),
       env.DB.prepare("SELECT id, email, nome, user_id, created_at, expires_at FROM invites WHERE created_by = ?1 AND used_at IS NULL AND expires_at > ?2 ORDER BY created_at DESC LIMIT 50").bind(u.id, now),
     ]);
     type R = { id: string; name: string | null; role: string; created_at: number; last_seen_at: number | null };
     type I = { id: string; email: string | null; nome: string | null; user_id: string | null; created_at: number; expires_at: number };
+    const { fase, vagas, motivo } = await vagasAgora(env, now);
     return json({
-      vagas: vagas(pp.results.length, maxUsersOf(env)),
+      // #165: fase vigente, vagas (contas não-dono + convites pendentes; o número vem sempre daqui) e por que não dá para convidar
+      fase: fase ? faseDto(fase) : null, vagas, motivo,
       people: (pp.results as R[]).map((r) => ({ id: r.id, nome: r.name ?? "Sem nome", role: r.role, createdAt: r.created_at, lastSeenAt: r.last_seen_at, eu: r.id === u.id })),
       invites: (inv.results as I[]).map((r) => ({ id: r.id, email: r.email, nome: r.nome, reset: !!r.user_id, createdAt: r.created_at, expiresAt: r.expires_at })),
     });
@@ -611,10 +649,13 @@ export function registerConta(on: (method: string, path: string, h: Handler) => 
     if (!email) throw new HttpError(400, "e-mail inválido");
     const nome = nomeValido(b.nome);
     if (!nome) throw new HttpError(400, "nome de 1 a 40 letras");
-    const max = maxUsersOf(env);
-    if ((await countUsers(env)) >= max) throw new HttpError(409, `sem vagas: o app aceita até ${max} contas`, "sem_vagas");
+    // #165: o convite entra na fase vigente; fase fechada não emite convite novo (os já emitidos valem até vencer)
+    const fase = await faseVigente(env);
+    if (!fase || !fase.aberta) throw new HttpError(409, fase ? `a fase ${fase.nome} está fechada: abra a fase para convidar` : "nenhuma fase aberta", "fase_fechada");
     if (await env.DB.prepare("SELECT 1 FROM user WHERE email = ?1").bind(email).first()) throw new HttpError(409, "já existe uma conta com este e-mail");
-    return json(await createInvite(req, env, u.id, null, email, nome), 201);
+    const r = await createInvite(req, env, u.id, null, email, nome, { fase: fase.id, teto: tetoVigente(fase, env.MAX_USERS) });
+    if (!r) throw semVagas(fase);
+    return json(r, 201);
   });
 
   on("DELETE", "/api/account/invites/:id", async (_req, env, p, u) => {
@@ -622,6 +663,53 @@ export function registerConta(on: (method: string, path: string, h: Handler) => 
     const r = await env.DB.prepare("DELETE FROM invites WHERE id = ?1 AND created_by = ?2 AND used_at IS NULL").bind(p.id, u.id).run();
     if (!r.meta.changes) throw new HttpError(404, "convite não encontrado");
     return json({ ok: true });
+  });
+
+  // ---- #165 fases (só o dono, com Face ID recente): ver, abrir a próxima e editar teto, fim da fase de testes e aberta ----
+  on("GET", "/api/account/fases", async (_req, env, _p, u) => {
+    owner(u);
+    exigirFaceId(u);
+    const { results } = await env.DB.prepare(`SELECT ${FASE_COLS} FROM fase ORDER BY created_at DESC, rowid DESC LIMIT 100`).all<FaseRow>();
+    const { vagas, motivo } = await vagasAgora(env, Date.now());
+    return json({ fases: results.map(faseDto), vigente: results[0]?.id ?? null, vagas, motivo });
+  });
+
+  on("POST", "/api/account/fases", async (req, env, _p, u) => {
+    owner(u);
+    exigirFaceId(u);
+    const b = await readJson<Record<string, unknown>>(req, 2 * 1024);
+    const r = validarFase(b, "criar", { hoje: new Date().toISOString().slice(0, 10) });
+    if (!r.ok) throw new HttpError(400, r.erros.join("; "));
+    const v = r.valor, id = faseIdDe(v.nome)!;
+    // as cotas seguem as da fase anterior (a #176 muda os valores); sem fase anterior, as de hoje
+    const ant = await faseVigente(env), now = Date.now();
+    try {
+      await env.DB.prepare(`INSERT INTO fase (id, nome, teto, inicio, fim_testes, aberta, cota_escritas_dia, cota_r2_mb, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`)
+        .bind(id, v.nome, v.teto, v.inicio, v.fimTestes, v.aberta ? 1 : 0, ant?.cota_escritas_dia ?? COTA_ESCRITAS_DIA, ant?.cota_r2_mb ?? Math.round(CONTA_R2_MAX_BYTES / 1048576),
+          Math.max(now, (ant?.created_at ?? 0) + 1)).run();
+    } catch (e) {
+      if (e instanceof Error && /UNIQUE|PRIMARY/i.test(e.message)) throw new HttpError(409, "já existe uma fase com esse nome");
+      throw e;
+    }
+    const f = await env.DB.prepare(`SELECT ${FASE_COLS} FROM fase WHERE id = ?1`).bind(id).first<FaseRow>();
+    return json({ fase: faseDto(f!) }, 201);
+  });
+
+  on("PATCH", "/api/account/fases/:id", async (req, env, p, u) => {
+    owner(u);
+    exigirFaceId(u);
+    const b = await readJson<Record<string, unknown>>(req, 2 * 1024);
+    const f = FASE_ID_RE.test(p.id) ? await env.DB.prepare(`SELECT ${FASE_COLS} FROM fase WHERE id = ?1`).bind(p.id).first<FaseRow>() : null;
+    if (!f) throw new HttpError(404, "fase não encontrada");
+    const r = validarFase(b, "editar", { hoje: new Date().toISOString().slice(0, 10), inicio: f.inicio });
+    if (!r.ok) throw new HttpError(400, r.erros.join("; "));
+    const v = r.valor, has = (k: keyof typeof v) => Object.prototype.hasOwnProperty.call(v, k) ? 1 : 0;
+    // CASE WHEN ?n THEN valor ELSE coluna: só o que veio muda. Baixar o teto não derruba ninguém: só barra convite e conta nova.
+    await env.DB.prepare(`UPDATE fase SET teto = CASE WHEN ?2 THEN ?3 ELSE teto END, fim_testes = CASE WHEN ?4 THEN ?5 ELSE fim_testes END,
+        aberta = CASE WHEN ?6 THEN ?7 ELSE aberta END WHERE id = ?1`)
+      .bind(f.id, has("teto"), v.teto ?? null, has("fimTestes"), v.fimTestes ?? null, has("aberta"), v.aberta ? 1 : 0).run();
+    const n = await env.DB.prepare(`SELECT ${FASE_COLS} FROM fase WHERE id = ?1`).bind(f.id).first<FaseRow>();
+    return json({ fase: faseDto(n!) });
   });
 
   // Resetar o acesso de outra pessoa: as sessões e os tokens do Claude caem agora; o convite novo troca as passkeys e os códigos. Os dados ficam.
@@ -636,7 +724,7 @@ export function registerConta(on: (method: string, path: string, h: Handler) => 
       env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(t.id),
       env.DB.prepare("UPDATE mcp_token SET revoked_at = ?2 WHERE user_id = ?1 AND revoked_at IS NULL").bind(t.id, Date.now()),
     ]);
-    return json(await createInvite(req, env, u.id, t.id, null, null), 201);
+    return json((await createInvite(req, env, u.id, t.id, null, null))!, 201); // reset de acesso não ocupa vaga
   });
 
   // #62 Conta → Perfil: nome, sobrenome, sexo, nascimento, altura e peso (todos editáveis; os três primeiros não ficam vazios)
@@ -670,10 +758,14 @@ export async function perfilConta(env: Env, uid: string) {
   return { nome: r?.name ?? null, sobrenome: r?.sobrenome ?? null, sexo: r?.sexo ?? null, nascimento: r?.nascimento ?? null, alturaCm: r?.altura_cm ?? null, pesoKg: r?.peso_kg ?? null };
 }
 
-async function createInvite(req: Request, env: Env, by: string, forUid: string | null, email: string | null, nome: string | null) {
+/** Cria o convite. #165: convite de conta nova (`vaga`) só nasce se contas não-dono + pendentes < teto E a fase ainda está aberta,
+ *  tudo no mesmo INSERT (dois convites ao mesmo tempo não passam do teto). null = sem vaga. Reset de acesso não ocupa vaga. */
+async function createInvite(req: Request, env: Env, by: string, forUid: string | null, email: string | null, nome: string | null, vaga?: { fase: string; teto: number }) {
   const code = newCode(INVITE_LEN), now = Date.now(), id = hex(rnd(8));
-  await env.DB.prepare("INSERT INTO invites (code_hash, id, created_by, user_id, email, nome, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
-    .bind(await inviteHash(code), id, by, forUid, email, nome, now, now + INVITE_MS).run();
+  const r = await env.DB.prepare(`INSERT INTO invites (code_hash, id, created_by, user_id, email, nome, created_at, expires_at, fase_id)
+      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9 WHERE ?9 IS NULL OR (${CONTAS_VAGA} + ${PENDENTES_VAGA("?7")} < ?10 AND EXISTS (SELECT 1 FROM fase WHERE id = ?9 AND aberta = 1))`)
+    .bind(await inviteHash(code), id, by, forUid, email, nome, now, now + INVITE_MS, vaga?.fase ?? null, vaga?.teto ?? 0).run();
+  if (!r.meta.changes) return null;
   const shown = formatCode(code);
   return { id, codigo: shown, expiresAt: now + INVITE_MS, link: `${new URL(req.url).origin}/#convite/${shown}`, aviso: "envie agora: o código não aparece de novo" };
 }
