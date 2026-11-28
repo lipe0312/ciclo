@@ -11,7 +11,7 @@ export interface Env {
   AUTH_PEPPER?: string;        // #54: segredo do HMAC do IP no limite de /auth/* (opcional, recomendado) — `wrangler secret put`
   TURNSTILE_SITE_KEY?: string; // #56: chave pública do Turnstile (vars). Sem ela e sem o secret, o Turnstile fica desligado (dev e testes).
   TURNSTILE_SECRET?: string;   // #56: secret do Turnstile (`wrangler secret put`), validado no servidor (siteverify)
-  MAX_USERS?: string;          // #165: trava de EMERGÊNCIA que só abaixa o teto da fase ("0" fecha a entrada); sem a var, vale o teto da fase
+  MAX_USERS?: string;          // #165: trava de EMERGÊNCIA que só abaixa o teto da fase ("0" ou valor inválido fecham a entrada); sem a var, vale o teto da fase
   ENVIRONMENT?: string;        // #58: "staging" só no env.staging do wrangler.jsonc (a faixa "AMBIENTE DE TESTES"); ausente em produção. #56: só "development" | "local" | "test" relaxam AUTH_PEPPER e CF-Connecting-IP
   DEV_TUNNEL?: string;         // #58: "1" só no `npm run dev:tunnel` (túnel https temporário; WebAuthn usa o host do túnel)
   PUBLIC_ORIGIN?: string;      // #58: opcional, origem https fixa do WebAuthn (padrão: o host da requisição)

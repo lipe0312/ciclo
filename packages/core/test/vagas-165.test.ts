@@ -20,7 +20,9 @@ test("tetoVigente: vem da fase, nunca passa da trava de 500; a emergência só a
   assert.equal(tetoVigente({ teto: 50 }, "80"), 50, "emergência nunca sobe");
   assert.equal(tetoVigente({ teto: 9999 }, "800"), 500);
   assert.equal(tetoVigente({ teto: 50 }, "0"), 0, "emergência 0 = nenhuma conta nova");
-  for (const ruim of ["abc", "-3", "2.5", "1e3x", "NaN"]) assert.equal(tetoVigente({ teto: 50 }, ruim), 50, `emergência inválida (${ruim}) é ignorada`);
+  for (const ruim of ["abc", "O", "-1", "-3", "2.5", "1e3x", "NaN", -1, 2.5]) assert.equal(tetoVigente({ teto: 50 }, ruim), 0, `emergência inválida (${ruim}) fecha a entrada (falha fechada)`);
+  assert.equal(tetoVigente({ teto: 50 }, "   "), 50, "só espaço = vazia = sem trava extra");
+  assert.equal(tetoVigente({ teto: 50 }, null), 50);
   for (const ruim of [NaN, -1, 2.5, Infinity]) assert.equal(tetoVigente({ teto: ruim as number }), 0, "teto da fase inválido = fecha (0)");
   assert.equal(tetoVigente(null), 0, "sem fase, sem vagas");
 });

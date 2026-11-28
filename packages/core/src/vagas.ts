@@ -7,7 +7,8 @@
 export const TETO_SEGURANCA = 500;
 
 /** Teto que vale agora: min(teto da fase, TETO_SEGURANCA, emergência). A var MAX_USERS virou trava de emergência que só
- *  abaixa (inteiro ≥ 0; "0" fecha a entrada). Sem a var ou com valor inválido, não há trava extra. Fase ausente ou com
+ *  abaixa (inteiro ≥ 0; "0" fecha a entrada). Ausente ou vazia = sem trava extra; presente e inválida = 0 (o freio falha
+ *  fechado: um erro de digitação nunca abre vagas). Fase ausente ou com
  *  teto inválido = 0 (falha fechada). */
 export function tetoVigente(fase: { teto: number } | null | undefined, emergencia?: string | number | null): number {
   const t = fase?.teto;
@@ -16,7 +17,7 @@ export function tetoVigente(fase: { teto: number } | null | undefined, emergenci
   const raw = typeof emergencia === "string" ? emergencia.trim() : emergencia;
   if (raw !== undefined && raw !== null && raw !== "") {
     const e = typeof raw === "number" ? raw : /^\d+$/.test(raw) ? Number(raw) : NaN;
-    if (Number.isInteger(e) && e >= 0) teto = Math.min(teto, e);
+    teto = Number.isInteger(e) && e >= 0 ? Math.min(teto, e) : 0;
   }
   return teto;
 }

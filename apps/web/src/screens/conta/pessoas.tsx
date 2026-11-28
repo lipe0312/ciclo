@@ -50,10 +50,11 @@ function CartaoFase({ fase, vagas, onSalvo }: { fase: Fase; vagas: C.VagasFase; 
         <p id="pp-teto-dica" class="tiny sub">Baixar o teto não tira ninguém: só barra convites e contas novas.</p>
         <label class="f" for="pp-fim">Fim da fase de testes (opcional)</label>
         <input id="pp-fim" class="input num" type="date" min={fase.inicio} value={fim} onInput={(e) => setFim(e.currentTarget.value)} />
-        <span class="f" id="pp-aberta">Convites novos</span>
+        <p class="f" id="pp-aberta" style="margin-top:0">Convites novos</p>
         <Seg label="Convites novos" opts={[[true, "Aberta"], [false, "Fechada"]]} value={aberta} onPick={setAberta} />
         <p class="tiny sub">Fechada não emite convite novo; os já enviados valem até vencer.</p>
-        <button type="submit" class="btn pri full" disabled={busy || !mudou}><Icon id="key" />{busy ? "Aguardando o Face ID…" : "Salvar com Face ID"}</button>
+        <button type="submit" class="btn pri full" disabled={busy || !mudou} aria-describedby={!mudou && !busy ? "pp-fase-igual" : undefined}><Icon id="key" />{busy ? "Aguardando o Face ID…" : "Salvar com Face ID"}</button>
+        {!mudou && !busy && <p id="pp-fase-igual" class="tiny sub" role="note">Sem alterações: mude o teto, a data ou a abertura para salvar.</p>}
       </form>
     </details>
   </section>;
@@ -96,8 +97,9 @@ export function Pessoas() {
         <input id="pp-nome" class="input" value={nome} onInput={(e) => setNome(e.currentTarget.value)} autocomplete="off" maxLength={40} required />
         <label class="f" for="pp-email">E-mail da pessoa</label>
         <input id="pp-email" class="input" type="email" value={email} onInput={(e) => setEmail(e.currentTarget.value)} autocomplete="off" maxLength={254} required />
-        <button type="submit" class="btn pri full chv-salvar" disabled={!!busy || !!motivo || !valido} aria-describedby={motivo ? "pp-motivo" : undefined}><Icon id="plus" />{motivo ? "Convidar indisponível" : busy === "inv" ? "Aguardando o Face ID…" : "Gerar convite"}</button>
+        <button type="submit" class="btn pri full chv-salvar" disabled={!!busy || !!motivo || !valido} aria-describedby={motivo ? "pp-motivo" : !valido ? "pp-falta" : undefined}><Icon id="plus" />{motivo ? "Convidar indisponível" : busy === "inv" ? "Aguardando o Face ID…" : "Gerar convite"}</button>
         {motivo && <p id="pp-motivo" class="small" role="note"><Icon id="info" /> {motivo}</p>}
+        {!motivo && !valido && !busy && <p id="pp-falta" class="tiny sub" role="note">Preencha o nome e um e-mail válido para gerar o convite.</p>}
       </form>
       {gerado && <div class="note conta-convite" role="status"><Icon id="key" /><div>
         <p><strong>Convite{gerado.para ? ` para ${gerado.para}` : ""}</strong></p>
