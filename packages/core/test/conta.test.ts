@@ -1,22 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  INVITE_LEN, MAX_USERS, RECOVERY_LEN, aparelhoDe, b64urlDecode, b64urlEncode, backupEligible, cborDecode, checkClientData,
-  codeFromBytes, coseToJwk, counterOk, derToRawEcdsa, formatCode, inviteState, maxUsers, nomeValido, normalizeCode, parseAuthData,
-  vagas,
+  INVITE_LEN, RECOVERY_LEN, aparelhoDe, b64urlDecode, b64urlEncode, backupEligible, cborDecode, checkClientData,
+  codeFromBytes, coseToJwk, counterOk, derToRawEcdsa, formatCode, inviteState, nomeValido, normalizeCode, parseAuthData,
 } from "../src/index.ts";
 import { assinar, cborEncode, criar, novoAutenticador, rawToDer } from "./fake-autenticador.ts";
 
 const NOW = Date.UTC(2026, 10, 13, 12);
 const O = { challenge: "desafio-ficticio", origin: "https://ciclo.exemplo.workers.dev", rpId: "ciclo.exemplo.workers.dev" };
 
-test("teto: config nunca passa de 10; vagas em texto", () => {
-  assert.equal(MAX_USERS, 10);
-  assert.equal(maxUsers(undefined), 10); assert.equal(maxUsers("3"), 3); assert.equal(maxUsers("50"), 10);
-  assert.equal(maxUsers("0"), 10); assert.equal(maxUsers("abc"), 10); assert.equal(maxUsers("2.5"), 10);
-  assert.deepEqual(vagas(8, 10), { usadas: 8, max: 10, livres: 2, cheio: false, texto: "8 de 10 vagas" });
-  assert.equal(vagas(10).cheio, true); assert.equal(vagas(12).livres, 0); assert.equal(vagas(12).texto, "10 de 10 vagas");
-});
+// #165 o teto de contas saiu daqui: vagas-165.test.ts (teto da fase, trava de 500, pendentes, dono fora).
 
 test("convite: ok, usado, expirado, inexistente", () => {
   assert.equal(inviteState(null, NOW), "inexistente");

@@ -1,19 +1,8 @@
-// #54/#62 Conta própria: regras puras do login por passkey (WebAuthn), convite, teto de contas, sessão e recuperação.
+// #54/#62 Conta própria: regras puras do login por passkey (WebAuthn), convite, sessão e recuperação.
 // Sem dependência e sem criptografia aqui: o core só decodifica e confere formatos; a assinatura é verificada no
 // Worker com WebCrypto (ES256/RS256). Tudo o que dá para testar sem rede e sem chave fica neste arquivo.
 
-// ---- teto de contas ----
-export const MAX_USERS = 10;
-/** Teto vindo da config (MAX_USERS). Nunca passa de 10 e nunca é menor que 1; valor inválido = 10. */
-export function maxUsers(cfg?: string | null): number {
-  const n = Number(cfg ?? "");
-  return Number.isInteger(n) && n >= 1 ? Math.min(n, MAX_USERS) : MAX_USERS;
-}
-export interface Vagas { usadas: number; max: number; livres: number; cheio: boolean; texto: string }
-export function vagas(usadas: number, max = MAX_USERS): Vagas {
-  const livres = Math.max(0, max - usadas);
-  return { usadas, max, livres, cheio: livres === 0, texto: `${Math.min(usadas, max)} de ${max} vagas` };
-}
+// ---- teto de contas: #165 saiu daqui. O teto vem da fase (vagas.ts), com a trava de segurança no core. ----
 
 // ---- sessão (#62: deslizante de 30 dias, teto absoluto de 180) ----
 export const SESSION_DAYS = 30;

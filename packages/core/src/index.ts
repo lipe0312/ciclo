@@ -29,6 +29,7 @@ export * from "./home-inicio.ts";
 export * from "./home-resumo.ts";
 export * from "./claude.ts";
 export * from "./conta.ts";
+export * from "./vagas.ts";
 export * from "./cadastro.ts";
 export * from "./limites.ts";
 export * from "./conexao.ts";
