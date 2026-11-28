@@ -102,7 +102,7 @@ A arquitetura foi feita para uma pessoa e até 10 contas convidadas, sem custo. 
 |---|---|
 | Um banco D1 para todos | um escritor, uma região, 500 MB por banco no Free |
 | Plano Free | 100 mil requisições por dia e 10 ms de CPU por requisição; passou disso, erro até o dia virar |
-| Teto de 10 contas | fixo no código (`MAX_USERS` nunca passa de 10); subir para 50 no teste fechado é a #148 |
+| Teto de contas | vem da tabela `fase` (#165: piloto com 50 + dono), trava `TETO_SEGURANCA = 500` no core; `MAX_USERS` só abaixa (emergência) |
 | Sem tempo real | o app pergunta a versão a cada 8 s |
 | Rate limit e cota no D1 | cada requisição limitada soma uma escrita no banco |
 | Um cron único | push e limpezas de todas as contas no mesmo Worker |
