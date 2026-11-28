@@ -3,6 +3,7 @@
 // usa um cenário vazio que você já subiu (e o reseta antes). Falha NO PRIMEIRO passo errado e diz qual.
 // Só localhost. Roteiro manual equivalente: docs/11-testar-antes-de-subir.md
 import { spawn } from "node:child_process";
+import { connect } from "node:net";
 import { fileURLToPath } from "node:url";
 import { CENARIOS, urlAbertura } from "./cenarios/index.mjs";
 import { abrirChrome, sleep } from "./cenarios/cdp.mjs";
@@ -30,19 +31,42 @@ async function passo(titulo, fn, c) {
 const igual = (a, b, msg) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${msg}: veio ${JSON.stringify(a)}, esperado ${JSON.stringify(b)}`); };
 const ok = (cond, msg) => { if (!cond) throw new Error(msg); };
 
+/** true se alguma das portas aceita conexão em localhost (IPv4 ou IPv6: o wrangler pode escutar em qualquer um). */
+const aberta = (porta, host) => new Promise((r) => {
+  const sock = connect({ port: porta, host });
+  const fim = (v) => { sock.destroy(); r(v); };
+  sock.setTimeout(1000, () => fim(false));
+  sock.once("connect", () => fim(true));
+  sock.once("error", () => fim(false));
+});
+const algumaAberta = async (portas) => (await Promise.all(portas.flatMap((p) => [aberta(p, "127.0.0.1"), aberta(p, "::1")]))).some(Boolean);
+
 async function subir() {
   if (process.env.CICLO_URL) { // cenário vazio já no ar: reseta
     const r = await fetch(`http://127.0.0.1:${CTRL}/reset`, { method: "POST", headers: { "x-ciclo-cenario": "reset" } }).catch(() => null);
     if (!r?.ok) throw new Error(`não achei o dev:cenario ${CENARIO} no ar (npm run dev:cenario -- ${CENARIO})`);
     return () => {};
   }
-  const filho = spawn(process.execPath, [fileURLToPath(new URL("./dev-cenario.mjs", import.meta.url)), CENARIO, "--sem-abrir", "--porta", String(PORTA)], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, CENARIO_CTRL_PORTA: String(CTRL) } });
+  // #164 grupo de processos próprio (detached): o dev-cenario sobe npm → wrangler → workerd e o vite; no Linux (CI) o SIGTERM só no
+  // filho deixava os netos órfãos segurando a porta, e o roteiro seguinte (outro processo) achava "já há um servidor". Mata o GRUPO.
+  const filho = spawn(process.execPath, [fileURLToPath(new URL("./dev-cenario.mjs", import.meta.url)), CENARIO, "--sem-abrir", "--porta", String(PORTA)], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, CENARIO_CTRL_PORTA: String(CTRL) }, detached: process.platform !== "win32" });
   let log = ""; filho.stdout.on("data", (d) => { log += d; }); filho.stderr.on("data", (d) => { log += d; });
-  // #71 espera a porta liberar: no `npm run gate` o próximo roteiro sobe o cenário na mesma porta logo em seguida
+  const matar = (sinal) => { try { process.kill(-filho.pid, sinal); } catch { try { filho.kill(sinal); } catch { /* já saiu */ } } };
+  // saída por erro, exceção ou Ctrl-C (o grupo próprio não recebe o SIGINT do terminal): nunca deixa o cenário no ar
+  process.on("exit", () => matar("SIGKILL"));
+  for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { matar("SIGKILL"); process.exit(130); });
+  // #71 espera a porta liberar de verdade (conexão recusada no app e no controle), não só o /api/health parar de responder:
+  // no `npm run gate` o próximo roteiro sobe o cenário na mesma porta logo em seguida
+  const livres = async (ms) => {
+    const fim = Date.now() + ms;
+    while (Date.now() < fim) { if (!(await algumaAberta([PORTA, CTRL]))) return true; await sleep(200); }
+    return false;
+  };
   const parar = async () => {
-    filho.kill("SIGTERM");
-    for (let i = 0; i < 50; i++) { if (!(await fetch(`${BASE}/api/health`).then(() => true, () => false))) return; await sleep(200); }
-    filho.kill("SIGKILL");
+    matar("SIGTERM");
+    if (await livres(10_000)) return;
+    matar("SIGKILL");
+    if (!(await livres(10_000))) console.log(`⚠ a porta ${PORTA} (ou ${CTRL}) continua ocupada depois de parar o cenário`);
   };
   const fim = Date.now() + 300_000; // #74 o semi grava 2 semanas de treinos pela API (limite de escritas por minuto)
   while (!log.includes("Resetar:") && Date.now() < fim && filho.exitCode === null) await sleep(300);
