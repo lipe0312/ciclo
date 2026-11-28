@@ -27,8 +27,9 @@
   "triggers": { "crons": ["* * * * *"] },
   // Só valores públicos aqui. Segredos (OWNER_SETUP_CODE, OWNER_EMAIL, AUTH_PEPPER, VAPID_*) vão por `wrangler secret put`;
   // DEV_NO_AUTH e MCP_TOKEN são só de .dev.vars (localhost) e NUNCA entram em produção (scripts/predeploy.mjs confere).
+  // APP_VERSION: "dev" no local; o deploy pelo GitHub Actions troca pelo commit (--var APP_VERSION:<sha>, #164) e o smoke confere no /api/health.
   // MAX_USERS: teto de contas (#54); o código nunca passa de 10. OWNER_SETUP_CODE é secret (wrangler secret put).
-  "vars": { "APP_VERSION": "0.1.0", "MAX_USERS": "10", "PUBLIC_ORIGIN": "https://ciclo.ciclo-worker.workers.dev",
+  "vars": { "APP_VERSION": "dev", "MAX_USERS": "10", "PUBLIC_ORIGIN": "https://ciclo.ciclo-worker.workers.dev",
     // callbacks OAuth do MCP aceitos (substitui o padrão; o do Claude precisa continuar na lista). "/" no fim = prefixo do caminho.
     // ChatGPT: fixo quando o servidor anuncia o iss (RFC 9207, nosso caso); o prefixo cobre o callback por conexão. Cursor: o web/agents
     // (o desktop usa cursor:// e o loopback http://localhost, que já é aceito).
@@ -53,8 +54,9 @@
         { "binding": "DB", "database_name": "ciclo-db-staging", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
       ],
       "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "ciclo-media-staging" }],
-      "triggers": { "crons": ["*/15 * * * *"] },
-      "vars": { "APP_VERSION": "0.1.0", "MAX_USERS": "10", "ENVIRONMENT": "staging" },
+      // #164: 1×/hora (staging e produção dividem a cota grátis); o predeploy recusa mais que isso
+      "triggers": { "crons": ["0 * * * *"] },
+      "vars": { "APP_VERSION": "dev", "MAX_USERS": "10", "ENVIRONMENT": "staging" },
       "observability": { "enabled": true },
       "upload_source_maps": false
     }

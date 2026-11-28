@@ -1,18 +1,93 @@
+# #164 CI do PR: check, e2e (os 6 roteiros do `npm run gate` no Chrome headless), deploy-dry e gitleaks.
+# O push na main roda este mesmo CI pelo deploy.yml (workflow_call), antes do staging.
+# NUNCA pull_request_target: PR de fork roda sem segredo nenhum. Nenhum job aqui usa segredo da Cloudflare.
+# Actions de terceiros fixadas por SHA (a versão fica no comentário); confira com `gh api repos/<dono>/<repo>/git/ref/tags/<tag>`.
 name: ci
-on: [push, pull_request]
-permissions:
-  contents: read
+on:
+  pull_request:
+  workflow_call:
+permissions: {}
+concurrency:
+  # PR: um push novo cancela o run antigo do mesmo PR. Main (via deploy.yml): um grupo por commit, nunca cancela.
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+env:
+  WRANGLER_SEND_METRICS: "false"
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
       - run: npm ci
       - run: npm run check
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Chrome do runner
+        run: |
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          if [ -z "$CHROME_BIN" ]; then echo "::error::Chrome não encontrado no runner (os roteiros e2e precisam dele)"; exit 1; fi
+          echo "CHROME_PATH=$CHROME_BIN" >> "$GITHUB_ENV"
+          "$CHROME_BIN" --version
+          # Ubuntu 24.04 restringe user namespaces sem privilégio (AppArmor) e o sandbox do Chrome não sobe; libera só nesta VM descartável
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      # cada roteiro sobe o próprio `dev:cenario` (D1 local em .wrangler/cenarios, DEV_NO_AUTH por --var): sem .dev.vars nem segredo
+      - run: npm run build
+      - run: npm run e2e:primeiro-acesso
+      - run: npm run e2e:pular
+      - run: npm run e2e:treino-atual
+      - run: npm run e2e:navegacao
+      - run: npm run e2e:chat
+      - run: npm run e2e:mcp
+
+  deploy-dry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run deploy:dry
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - name: segredos
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
